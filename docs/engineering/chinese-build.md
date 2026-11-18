@@ -197,9 +197,19 @@ for the `WRT2` and `WRP1` layouts and migration rules.
 ## Regenerating the CJK fonts
 
 The generator finishes by running `share-cn-font-intervals.py`. It validates
-that the 8/10/12pt interval triples (first, last, glyph offset) are identical,
-then writes `notosans_cjk_common_intervals.h` and references its single
+that the interval triples (first, last, glyph offset) are identical inside each
+coverage tier, then writes one shared header per tier and references its single
 `inline constexpr` table from those fonts. It refuses mismatches before writing.
+The 8/10/12pt "common" tier shares `notosans_cjk_common_intervals.h`; the
+14/16/18pt "i18n" tier shares `notosans_cjk_i18n_intervals.h`. The tiers are
+rasterized from different character sets, so their tables differ and must stay
+in separate files.
+
+The offset field is a glyph index (see `EpdFont::getGlyph`), not a bitmap
+offset. That is what makes sharing safe across point sizes: every size indexes
+the same codepoints at the same glyph offsets, so one table resolves identically
+for all of them.
+
 To share indices in existing generated headers without rerasterizing fonts or
 refreshing character sets, run:
 

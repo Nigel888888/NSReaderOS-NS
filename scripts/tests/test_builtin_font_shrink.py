@@ -64,37 +64,55 @@ class BuiltinFontShrinkTest(unittest.TestCase):
             self.assertEqual(path.read_text(), output)
 
     def test_sharing_changes_only_interval_storage(self):
-        shared = (FONTS / share.SHARED_FILE).read_text()
-        body = array(shared, "Intervals")
-        with tempfile.TemporaryDirectory() as directory:
-            directory = Path(directory)
-            for size in (8, 10, 12):
-                name = f"notosans_cjk_{size}"
-                text = (FONTS / f"{name}.h").read_text()
-                text = text.replace(f'#include "{share.SHARED_FILE}"\n', '')
-                text = text.replace(f'{share.SHARED_NAME},', f'{name}Intervals,')
-                declaration = f'static const EpdUnicodeInterval {name}Intervals[] = {{{body}\n}};\n'
-                # Restore the generator's original location, immediately before the font descriptor.
-                text = text.replace(f'\n\nstatic const EpdFontData {name}',
-                                    f'\n{declaration}\nstatic const EpdFontData {name}')
-                (directory / f"{name}.h").write_text(text)
-            for path, output in share.shared_outputs(directory):
-                self.assertEqual(output, (FONTS / path.name).read_text())
+        for shared_name, shared_file, sizes in share.SHARED_GROUPS:
+            shared = (FONTS / shared_file).read_text()
+            body = array(shared, "Intervals")
+            with tempfile.TemporaryDirectory() as directory:
+                directory = Path(directory)
+                for size in sizes:
+                    name = f"notosans_cjk_{size}"
+                    text = (FONTS / f"{name}.h").read_text()
+                    text = text.replace(f'#include "{shared_file}"\n', '')
+                    text = text.replace(f'{shared_name},', f'{name}Intervals,')
+                    declaration = f'static const EpdUnicodeInterval {name}Intervals[] = {{{body}\n}};\n'
+                    # Restore the generator's original location, immediately before the font descriptor.
+                    text = text.replace(f'\n\nstatic const EpdFontData {name}',
+                                        f'\n{declaration}\nstatic const EpdFontData {name}')
+                    (directory / f"{name}.h").write_text(text)
+                for path, output in share.shared_outputs(directory):
+                    self.assertEqual(output, (FONTS / path.name).read_text())
 
     def test_mismatched_indices_do_not_write_anything(self):
-        with tempfile.TemporaryDirectory() as directory:
-            directory = Path(directory)
-            for size in (8, 10, 12):
-                offset = 1 if size == 12 else 0
-                (directory / f"notosans_cjk_{size}.h").write_text(
-                    f"static const EpdUnicodeInterval notosans_cjk_{size}Intervals[] = {{\n"
-                    f"    {{ 0x20, 0x21, 0x{offset:X} }},\n}};\n")
-            before = {path: path.read_bytes() for path in directory.iterdir()}
-            result = subprocess.run([sys.executable, str(SCRIPTS / "share-cn-font-intervals.py"), str(directory)],
-                                    capture_output=True, text=True)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("interval tables differ", result.stderr)
-            self.assertEqual(before, {path: path.read_bytes() for path in directory.iterdir()})
+        # Every group must be present, because the script walks them in order and
+        # only the group under test carries the mismatch.
+        for shared_name, shared_file, sizes in share.SHARED_GROUPS:
+            with tempfile.TemporaryDirectory() as directory:
+                directory = Path(directory)
+                for other_name, other_file, other_sizes in share.SHARED_GROUPS:
+                    for size in other_sizes:
+                        offset = 1 if (other_name == shared_name and size == sizes[-1]) else 0
+                        (directory / f"notosans_cjk_{size}.h").write_text(
+                            f"static const EpdUnicodeInterval notosans_cjk_{size}Intervals[] = {{\n"
+                            f"    {{ 0x20, 0x21, 0x{offset:X} }},\n}};\n")
+                before = {path: path.read_bytes() for path in directory.iterdir()}
+                result = subprocess.run([sys.executable, str(SCRIPTS / "share-cn-font-intervals.py"), str(directory)],
+                                        capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("interval tables differ", result.stderr)
+                self.assertEqual(before, {path: path.read_bytes() for path in directory.iterdir()})
+
+    def test_shared_groups_keep_their_tiers_apart(self):
+        # The two tiers are rasterized from different subsets, so their tables differ
+        # and must not be merged into one shared header.
+        common = array((FONTS / share.SHARED_FILE).read_text(), "Intervals")
+        i18n = array((FONTS / "notosans_cjk_i18n_intervals.h").read_text(), "Intervals")
+        self.assertNotEqual(common, i18n)
+        for shared_name, shared_file, sizes in share.SHARED_GROUPS:
+            for size in sizes:
+                header = (FONTS / f"notosans_cjk_{size}.h").read_text()
+                self.assertIn(f'#include "{shared_file}"', header)
+                self.assertIn(f"{shared_name},", header)
+                self.assertNotIn(f"notosans_cjk_{size}Intervals", header)
 
     @unittest.skipUnless(REGENERATE, "pass --regenerate with the font-generation Python environment")
     def test_calculator_generation_is_reproducible(self):
