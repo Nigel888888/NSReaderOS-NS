@@ -181,6 +181,33 @@ jobs:
       # See docs/engineering/read-pico.md "Partition / flash plan".  The
       # component set must come from this same build; never mix components from
       # another board or another build.
+      # PlatformIO merges the four pieces into firmware.factory.bin but does not
+      # copy boot_app0.bin into the build directory; it ships inside the
+      # framework package.  The otadata partition lives at 0xE000, so this file
+      # has to be written there for the device to boot the new application
+      # instead of whatever slot the previous otadata record still points at.
+      - name: Collect the boot components
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          BUILD=.pio/build/rickyos_readpico
+          BOOT_APP0="$BUILD/boot_app0.bin"
+          if [ ! -f "$BOOT_APP0" ]; then
+            FOUND="$(find "$PLATFORMIO_CORE_DIR/packages" -type f -name 'boot_app0.bin' 2>/dev/null | head -1)"
+            if [ -n "$FOUND" ]; then
+              cp "$FOUND" "$BOOT_APP0"
+              echo "boot_app0.bin taken from $FOUND"
+            fi
+          fi
+          if [ ! -f "$BOOT_APP0" ]; then
+            echo "::error::boot_app0.bin not found in the framework packages"
+            exit 1
+          fi
+          if [ ! -f "$BUILD/firmware.factory.bin" ]; then
+            echo "::warning::firmware.factory.bin was not produced by this build"
+          fi
+
       - name: Report the boot components
         if: always()
         continue-on-error: true
@@ -198,6 +225,11 @@ jobs:
                 printf '%-16s MISSING\n' "${name}.bin"
               fi
             done
+            if [ -f .pio/build/rickyos_readpico/firmware.factory.bin ]; then
+              printf '%-16s %10s bytes  sha256 %s\n' "factory.bin" \
+                "$(stat -c%s .pio/build/rickyos_readpico/firmware.factory.bin)" \
+                "$(sha256sum .pio/build/rickyos_readpico/firmware.factory.bin | cut -d' ' -f1)"
+            fi
             echo '```'
           } | tee boot-components.txt
           cat boot-components.txt >> "$GITHUB_STEP_SUMMARY"
@@ -213,5 +245,6 @@ jobs:
             .pio/build/rickyos_readpico/partitions.bin
             .pio/build/rickyos_readpico/boot_app0.bin
             .pio/build/rickyos_readpico/firmware.bin
+            .pio/build/rickyos_readpico/firmware.factory.bin
             boot-components.txt
           if-no-files-found: error
