@@ -15,8 +15,11 @@ class UiFontFallbackTest(unittest.TestCase):
         directory = ROOT / 'lib/EpdFont/builtinFonts'
         for size in (12, 14, 16):
             source = (directory / f'notosans_cjk_{size}.h').read_text()
-            if size == 12:
-                source += (directory / 'notosans_cjk_common_intervals.h').read_text()
+            # The interval table lives in a per-tier shared header, so follow the
+            # include instead of assuming the table is inline in the font header.
+            for shared in ('notosans_cjk_common_intervals.h', 'notosans_cjk_i18n_intervals.h'):
+                if f'#include "{shared}"' in source:
+                    source += (directory / shared).read_text()
             coverage = {cp for first, last, _ in rows(source, 'Intervals')
                         for cp in range(first, last + 1)}
             self.assertIn(ord('海'), coverage)
