@@ -81,8 +81,8 @@ async function main() {
     if (name === 'bits') fullPacked = packed;
     else for (let p = 0; p < packed.length; ++p) packed[p] |= fullPacked[p];
     lines.push(`inline constexpr uint8_t ${name}[] = {`);
-    for (let start = 0; start < packed.length; start += 16) {
-      lines.push('    ' + [...packed.subarray(start, start + 16)]
+    for (let start = 0; start < packed.length; start += 19) {  // clang-format packs 19 per line
+      lines.push('    ' + [...packed.subarray(start, start + 19)]
         .map(value => '0x' + value.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
     }
     lines.push('};');

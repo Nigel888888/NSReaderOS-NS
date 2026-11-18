@@ -43,8 +43,8 @@ async function main() {
       }
       lines.push(`// ${name}; ${size} x ${size}; ${bits.length} bytes in Flash.`);
       lines.push(`static constexpr uint8_t ricky_nav_${name}_${size}[] = {`);
-      for (let offset = 0; offset < bits.length; offset += 16) {
-        lines.push('    ' + [...bits.subarray(offset, offset + 16)]
+      for (let offset = 0; offset < bits.length; offset += 19) {  // clang-format packs 19 per line
+        lines.push('    ' + [...bits.subarray(offset, offset + 19)]
           .map(byte => '0x' + byte.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
       }
       lines.push('};', '');
