@@ -71,6 +71,13 @@ class VocabularyFile {
   // Stores the card's new scheduling state after a review.
   static bool saveCard(const std::string& headword, const study::CardState& card, uint8_t lastRating);
 
+  // Exports the whole notebook as an Anki-importable tab-separated deck at
+  // `path` (normally /vocabulary.tsv on the SD card root, easy to copy over
+  // USB). Returns the number of cards written, or -1 on failure. Each entry
+  // carries Word / Meaning / Sentence / Book; tabs and line breaks inside a
+  // field are replaced by spaces so every card stays on one line.
+  static int exportAnki(const std::string& path);
+
   // How many of `entries` are due at this instant.
   static int countDue(const std::vector<Entry>& entries, int today, int nowMinute);
 

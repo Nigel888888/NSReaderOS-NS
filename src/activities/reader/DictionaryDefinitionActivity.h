@@ -55,9 +55,14 @@ class DictionaryDefinitionActivity final : public Activity {
   // Screen box of the "add to vocabulary" button. Collecting a word is a tap
   // on this button, never a button press, so the box has to be hit-testable.
   Rect vocabularyButtonRect() const;
+  // Screen box of the "save as quote" button, beside the vocabulary one. Only
+  // shown when the word came from a line of text.
+  Rect quoteButtonRect() const;
   void drawVocabularyButton() const;
   void addToVocabulary();
+  void saveAsQuote();
   void expireVocabularyMessage();
+  void expireQuoteMessage();
 
   const std::string headword;
   // Not const: onEnter() normalizes embedded NULs (StarDict multi-type
@@ -76,6 +81,9 @@ class DictionaryDefinitionActivity final : public Activity {
   // Result of the last add attempt, shown on the button until it expires.
   const char* vocabularyMessage = nullptr;
   unsigned long vocabularyMessageUntil = 0;
+  // Result of the last save-as-quote attempt.
+  const char* quoteMessage = nullptr;
+  unsigned long quoteMessageUntil = 0;
   // Styled path: reader-identical Pages laid out from the HTML definition.
   // Empty means the plain-text span path below is active.
   std::vector<std::unique_ptr<Page>> pages;

@@ -14,6 +14,7 @@
 #include "fontIds.h"
 #include "util/DictHtmlPages.h"
 #include "util/HtmlToPlainText.h"
+#include "util/QuotesFile.h"
 #include "util/VocabularyFile.h"
 
 namespace {
@@ -90,6 +91,11 @@ DictionaryDefinitionActivity::BodyArea DictionaryDefinitionActivity::bodyArea() 
 
 // Screen box of the "add to vocabulary" button: it sits directly under the
 // body text and above the button hints.
+namespace {
+// Gap between the two action buttons in the row under the definition.
+constexpr int ACTION_BUTTON_GAP = 10;
+}  // namespace
+
 Rect DictionaryDefinitionActivity::vocabularyButtonRect() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto orientation = renderer.getOrientation();
@@ -106,7 +112,21 @@ Rect DictionaryDefinitionActivity::vocabularyButtonRect() const {
   if (buttonWidth > VOCABULARY_BUTTON_MAX_WIDTH) {
     buttonWidth = VOCABULARY_BUTTON_MAX_WIDTH;
   }
-  return Rect{contentX + (contentWidth - buttonWidth) / 2, buttonY, buttonWidth, VOCABULARY_BUTTON_HEIGHT};
+  // When a line is available the row splits into two equal buttons; otherwise
+  // the vocabulary button keeps the whole width.
+  if (sentence.empty()) {
+    return Rect{contentX + (contentWidth - buttonWidth) / 2, buttonY, buttonWidth, VOCABULARY_BUTTON_HEIGHT};
+  }
+  const int half = (buttonWidth - ACTION_BUTTON_GAP) / 2;
+  return Rect{contentX + (contentWidth - buttonWidth) / 2, buttonY, half, VOCABULARY_BUTTON_HEIGHT};
+}
+
+Rect DictionaryDefinitionActivity::quoteButtonRect() const {
+  const Rect vocab = vocabularyButtonRect();
+  const bool split = !sentence.empty();
+  const int width = split ? vocab.width : 0;
+  const int x = split ? vocab.x + vocab.width + ACTION_BUTTON_GAP : 0;
+  return Rect{x, vocab.y, width, VOCABULARY_BUTTON_HEIGHT};
 }
 
 // Styled path: lay the HTML definition out through the EPUB chapter parser
@@ -244,6 +264,7 @@ void DictionaryDefinitionActivity::wrapText() {
 
 void DictionaryDefinitionActivity::loop() {
   expireVocabularyMessage();
+  expireQuoteMessage();
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     finish();
@@ -261,6 +282,12 @@ void DictionaryDefinitionActivity::loop() {
     if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width && ty >= button.y &&
         ty < button.y + button.height) {
       addToVocabulary();
+      return;
+    }
+    const Rect qbutton = quoteButtonRect();
+    if (qbutton.width > 0 && qbutton.height > 0 && tx >= qbutton.x && tx < qbutton.x + qbutton.width &&
+        ty >= qbutton.y && ty < qbutton.y + qbutton.height) {
+      saveAsQuote();
       return;
     }
     if (tx < renderer.getScreenWidth() / 3) {
@@ -310,6 +337,28 @@ void DictionaryDefinitionActivity::addToVocabulary() {
   requestUpdate();
 }
 
+// Saves the line the word was picked from as a quote in the Quotes notebook.
+void DictionaryDefinitionActivity::saveAsQuote() {
+  if (sentence.empty()) {
+    return;
+  }
+  const uint32_t now = static_cast<uint32_t>(time(nullptr));
+  const QuotesFile::AddResult result = QuotesFile::add(sentence, book, /*page=*/0, now);
+  switch (result) {
+    case QuotesFile::AddResult::Added:
+      quoteMessage = tr(STR_QUOTES_SAVED);
+      break;
+    case QuotesFile::AddResult::AlreadyPresent:
+      quoteMessage = tr(STR_QUOTES_ALREADY_SAVED);
+      break;
+    default:
+      quoteMessage = tr(STR_QUOTES_SAVE_FAILED);
+      break;
+  }
+  quoteMessageUntil = millis() + VOCABULARY_MESSAGE_MS;
+  requestUpdate();
+}
+
 // Drops the add-result message once it has been on screen long enough.
 void DictionaryDefinitionActivity::expireVocabularyMessage() {
   if (!vocabularyMessage) {
@@ -319,6 +368,18 @@ void DictionaryDefinitionActivity::expireVocabularyMessage() {
     return;
   }
   vocabularyMessage = nullptr;
+  requestUpdate();
+}
+
+// Drops the quote-result message once it has been on screen long enough.
+void DictionaryDefinitionActivity::expireQuoteMessage() {
+  if (!quoteMessage) {
+    return;
+  }
+  if (static_cast<long>(millis() - quoteMessageUntil) < 0) {
+    return;
+  }
+  quoteMessage = nullptr;
   requestUpdate();
 }
 
@@ -387,9 +448,16 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
   renderer.displayBuffer();
 }
 
-// Draws the "add to vocabulary" button. While a result is showing it takes
-// over the label, so the answer to the tap stays where the eye already is.
+// Draws the "add to vocabulary" button and, when a line is available, the
+// "save as quote" button beside it. A result takes over the label so the
+// answer to the tap stays where the eye already is.
 void DictionaryDefinitionActivity::drawVocabularyButton() const {
   const char* label = vocabularyMessage ? vocabularyMessage : tr(STR_VOCABULARY_ADD);
   GUI.drawActionButton(renderer, vocabularyButtonRect(), label, vocabularyMessage != nullptr);
+
+  const Rect qbutton = quoteButtonRect();
+  if (qbutton.width > 0) {
+    const char* qlabel = quoteMessage ? quoteMessage : tr(STR_QUOTES_SAVE);
+    GUI.drawActionButton(renderer, qbutton, qlabel, quoteMessage != nullptr);
+  }
 }

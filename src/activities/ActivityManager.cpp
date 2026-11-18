@@ -30,6 +30,7 @@
 #ifndef RICKYOS_PRODUCT
 #include "apps/airpage/AirPageActivity.h"
 #endif
+#include "apps/QuotesActivity.h"
 #include "apps/VocabularyActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
 #include "components/SubpageLayout.h"
@@ -781,6 +782,8 @@ void ActivityManager::goToChineseChess() { replaceActivityWith<ChineseChessMenuA
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
 
 void ActivityManager::goToVocabulary() { replaceActivityWith<VocabularyActivity>(); }
+
+void ActivityManager::goToQuotes() { replaceActivityWith<QuotesActivity>(); }
 
 #ifndef RICKYOS_PRODUCT
 void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }

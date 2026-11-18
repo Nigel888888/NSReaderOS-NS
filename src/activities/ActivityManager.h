@@ -166,6 +166,7 @@ class ActivityManager {
 #endif
   void goToCalculator();
   void goToVocabulary();
+  void goToQuotes();
 #ifndef RICKYOS_PRODUCT
   void goToAirPage();
 #endif

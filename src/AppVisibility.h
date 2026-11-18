@@ -27,7 +27,9 @@ enum class AppId : uint8_t {
   Woodfish = 16,
   // Vocabulary notebook: words collected from the dictionary card.
   Vocabulary = 17,
-  Count = 18,
+  // Quotes notebook: sentences highlighted while reading.
+  Quotes = 18,
+  Count = 19,
 };
 
 constexpr uint32_t appBit(const AppId id) { return uint32_t{1} << static_cast<uint8_t>(id); }

@@ -38,7 +38,12 @@ constexpr int STATS_ICON_PAD = 10;
 constexpr int STATS_CARD_NUMBER_TOP = 42;
 // The review button under the counters.
 constexpr int REVIEW_BUTTON_HEIGHT = 44;
-constexpr int REVIEW_BUTTON_GAP = 10;
+constexpr int REVIEW_BUTTON_GAP = 8;
+// The Anki export button, beneath the review button.
+constexpr int EXPORT_BUTTON_HEIGHT = 40;
+constexpr int EXPORT_BUTTON_GAP = 8;
+// How long the export result stays on the button.
+constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
 // The font the counters are drawn in.
 constexpr int STATS_FONT_ID = NOTOSANS_18_FONT_ID;
 
@@ -151,8 +156,32 @@ bool VocabularyActivity::handleCustomInput() {
       startReview();
       return true;
     }
+    const Rect exp = exportButton;
+    if (exp.width > 0 && exp.height > 0 && tx >= exp.x && tx < exp.x + exp.width && ty >= exp.y &&
+        ty < exp.y + exp.height) {
+      exportToAnki();
+      return true;
+    }
   }
   return false;
+}
+
+// Writes the deck to the SD card and reports the outcome on the button.
+void VocabularyActivity::exportToAnki() {
+  app.clearTapFlash();
+  constexpr const char* kPath = "/vocabulary.tsv";
+  const int count = VocabularyFile::exportAnki(kPath);
+  if (count > 0) {
+    char msg[64];
+    std::snprintf(msg, sizeof(msg), tr(STR_VOCABULARY_EXPORT_DONE), count);
+    exportMessage = msg;
+  } else if (count == 0) {
+    exportMessage = tr(STR_VOCABULARY_EXPORT_EMPTY);
+  } else {
+    exportMessage = tr(STR_VOCABULARY_EXPORT_FAIL);
+  }
+  exportMessageUntil = millis() + EXPORT_MESSAGE_MS;
+  requestUpdate();
 }
 
 bool VocabularyActivity::handleButtons() {
@@ -240,6 +269,19 @@ void VocabularyActivity::drawStatsBand(const Rect& band) {
   reviewButton = button;
   // Active style: a filled black bar, the primary action on this screen.
   GUI.drawActionButton(renderer, button, reviewLabel.c_str(), true);
+
+  // Export to Anki: outlined (secondary), with the last result shown in place
+  // of the label for a few seconds.
+  const Rect exportRect{band.x, button.y + REVIEW_BUTTON_HEIGHT + EXPORT_BUTTON_GAP, band.width, EXPORT_BUTTON_HEIGHT};
+  exportButton = exportRect;
+  const char* exportText = tr(STR_VOCABULARY_EXPORT_ANKI);
+  if (!exportMessage.empty() && static_cast<long>(millis() - exportMessageUntil) >= 0) {
+    exportMessage.clear();
+  }
+  if (!exportMessage.empty()) {
+    exportText = exportMessage.c_str();
+  }
+  GUI.drawActionButton(renderer, exportRect, exportText, false);
 }
 
 // One counter card: an icon at the left, a small uppercase label at the top
@@ -276,9 +318,10 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
 
-  // The counters and the review button come first: they take the top of the
-  // content area, the list takes what is left.
-  const int bandHeight = STATS_CARD_HEIGHT + REVIEW_BUTTON_GAP + REVIEW_BUTTON_HEIGHT;
+  // The counters and the two action buttons come first: they take the top of
+  // the content area, the list takes what is left.
+  const int bandHeight =
+      STATS_CARD_HEIGHT + REVIEW_BUTTON_GAP + REVIEW_BUTTON_HEIGHT + EXPORT_BUTTON_GAP + EXPORT_BUTTON_HEIGHT;
   const fui::Rect band = screen.takeTop(static_cast<int16_t>(bandHeight));
   drawStatsBand(Rect{band.x, band.y, band.width, band.height});
 

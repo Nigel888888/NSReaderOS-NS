@@ -288,6 +288,73 @@ bool VocabularyFile::remove(const std::string& headword) {
   return true;
 }
 
+int VocabularyFile::exportAnki(const std::string& path) {
+  std::vector<Entry> entries;
+  if (!load(entries)) {
+    return -1;  // no notebook yet
+  }
+
+  const std::string temp = path + ".tmp";
+  HalFile out;
+  if (!Storage.openFileForWrite("VOC", temp, out)) {
+    LOG_ERR("VOC", "Anki export: cannot open %s", temp.c_str());
+    return -1;
+  }
+
+  // Anki's text import format. `#html:false` keeps the plain-text fields as
+  //-is; `#columns` names them so an import profile can map them 1:1.
+  const char header[] = "#separator:tab\n#html:false\n#columns:Word\tMeaning\tSentence\tBook\n";
+  if (out.write(header, sizeof(header) - 1) != sizeof(header) - 1) {
+    out.close();
+    Storage.remove(temp.c_str());
+    return -1;
+  }
+
+  // Flatten control characters that would break the one-card-per-line format.
+  const auto flat = [](const std::string& s) {
+    std::string r = s;
+    for (char& c : r) {
+      if (c == '\t' || c == '\r' || c == '\n') c = ' ';
+    }
+    return r;
+  };
+
+  int written = 0;
+  bool ok = true;
+  for (const auto& entry : entries) {
+    std::string sentence;
+    std::string definition;
+    loadText(entry.headword, sentence, definition);
+    // The index excerpt is the fallback when the long text is gone.
+    if (definition.empty()) definition = entry.summary;
+    const std::string row =
+        flat(entry.headword) + "\t" + flat(definition) + "\t" + flat(sentence) + "\t" + flat(entry.book) + "\n";
+    if (out.write(row.data(), row.size()) != row.size()) {
+      ok = false;
+      break;
+    }
+    ++written;
+  }
+  out.flush();
+  out.close();
+
+  if (!ok || written == 0) {
+    Storage.remove(temp.c_str());
+    return ok ? 0 : -1;
+  }
+  // Publish atomically: a half-written deck is never left at `path`.
+  if (Storage.exists(path.c_str()) && !Storage.remove(path.c_str())) {
+    Storage.remove(temp.c_str());
+    return -1;
+  }
+  if (!Storage.rename(temp.c_str(), path.c_str())) {
+    Storage.remove(temp.c_str());
+    return -1;
+  }
+  LOG_DBG("VOC", "Anki export wrote %d cards to %s", written, path.c_str());
+  return written;
+}
+
 bool VocabularyFile::contains(const std::string& headword) {
   JsonDocument doc;
   if (!readIndexDoc(VOCABULARY_FILE_PATH, doc)) {

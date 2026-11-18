@@ -60,6 +60,8 @@ class VocabularyActivity final : public UiListActivity {
   Rect reviewButtonRect() const { return reviewButton; }
   // Starts the review session.
   void startReview();
+  // Exports the notebook to an Anki TSV deck on the SD card.
+  void exportToAnki();
 
   std::vector<VocabularyFile::Entry> entries;
   // Row buffers derived from `entries`; kept alive so the ListItem string
@@ -70,8 +72,12 @@ class VocabularyActivity final : public UiListActivity {
   int dueCount = 0;
   // The label of the review button, rebuilt whenever the due count changes.
   std::string reviewLabel;
-  // Where the review button was drawn last time.
+  // Where the review and export buttons were drawn last time.
   Rect reviewButton{0, 0, 0, 0};
+  Rect exportButton{0, 0, 0, 0};
+  // Last export result, shown on the export button until it expires.
+  std::string exportMessage;
+  unsigned long exportMessageUntil = 0;
   bool confirmingDelete = false;
   OptionPopup confirmPopup{true};
 };
