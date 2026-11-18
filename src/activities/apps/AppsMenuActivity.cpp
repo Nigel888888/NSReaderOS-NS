@@ -142,6 +142,8 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
       return ricky_app_weread_56;
     case UIIcon::ReadingStats:
       return ricky_app_stats_56;
+    case UIIcon::Bookmark:
+      return ricky_app_bookmark_56;
     case UIIcon::Calculator:
       return ricky_app_calculator_56;
     case UIIcon::Standby:

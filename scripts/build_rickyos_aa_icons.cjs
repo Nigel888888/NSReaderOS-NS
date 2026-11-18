@@ -23,7 +23,7 @@ function sized(svg, size) {
 }
 
 const sets = [
-  ...['transfer', 'opds', 'weread', 'stats', 'gomoku', 'calculator', 'standby'].map(name => ({
+  ...['transfer', 'opds', 'weread', 'stats', 'bookmark', 'calculator', 'standby'].map(name => ({
     name: `ricky_app_${name}_56`, size: 56,
     svg: () => sized(fs.readFileSync(path.join(iconRoot, 'sources/rickyos/apps', name + '.svg'), 'utf8'), 56),
   })),
@@ -83,8 +83,8 @@ async function main() {
     total += rle.length;
     const id = set.name.replace(/_bits$/, '');
     out.push(`inline constexpr uint8_t k_${id}[] = {`);
-    for (let i = 0; i < rle.length; i += 20) {
-      out.push('    ' + rle.slice(i, i + 20).map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
+    for (let i = 0; i < rle.length; i += 19) {  // clang-format packs 19 per line
+      out.push('    ' + rle.slice(i, i + 19).map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
     }
     out.push('};');
     entries.push(`    {0x${fnv1a(bits).toString(16).padStart(8, '0').toUpperCase()}u, ${set.size}, ${set.size}, k_${id}, ${rle.length}},  // ${set.name}`);
