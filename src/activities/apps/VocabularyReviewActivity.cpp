@@ -5,6 +5,7 @@
 #include <I18n.h>
 #include <Logging.h>
 
+#include <algorithm>
 #include <cstdio>
 
 #include "MappedInputManager.h"
@@ -65,8 +66,8 @@ void VocabularyReviewActivity::buildQueue() {
   std::vector<int> due;
   VocabularyFile::collectDue(entries, due, today, minute);
   for (const int index : due) {
-    const auto& card = entries[index].card;
-    int dueMinute = card.dueDay * 1440 + card.dueMinute;
+    const auto& entryCard = entries[index].card;
+    int dueMinute = entryCard.dueDay * 1440 + entryCard.dueMinute;
     // A word that has never been reviewed carries no day of its own; it is
     // due now.
     if (dueMinute < nowMinute) {
@@ -149,29 +150,24 @@ void VocabularyReviewActivity::answer(const study::Rating rating) {
   // a word comes back at most once, so a session always ends.
   const bool learning = card.state == static_cast<uint8_t>(study::State::Learning) ||
                         card.state == static_cast<uint8_t>(study::State::Relearning);
-  if (learning && outcome.delayMinutes > 0 && outcome.delayMinutes <= 30 && entryIndex < static_cast<int>(returns.size()) &&
-      returns[entryIndex] == 0) {
+  if (learning && outcome.delayMinutes > 0 && outcome.delayMinutes <= 30 &&
+      entryIndex < static_cast<int>(returns.size()) && returns[entryIndex] == 0) {
     returns[entryIndex] = 1;
     queue.push_back(QueuedCard{entryIndex, nowMinute + outcome.delayMinutes});
   }
 
   // The next card is the first one that is due now. A card whose step has not
   // expired yet waits: the session ends and it is picked up next time.
-  int next = -1;
-  for (size_t i = 0; i < queue.size(); ++i) {
-    if (queue[i].dueMinute <= nowMinute) {
-      next = static_cast<int>(i);
-      break;
-    }
-  }
-  if (next < 0) {
+  const auto dueNow = std::find_if(queue.begin(), queue.end(),
+                                   [nowMinute](const QueuedCard& queued) { return queued.dueMinute <= nowMinute; });
+  if (dueNow == queue.end()) {
     finished = true;
     card = study::CardState();
     headword.clear();
     requestUpdate();
     return;
   }
-  position = next;
+  position = static_cast<int>(dueNow - queue.begin());
   loadCurrentCard();
   requestUpdate();
 }
@@ -188,10 +184,9 @@ Rect VocabularyReviewActivity::ratingButtonRect(const int index) const {
   const int buttonWidth = (contentWidth - 2 * kButtonSideMargin - (kRatingCount - 1) * kButtonGap) / kRatingCount;
   // The button hints sit on the bottom edge, except upside down, where they sit
   // on the top edge and the buttons follow them.
-  const int buttonTop = isInverted
-                            ? metrics.buttonHintsHeight + metrics.verticalSpacing
-                            : renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.verticalSpacing -
-                                  kButtonHeight;
+  const int buttonTop =
+      isInverted ? metrics.buttonHintsHeight + metrics.verticalSpacing
+                 : renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.verticalSpacing - kButtonHeight;
   return Rect{contentX + kButtonSideMargin + index * (buttonWidth + kButtonGap), buttonTop, buttonWidth, kButtonHeight};
 }
 
@@ -232,8 +227,8 @@ void VocabularyReviewActivity::loop() {
     if (revealed) {
       for (int i = 0; i < kRatingCount; ++i) {
         const Rect button = ratingButtonRect(i);
-        if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width &&
-            ty >= button.y && ty < button.y + button.height) {
+        if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width && ty >= button.y &&
+            ty < button.y + button.height) {
           answer(static_cast<study::Rating>(i + 1));
           return;
         }
@@ -321,10 +316,10 @@ void VocabularyReviewActivity::render(RenderLock&&) {
                                            UI_12_FONT_ID, definition.c_str(), 10);
         }
         if (!sentence.empty()) {
-          UITheme::drawCenteredWrappedText(renderer,
-                                           Rect{contentX + 20, definitionTop + textHeight, contentWidth - 40,
-                                                definitionHeight - textHeight},
-                                           UI_10_FONT_ID, sentence.c_str(), 5);
+          UITheme::drawCenteredWrappedText(
+              renderer,
+              Rect{contentX + 20, definitionTop + textHeight, contentWidth - 40, definitionHeight - textHeight},
+              UI_10_FONT_ID, sentence.c_str(), 5);
         }
       }
       drawRatingButtons();

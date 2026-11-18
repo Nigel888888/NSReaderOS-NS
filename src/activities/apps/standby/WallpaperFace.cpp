@@ -2,21 +2,20 @@
 #include "WallpaperFace.h"
 
 #include <Bitmap.h>
+#include <Epub.h>
+#include <FsHelpers.h>
 #include <GfxRenderer.h>
 #include <HalClock.h>
 #include <HalDisplay.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <Xtc.h>
 #include <time.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-
-#include <Epub.h>
-#include <FsHelpers.h>
-#include <Xtc.h>
 
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
@@ -39,9 +38,7 @@ constexpr int kDateFont = UI_10_FONT_ID;
 bool showsTime() { return SETTINGS.standbyOverlay == CrossPointSettings::STANDBY_OVERLAY_TIME; }
 bool showsCorner() { return SETTINGS.standbyOverlay != CrossPointSettings::STANDBY_OVERLAY_NONE; }
 
-bool filtered() {
-  return SETTINGS.sleepScreenCoverFilter != CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER;
-}
+bool filtered() { return SETTINGS.sleepScreenCoverFilter != CrossPointSettings::SLEEP_SCREEN_COVER_FILTER::NO_FILTER; }
 
 struct Placement {
   int x = 0;

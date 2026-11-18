@@ -18,8 +18,8 @@
 class DictionaryDefinitionActivity final : public Activity {
  public:
   explicit DictionaryDefinitionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string headword,
-                                        std::string definition, bool htmlDefinition = false,
-                                        std::string book = "", std::string sentence = "")
+                                        std::string definition, bool htmlDefinition = false, std::string book = "",
+                                        std::string sentence = "")
       : Activity("DictionaryDefinition", renderer, mappedInput),
         headword(std::move(headword)),
         definition(std::move(definition)),

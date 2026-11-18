@@ -258,8 +258,8 @@ void DictionaryDefinitionActivity::loop() {
   int ty = 0;
   if (mappedInput.wasScreenTapped(tx, ty)) {
     const Rect button = vocabularyButtonRect();
-    if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width &&
-        ty >= button.y && ty < button.y + button.height) {
+    if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width && ty >= button.y &&
+        ty < button.y + button.height) {
       addToVocabulary();
       return;
     }
@@ -294,8 +294,7 @@ void DictionaryDefinitionActivity::loop() {
 // the button itself.
 void DictionaryDefinitionActivity::addToVocabulary() {
   const uint32_t now = static_cast<uint32_t>(time(nullptr));
-  const VocabularyFile::AddResult result =
-      VocabularyFile::add(headword, plainDefinition, sentence, book, now);
+  const VocabularyFile::AddResult result = VocabularyFile::add(headword, plainDefinition, sentence, book, now);
   switch (result) {
     case VocabularyFile::AddResult::Added:
       vocabularyMessage = tr(STR_VOCABULARY_ADDED);

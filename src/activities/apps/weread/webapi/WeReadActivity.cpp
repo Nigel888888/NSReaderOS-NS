@@ -651,8 +651,8 @@ bool WeReadActivity::coverAbortProbe(void* context) {
   if (input.wasHomeGesture()) self->pendingHome_ = true;
   int x = 0;
   int y = 0;
-  if (input.wasAnyPressed() || input.wasAnyReleased() || input.isScreenTouchHeld(x, y) ||
-      input.wasScreenTapped(x, y) || input.wasSwipe() != MappedInputManager::SwipeDir::None) {
+  if (input.wasAnyPressed() || input.wasAnyReleased() || input.isScreenTouchHeld(x, y) || input.wasScreenTapped(x, y) ||
+      input.wasSwipe() != MappedInputManager::SwipeDir::None) {
     self->coverInterrupted_ = true;
   }
   return self->coverInterrupted_;

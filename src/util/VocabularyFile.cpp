@@ -62,8 +62,8 @@ std::string VocabularyFile::textFileName(const std::string& headword) {
   name.reserve(headword.size() + 12);
   for (const char c : headword) {
     const unsigned char u = static_cast<unsigned char>(c);
-    const bool plain = (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z') || (u >= '0' && u <= '9') || u == '-' ||
-                       u == '_';
+    const bool plain =
+        (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z') || (u >= '0' && u <= '9') || u == '-' || u == '_';
     name.push_back(plain ? c : '_');
   }
   if (name.empty()) {
@@ -167,8 +167,8 @@ VocabularyFile::AddResult VocabularyFile::add(const std::string& headword, const
   // The long text goes to its own file first: an index entry that points at a
   // text file that was never written would show an empty card later.
   Storage.mkdir(VOCABULARY_TEXT_DIR);
-  const std::string text = truncateUtf8(sentence, MAX_SENTENCE_LENGTH) + "\n" +
-                           truncateUtf8(definition, MAX_DEFINITION_LENGTH);
+  const std::string text =
+      truncateUtf8(sentence, MAX_SENTENCE_LENGTH) + "\n" + truncateUtf8(definition, MAX_DEFINITION_LENGTH);
   if (!Storage.writeFile(textFilePath(word).c_str(), String(text.c_str()))) {
     LOG_ERR("VOC", "Failed to write vocabulary text for '%s'", word.c_str());
     return AddResult::Failed;
@@ -354,8 +354,7 @@ void VocabularyFile::collectDue(const std::vector<VocabularyFile::Entry>& entrie
       const bool otherNew = other.state == static_cast<uint8_t>(study::State::New);
       const int64_t otherDue = static_cast<int64_t>(other.dueDay) * 1440 + other.dueMinute;
       // New before learning before review; then the earlier due instant.
-      const bool before = (isNew && !otherNew) ||
-                          (isNew == otherNew && learning && !otherLearning) ||
+      const bool before = (isNew && !otherNew) || (isNew == otherNew && learning && !otherLearning) ||
                           (isNew == otherNew && learning == otherLearning && dueAt < otherDue);
       if (before) {
         at = n;

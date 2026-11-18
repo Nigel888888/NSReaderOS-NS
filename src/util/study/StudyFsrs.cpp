@@ -11,7 +11,7 @@ namespace study {
 // its own optimized parameters.
 const float kDefaultParams[kNumParams] = {0.40255f, 1.18385f, 3.173f,  15.69105f, 7.1949f, 0.5345f, 1.4604f,
                                           0.0046f,  1.54575f, 0.1192f, 1.01925f,  1.9395f, 0.11f,   0.29605f,
-                                          2.2698f,  0.2315f,  2.9898f, 0.51655f, 0.6621f};
+                                          2.2698f,  0.2315f,  2.9898f, 0.51655f,  0.6621f};
 
 namespace {
 

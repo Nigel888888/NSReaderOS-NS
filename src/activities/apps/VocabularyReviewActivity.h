@@ -38,8 +38,8 @@ class VocabularyReviewActivity final : public Activity {
   // How many times each word has already come back in this session. A word
   // comes back at most once, so a session always ends.
   std::vector<uint8_t> returns;
-  int position = 0;   // which card of the queue is showing
-  int reviewed = 0;   // how many cards were answered in this session
+  int position = 0;       // which card of the queue is showing
+  int reviewed = 0;       // how many cards were answered in this session
   bool revealed = false;  // the answer face is showing
   bool finished = false;  // the queue ran out
   // The current card's text, read from disk when the card is turned over.

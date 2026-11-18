@@ -112,8 +112,8 @@ Rect BaseTheme::drawRickyStandbyIndicator(const GfxRenderer& renderer, const boo
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   const int padding = std::max(3, UiHighDpiProfile::controlGap / 2);
   // Cover the footer's progress slot too, rather than leaving half a page number beside the badge.
-  const int width = std::min(
-      safe.width, std::max(safe.width / 5, renderer.getTextWidth(SMALL_FONT_ID, label) + padding * 2));
+  const int width =
+      std::min(safe.width, std::max(safe.width / 5, renderer.getTextWidth(SMALL_FONT_ID, label) + padding * 2));
   const int height = std::min(safe.height, renderer.getLineHeight(SMALL_FONT_ID) + padding * 2);
   const Rect badge{safe.x + safe.width - width, safe.y + safe.height - height, width, height};
   const GfxRenderer::ClipScope clip(renderer, badge.x, badge.y, badge.width, badge.height);

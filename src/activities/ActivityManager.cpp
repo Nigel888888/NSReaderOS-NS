@@ -30,8 +30,8 @@
 #ifndef RICKYOS_PRODUCT
 #include "apps/airpage/AirPageActivity.h"
 #endif
-#include "apps/calculator/CalculatorActivity.h"
 #include "apps/VocabularyActivity.h"
+#include "apps/calculator/CalculatorActivity.h"
 #include "components/SubpageLayout.h"
 #ifdef ENABLE_CHINESE_VERSION
 #include "apps/weread/WeReadActivity.h"

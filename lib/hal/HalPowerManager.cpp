@@ -8,16 +8,16 @@
 #include <BoardReadPico.h>
 #endif
 #include <Logging.h>
-#include "StandbyDiag.h"
 #include <PowerManager.h>
 #include <WiFi.h>
-
-#include <atomic>
 #include <driver/gpio.h>
 #include <esp_sleep.h>
 #include <soc/soc_caps.h>
 
+#include <atomic>
 #include <cassert>
+
+#include "StandbyDiag.h"
 
 #if CONFIG_IDF_TARGET_ESP32C3 && FREEINK_CAP_BLE_HID_HOST
 #include <BleKeyboardHost.h>
@@ -141,8 +141,8 @@ HalPowerManager::LightSleepWakeReason lightSleepReadPico(const uint32_t seconds)
   const bool queuedPress = BoardReadPico::takePmuKeyPress(keyDown, boundary);
   const uint16_t lastIdBeforeSleep = BoardReadPico::pmuLastEventId();
   STANDBY_DIAG("pre-sleep %us: drained press=%d keyDown=%d int=%d lastId=%u boundary=%u",
-               static_cast<unsigned>(seconds), queuedPress, keyDown, BoardReadPico::ioeIntAsserted(),
-               lastIdBeforeSleep, boundary);
+               static_cast<unsigned>(seconds), queuedPress, keyDown, BoardReadPico::ioeIntAsserted(), lastIdBeforeSleep,
+               boundary);
   g_standbyKeyBoundary = lastIdBeforeSleep;
   if (boundary != 0 && (queuedPress || keyDown)) {
     // A press since the last wake that the main loop never judged: answer it now.

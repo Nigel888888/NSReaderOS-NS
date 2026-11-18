@@ -9,13 +9,12 @@
 #include <cstdio>
 
 #include "MappedInputManager.h"
+#include "VocabularyReviewActivity.h"
 #include "activities/reader/DictionaryDefinitionActivity.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
-
-#include "VocabularyReviewActivity.h"
 
 namespace fui = freeink::ui;
 
@@ -53,7 +52,8 @@ void VocabularyActivity::onEnter() {
 void VocabularyActivity::reload() {
   VocabularyFile::load(entries);
   rebuildRowItems();
-  dueCount = VocabularyFile::countDue(entries, VocabularyFile::currentDayNumber(), VocabularyFile::currentMinuteOfDay());
+  dueCount =
+      VocabularyFile::countDue(entries, VocabularyFile::currentDayNumber(), VocabularyFile::currentMinuteOfDay());
   // The button carries the count, so its label is rebuilt with it.
   reviewLabel = std::string(tr(STR_VOCABULARY_START_REVIEW)) + " (" + std::to_string(dueCount) + ")";
 }
@@ -142,8 +142,8 @@ bool VocabularyActivity::handleCustomInput() {
   int ty = 0;
   if (mappedInput.wasScreenTapped(tx, ty)) {
     const Rect button = reviewButton;
-    if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width &&
-        ty >= button.y && ty < button.y + button.height) {
+    if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width && ty >= button.y &&
+        ty < button.y + button.height) {
       startReview();
       return true;
     }
@@ -195,7 +195,8 @@ void VocabularyActivity::deleteSelected() {
   }
   nav.follow(listCount());
   // The deleted word was one of the due ones.
-  dueCount = VocabularyFile::countDue(entries, VocabularyFile::currentDayNumber(), VocabularyFile::currentMinuteOfDay());
+  dueCount =
+      VocabularyFile::countDue(entries, VocabularyFile::currentDayNumber(), VocabularyFile::currentMinuteOfDay());
   reviewLabel = std::string(tr(STR_VOCABULARY_START_REVIEW)) + " (" + std::to_string(dueCount) + ")";
   requestUpdate(true);
 }

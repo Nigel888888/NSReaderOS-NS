@@ -1,6 +1,7 @@
 #pragma once
 #include <HalStorage.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -23,7 +24,8 @@ class ImageBlock final : public Block {
     const auto dot = path.rfind('.');
     if (dot == std::string::npos) return false;
     std::string ext = path.substr(dot + 1);
-    for (auto& c : ext) c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
+    std::transform(ext.begin(), ext.end(), ext.begin(),
+                   [](const char c) { return static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c); });
     return ext == "jpg" || ext == "jpeg";
   }
   int16_t getWidth() const { return width; }
