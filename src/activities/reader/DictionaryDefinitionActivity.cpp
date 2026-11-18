@@ -49,6 +49,7 @@ constexpr unsigned long VOCABULARY_MESSAGE_MS = 2500;
 
 void DictionaryDefinitionActivity::onEnter() {
   Activity::onEnter();
+  wordSaved = VocabularyFile::contains(headword);
   // Normalize StarDict multi-type separators so the wrap loop and the
   // C-string font APIs below both see the whole definition.
   std::replace(definition.begin(), definition.end(), '\0', '\n');
@@ -281,7 +282,7 @@ void DictionaryDefinitionActivity::loop() {
     const Rect button = vocabularyButtonRect();
     if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width && ty >= button.y &&
         ty < button.y + button.height) {
-      addToVocabulary();
+      toggleVocabulary();
       return;
     }
     const Rect qbutton = quoteButtonRect();
@@ -325,9 +326,13 @@ void DictionaryDefinitionActivity::addToVocabulary() {
   switch (result) {
     case VocabularyFile::AddResult::Added:
       vocabularyMessage = tr(STR_VOCABULARY_ADDED);
+      // The word is now stored, so the button must offer "remove" next.
+      wordSaved = true;
       break;
     case VocabularyFile::AddResult::AlreadyPresent:
       vocabularyMessage = tr(STR_VOCABULARY_ALREADY_SAVED);
+      // It is already in the notebook -- still a saved word.
+      wordSaved = true;
       break;
     default:
       vocabularyMessage = tr(STR_VOCABULARY_SAVE_FAILED);
@@ -335,6 +340,23 @@ void DictionaryDefinitionActivity::addToVocabulary() {
   }
   vocabularyMessageUntil = millis() + VOCABULARY_MESSAGE_MS;
   requestUpdate();
+}
+
+// Toggles the word in the notebook: add when unsaved, remove when saved.
+void DictionaryDefinitionActivity::toggleVocabulary() {
+  if (wordSaved) {
+    if (VocabularyFile::remove(headword)) {
+      wordSaved = false;
+      vocabularyMessage = tr(STR_VOCABULARY_REMOVED);
+    } else {
+      vocabularyMessage = tr(STR_VOCABULARY_SAVE_FAILED);
+    }
+    vocabularyMessageUntil = millis() + VOCABULARY_MESSAGE_MS;
+    requestUpdate();
+  } else {
+    // addToVocabulary() owns the message, the saved flag and the repaint.
+    addToVocabulary();
+  }
 }
 
 // Saves the line the word was picked from as a quote in the Quotes notebook.
@@ -452,7 +474,8 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
 // "save as quote" button beside it. A result takes over the label so the
 // answer to the tap stays where the eye already is.
 void DictionaryDefinitionActivity::drawVocabularyButton() const {
-  const char* label = vocabularyMessage ? vocabularyMessage : tr(STR_VOCABULARY_ADD);
+  const char* idle = wordSaved ? tr(STR_VOCABULARY_REMOVE) : tr(STR_VOCABULARY_ADD);
+  const char* label = vocabularyMessage ? vocabularyMessage : idle;
   GUI.drawActionButton(renderer, vocabularyButtonRect(), label, vocabularyMessage != nullptr);
 
   const Rect qbutton = quoteButtonRect();

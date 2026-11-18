@@ -191,7 +191,13 @@ VocabularyFile::AddResult VocabularyFile::add(const std::string& headword, const
   // (A missing file leaves `doc` empty, which is the correct starting point.)
   doc["v"] = VOCABULARY_FILE_VERSION;
 
-  JsonArray items = doc["items"].to<JsonArray>();
+  // `as<>` reads the existing array; `to<>` would REPLACE it with an empty one
+  // and silently drop every word saved before this one. Only create the array
+  // when the index genuinely has none yet.
+  JsonArray items = doc["items"].as<JsonArray>();
+  if (items.isNull()) {
+    items = doc["items"].to<JsonArray>();
+  }
   for (JsonObject obj : items) {
     if ((obj["w"] | "") == word) {
       return AddResult::AlreadyPresent;

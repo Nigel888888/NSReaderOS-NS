@@ -60,6 +60,8 @@ class DictionaryDefinitionActivity final : public Activity {
   Rect quoteButtonRect() const;
   void drawVocabularyButton() const;
   void addToVocabulary();
+  // Adds the word when unsaved, removes it when already saved.
+  void toggleVocabulary();
   void saveAsQuote();
   void expireVocabularyMessage();
   void expireQuoteMessage();
@@ -78,7 +80,10 @@ class DictionaryDefinitionActivity final : public Activity {
   // Plain-text copy of the definition, kept for the vocabulary notebook: the
   // styled path below consumes `definition` (the HTML source) and frees it.
   std::string plainDefinition;
-  // Result of the last add attempt, shown on the button until it expires.
+  // Whether the word was already in the notebook on entry; the button
+  // toggles between add and remove.
+  bool wordSaved = false;
+  // Result of the last add/remove attempt, shown on the button until it expires.
   const char* vocabularyMessage = nullptr;
   unsigned long vocabularyMessageUntil = 0;
   // Result of the last save-as-quote attempt.
