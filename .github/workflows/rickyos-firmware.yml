@@ -166,3 +166,52 @@ jobs:
           name: firmware.bin
           path: .pio/build/rickyos_readpico/firmware.bin
           if-no-files-found: error
+
+      # The Read Pico factory layout (partitions_16M.csv) is incompatible with
+      # this one: the factory app slot is 2 MB and phy_init sits at 0xE000 where
+      # otadata goes, while this image needs a 6.25 MB slot.  A first install is
+      # therefore a full layout install, not an app-only write, so the boot
+      # components have to be published next to the application image:
+      #
+      #   bootloader.bin  @ 0x0      (32768 bytes reserved for it)
+      #   partitions.bin  @ 0x8000
+      #   boot_app0.bin   @ 0xe000
+      #   firmware.bin    @ 0x10000
+      #
+      # See docs/engineering/read-pico.md "Partition / flash plan".  The
+      # component set must come from this same build; never mix components from
+      # another board or another build.
+      - name: Report the boot components
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          {
+            echo "## Boot components (full-install offsets)"
+            echo '```text'
+            for name in bootloader partitions boot_app0; do
+              file=".pio/build/rickyos_readpico/${name}.bin"
+              if [ -f "$file" ]; then
+                printf '%-16s %10s bytes  sha256 %s\n' "${name}.bin" \
+                  "$(stat -c%s "$file")" "$(sha256sum "$file" | cut -d' ' -f1)"
+              else
+                printf '%-16s MISSING\n' "${name}.bin"
+              fi
+            done
+            echo '```'
+          } | tee boot-components.txt
+          cat boot-components.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the full-install component set
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: rickyos-install
+          path: |
+            .pio/build/rickyos_readpico/bootloader.bin
+            .pio/build/rickyos_readpico/partitions.bin
+            .pio/build/rickyos_readpico/boot_app0.bin
+            .pio/build/rickyos_readpico/firmware.bin
+            boot-components.txt
+          if-no-files-found: error
