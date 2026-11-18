@@ -33,13 +33,20 @@ int main() {
   constexpr AppId removed[] = {AppId::Sudoku, AppId::Sokoban, AppId::ChineseChess,
                              AppId::Minesweeper, AppId::Game2048, AppId::UglyAvatar,
                              AppId::Buddy, AppId::PixelSwitch, AppId::Woodfish, AppId::AirPage};
-  constexpr AppId tools[] = {AppId::Gomoku, AppId::Calculator,
+  constexpr AppId tools[] = {AppId::Vocabulary, AppId::Calculator,
                              AppId::FileTransfer, AppId::ReadingStats,
                              AppId::Standby, AppId::OpdsBrowser};
   for (auto id : tools) {
     bool found=false;
     for (auto entry : kAppEntries) found |= entry.id == id;
     assert(found);
+  }
+  // Gomoku was retired to reclaim Flash. Its persisted bit stays reserved, but the app
+  // itself must never come back to the catalog in any profile.
+  {
+    bool found=false;
+    for (auto entry : kAppEntries) found |= entry.id == AppId::Gomoku;
+    assert(!found);
   }
   for (auto id : removed) {
     bool found=false;
@@ -75,10 +82,10 @@ int main() {
     AppId::AirPage,
 #endif
     AppId::ReadingStats,
+    AppId::Vocabulary,
 #ifndef RICKYOS_PRODUCT
     AppId::Sudoku,
 #endif
-    AppId::Gomoku,
 #ifndef RICKYOS_PRODUCT
     AppId::Sokoban,
 #ifdef ENABLE_CHINESE_VERSION
@@ -94,7 +101,7 @@ int main() {
   static_assert(sizeof(expected) / sizeof(expected[0]) == kAppCount);
   for (int i=0; i<kAppCount; ++i) assert(kAppEntries[i].id == expected[i]);
   // Every persisted visibility combination still maps to the correct sparse IDs.
-  for (uint32_t mask=0; mask<(1u<<17); ++mask) {
+  for (uint32_t mask=0; mask<(1u<<18); ++mask) {
     int visible=0;
     for (int i=0;i<kAppCount;++i) {
       if (mask & appBit(kAppEntries[i].id)) continue;
@@ -105,7 +112,8 @@ int main() {
   }
   static_assert(static_cast<uint8_t>(AppId::Gomoku)==3);
   static_assert(static_cast<uint8_t>(AppId::Sokoban)==11);
-  static_assert(static_cast<uint8_t>(AppId::Count)==17);
+  static_assert(static_cast<uint8_t>(AppId::Vocabulary)==17);
+  static_assert(static_cast<uint8_t>(AppId::Count)==18);
 }
 '''
         program = program.replace('TITLES', ','.join(titles)).replace('ICONS', ','.join(icons))
@@ -130,7 +138,10 @@ int main() {
         excludes = config['rickyos_app_profile']['build_src_filter']
         for directory in DIRECTORIES:
             self.assertIn(f'-<activities/apps/{directory}/>', excludes)
+        # Gomoku was retired outright: the sources are gone, so the filter no longer
+        # needs an entry for them -- but the directory must stay deleted.
         self.assertNotIn('gomoku', excludes)
+        self.assertFalse((ROOT / 'src/activities/apps/gomoku').exists())
         for environment in ('env:rickyos_readpico', 'env:simulator_rickyos'):
             self.assertIn('${rickyos_app_profile.build_src_filter}', config[environment]['build_src_filter'])
             self.assertIn('-DRICKYOS_PRODUCT=1', config[environment]['build_flags'])
