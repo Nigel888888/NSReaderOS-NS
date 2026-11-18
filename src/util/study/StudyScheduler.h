@@ -18,6 +18,7 @@
 //
 // Freestanding C++17, like StudyFsrs, so nothing here depends on the device.
 
+#include <cstddef>
 #include <cstdint>
 
 #include "StudyFsrs.h"
