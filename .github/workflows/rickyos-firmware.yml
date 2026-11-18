@@ -1,0 +1,86 @@
+name: RickyOS firmware (Read Pico)
+
+# Builds the RickyOS product image for Read Pico (ESP32-S3).
+#
+# The upstream CI only builds the CrossMux product envs (default / x4pro), and
+# the nightly release builds readpico_nightly. Neither produces a RickyOS
+# firmware: [env:rickyos_readpico] is a separate product environment with its
+# own TLS/EPDIY/SD-card/PMU patches, the Chinese-first font trim and the
+# trimmed app profile. This workflow builds that environment and uploads the
+# resulting firmware.bin.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rickyos-firmware-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_HTTP_RETRIES: 10
+
+jobs:
+  build-rickyos-readpico:
+    name: Build RickyOS firmware (Read Pico)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Isolate PlatformIO toolchains
+        run: echo "PLATFORMIO_CORE_DIR=$RUNNER_TEMP/.platformio-$GITHUB_RUN_ID-$GITHUB_JOB" >> "$GITHUB_ENV"
+
+      - name: Use runner temporary directory
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "latest"
+          enable-cache: false
+
+      - name: Install PlatformIO Core
+        run: uv pip install --system -U pioarduino==6.2.0
+
+      - name: Prepare platform tools
+        run: python scripts/patch_pioarduino_cache.py --prepare-platform
+
+      - name: Cache PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLATFORMIO_CORE_DIR }}/.cache
+          key: pio-cache-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-cache-${{ runner.os }}-
+
+      - name: Build RickyOS firmware
+        run: |
+          set -euo pipefail
+          pio run -e rickyos_readpico | tee pio.log
+
+      - name: Extract firmware stats
+        run: |
+          set -euo pipefail
+          {
+            echo "## RickyOS firmware build stats"
+            echo '```text'
+            grep -E '^Processing |RAM:\\s|Flash:\\s|SUCCESS|FAILED' pio.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload firmware.bin artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: firmware.bin
+          path: .pio/build/rickyos_readpico/firmware.bin
+          if-no-files-found: error
