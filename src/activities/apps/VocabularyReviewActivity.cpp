@@ -5,9 +5,7 @@
 #include <I18n.h>
 #include <Logging.h>
 
-#include <algorithm>
 #include <cstdio>
-#include <cstring>
 
 #include "MappedInputManager.h"
 #include "components/UITheme.h"
@@ -39,51 +37,6 @@ const char* ratingLabel(const int index) {
     default:
       return tr(STR_REVIEW_EASY);
   }
-}
-
-// True for the characters that can be part of a word, so the cloze only
-// blanks a whole word and not the middle of one.
-bool isWordChar(const unsigned char c) {
-  return c >= 128 || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
-}
-
-unsigned char lowerChar(const unsigned char c) { return (c >= 'A' && c <= 'Z') ? static_cast<unsigned char>(c + 32) : c; }
-
-// True when the word is written in Chinese. Chinese is written without word
-// separators, so the neighbours of a Chinese word are always word characters
-// and the "whole word" test would never pass for it.
-bool hasCjk(const std::string& word) {
-  for (const char c : word) {
-    if (static_cast<unsigned char>(c) >= 128) {
-      return true;
-    }
-  }
-  return false;
-}
-
-// Does `text` hold `word` at `at`, as a whole word? A word inside a longer
-// one is not the word the user collected. A Chinese word is matched wherever
-// it appears, for the reason given above.
-bool matchesAt(const std::string& text, const size_t at, const std::string& word, const bool relaxed) {
-  if (word.empty() || at + word.size() > text.size()) {
-    return false;
-  }
-  for (size_t i = 0; i < word.size(); ++i) {
-    if (lowerChar(static_cast<unsigned char>(text[at + i])) != lowerChar(static_cast<unsigned char>(word[i]))) {
-      return false;
-    }
-  }
-  if (relaxed) {
-    return true;
-  }
-  // The characters on either side have to be word characters too, or this is a
-  // different word that merely contains ours.
-  const bool beforeOk = at == 0 || !isWordChar(static_cast<unsigned char>(text[at - 1])) ||
-                        !isWordChar(static_cast<unsigned char>(word.front()));
-  const bool afterOk = at + word.size() == text.size() ||
-                       !isWordChar(static_cast<unsigned char>(text[at + word.size()])) ||
-                       !isWordChar(static_cast<unsigned char>(word.back()));
-  return beforeOk && afterOk;
 }
 
 }  // namespace
@@ -223,37 +176,6 @@ void VocabularyReviewActivity::answer(const study::Rating rating) {
   requestUpdate();
 }
 
-// The line the word was collected from, with the word blanked out so the
-// context has to carry the meaning.
-std::string VocabularyReviewActivity::clozeLine() const {
-  if (sentence.empty()) {
-    return std::string();
-  }
-  if (headword.empty()) {
-    return sentence;
-  }
-  std::string out;
-  out.reserve(sentence.size() + 16);
-
-  const bool relaxed = hasCjk(headword);
-  size_t at = 0;
-  while (at < sentence.size()) {
-    if (matchesAt(sentence, at, headword, relaxed)) {
-      out += "[...]";
-      at += headword.size();
-      continue;
-    }
-    // Copy one UTF-8 character, so a multi-byte one is never cut in half.
-    size_t bytes = 1;
-    while (at + bytes < sentence.size() && (static_cast<unsigned char>(sentence[at + bytes]) & 0xC0) == 0x80) {
-      ++bytes;
-    }
-    out.append(sentence, at, bytes);
-    at += bytes;
-  }
-  return out;
-}
-
 Rect VocabularyReviewActivity::ratingButtonRect(const int index) const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto orientation = renderer.getOrientation();
@@ -382,23 +304,28 @@ void VocabularyReviewActivity::render(RenderLock&&) {
                                      headword.c_str(), 3, true, EpdFontFamily::BOLD);
 
     if (!revealed) {
-      // The question face: the line the word came from, with the word
-      // blanked out.
-      const std::string line = clozeLine();
-      if (!line.empty()) {
-        UITheme::drawCenteredWrappedText(renderer, Rect{contentX + 20, wordTop + wordHeight, contentWidth - 40, 150},
-                                         UI_12_FONT_ID, line.c_str(), 5);
-      }
+      // The question face: the word on its own. Tap anywhere to turn it over.
       UITheme::drawCenteredText(renderer, Rect{contentX, 0, contentWidth, renderer.getScreenHeight()}, UI_10_FONT_ID,
-                                wordTop + wordHeight + 170, tr(STR_REVIEW_TAP_TO_ANSWER));
+                                wordTop + wordHeight + 40, tr(STR_REVIEW_TAP_TO_ANSWER));
     } else {
-      // The answer face: the definition, above the four buttons.
+      // The answer face: the definition, the line it was collected from, and
+      // the four buttons that schedule the next time the word comes back.
       const int definitionTop = wordTop + wordHeight;
       const int definitionBottom = ratingButtonRect(0).y - 16;
       const int definitionHeight = definitionBottom - definitionTop;
-      if (!definition.empty() && definitionHeight > 0) {
-        UITheme::drawCenteredWrappedText(renderer, Rect{contentX + 20, definitionTop, contentWidth - 40, definitionHeight},
-                                         UI_12_FONT_ID, definition.c_str(), 10);
+      if (definitionHeight > 0) {
+        // The definition takes the upper part, the line it came from the rest.
+        const int textHeight = definitionHeight * 3 / 5;
+        if (!definition.empty()) {
+          UITheme::drawCenteredWrappedText(renderer, Rect{contentX + 20, definitionTop, contentWidth - 40, textHeight},
+                                           UI_12_FONT_ID, definition.c_str(), 10);
+        }
+        if (!sentence.empty()) {
+          UITheme::drawCenteredWrappedText(renderer,
+                                           Rect{contentX + 20, definitionTop + textHeight, contentWidth - 40,
+                                                definitionHeight - textHeight},
+                                           UI_10_FONT_ID, sentence.c_str(), 5);
+        }
       }
       drawRatingButtons();
     }

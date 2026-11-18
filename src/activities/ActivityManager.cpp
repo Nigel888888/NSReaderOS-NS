@@ -36,7 +36,6 @@
 #ifdef ENABLE_CHINESE_VERSION
 #include "apps/weread/WeReadActivity.h"
 #endif
-#include "apps/gomoku/GomokuMenuActivity.h"
 #ifndef RICKYOS_PRODUCT
 // RickyOS replaces the stock reading-stats suite with one page; leaving these out
 // lets the linker drop about 50 KB of pages nothing on RickyOS can reach.
@@ -758,8 +757,6 @@ void ActivityManager::goToReadingStats() { goToRickyReadingStats(); }
 #else
 void ActivityManager::goToReadingStats() { replaceActivityWith<ReadingStatsActivity>(true); }
 #endif
-
-void ActivityManager::goToGomoku() { replaceActivityWith<GomokuMenuActivity>(); }
 
 #ifndef RICKYOS_PRODUCT
 void ActivityManager::goToSudoku() { replaceActivityWith<SudokuMenuActivity>(); }

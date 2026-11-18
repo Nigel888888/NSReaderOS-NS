@@ -152,7 +152,6 @@ class ActivityManager {
   void goToFullScreenMessage(std::string message, EpdFontFamily::Style style = EpdFontFamily::REGULAR);
   void goToCrashReport();
   void goToApps();
-  void goToGomoku();
 #ifndef RICKYOS_PRODUCT
   void goToSudoku();
   void goToSokoban();

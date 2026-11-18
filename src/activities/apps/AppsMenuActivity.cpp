@@ -51,7 +51,6 @@ constexpr AppEntry kAppEntries[] = {
 #ifndef RICKYOS_PRODUCT
     {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},
 #endif
-    {AppId::Gomoku, StrId::STR_GOMOKU_TITLE, UIIcon::Gomoku, &ActivityManager::goToGomoku},
 #ifndef RICKYOS_PRODUCT
     {AppId::Sokoban, StrId::STR_SOKOBAN_TITLE, UIIcon::Sokoban, &ActivityManager::goToSokoban},
 #ifdef ENABLE_CHINESE_VERSION
@@ -117,7 +116,9 @@ static_assert(static_cast<uint8_t>(AppId::Count) <= 32, "hiddenAppsMask supports
 static_assert(appIdsAreUnique(), "stable app IDs must not be reused");
 static_assert(visibleAppCount(0) == kAppCount, "a zero mask must show every compiled app");
 static_assert(visibleAppCount(UINT32_MAX) == 0, "a full mask must hide every compiled app");
-static_assert(visibleAppCount(appBit(AppId::Gomoku)) == kAppCount - 1, "the mask must hide compiled Gomoku");
+// Gomoku was retired to reclaim Flash; its persisted bit stays reserved in AppId.
+static_assert(visibleAppCount(appBit(AppId::Gomoku)) == kAppCount, "Gomoku must stay out of the compiled catalog");
+static_assert(visibleAppCount(appBit(AppId::Calculator)) == kAppCount - 1, "the mask must hide a compiled app");
 static_assert(visibleAppCount(effectiveHiddenMask(0, false)) == kAppCount - 1,
               "OPDS must be hidden when no server is configured");
 static_assert(visibleAppCount(effectiveHiddenMask(0, true)) == kAppCount,
@@ -141,8 +142,6 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
       return ricky_app_weread_56;
     case UIIcon::ReadingStats:
       return ricky_app_stats_56;
-    case UIIcon::Gomoku:
-      return ricky_app_gomoku_56;
     case UIIcon::Calculator:
       return ricky_app_calculator_56;
     case UIIcon::Standby:

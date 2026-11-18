@@ -12,9 +12,8 @@
 
 // The review session: the words the notebook says are due, one card at a time.
 //
-// The question face shows the word, and the line it was collected from with
-// that word blanked out -- the context is often what makes the word
-// recoverable. The answer face shows the definition and the four buttons that
+// The question face shows the word on its own. The answer face shows the
+// definition, the line the word was collected from, and the four buttons that
 // schedule the next time the word comes back, each labelled with the interval
 // it would produce. The scheduling itself is FSRS-5, the engine Anki runs.
 class VocabularyReviewActivity final : public Activity {
@@ -64,6 +63,4 @@ class VocabularyReviewActivity final : public Activity {
   Rect ratingButtonRect(int index) const;
   // Draws the four rating buttons with their interval previews.
   void drawRatingButtons() const;
-  // The line the word was collected from, with the word blanked out.
-  std::string clozeLine() const;
 };

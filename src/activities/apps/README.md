@@ -77,7 +77,6 @@ Append the ID in `src/AppVisibility.h` and the row in `apps/AppsMenuActivity.cpp
 ```cpp
 enum class AppId : uint8_t {
   Sudoku = 2,
-  Gomoku = 3,
   Minesweeper = 5,
   UglyAvatar = 7,
   MyApp = 17,  // example: use the next unused bit ID in the current catalog
@@ -86,7 +85,6 @@ enum class AppId : uint8_t {
 
 constexpr AppEntry kAppEntries[] = {
     {AppId::Sudoku,      StrId::STR_SUDOKU_TITLE,      UIIcon::Sudoku,      &ActivityManager::goToSudoku},
-    {AppId::Gomoku,      StrId::STR_GOMOKU_TITLE,      UIIcon::Gomoku,      &ActivityManager::goToGomoku},
     {AppId::Minesweeper, StrId::STR_MINESWEEPER_TITLE, UIIcon::Minesweeper, &ActivityManager::goToMinesweeper},
     {AppId::UglyAvatar,  StrId::STR_UGLY_AVATAR,       UIIcon::Avatar,      &ActivityManager::goToUglyAvatar},
     {AppId::MyApp,       StrId::STR_MYAPP_TITLE,       UIIcon::MyApp,       &ActivityManager::goToMyApp},

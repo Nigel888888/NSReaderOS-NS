@@ -33,7 +33,6 @@
 #include "components/icons/folder.h"
 #include "components/icons/folder24.h"
 #include "components/icons/game2048.h"
-#include "components/icons/gomoku.h"
 #include "components/icons/hotspot.h"
 #include "components/icons/image24.h"
 #include "components/icons/library.h"
@@ -110,8 +109,6 @@ const uint8_t* LyraTheme::iconForName(UIIcon icon, int size) {
         return BlocksIcon;
       case UIIcon::Apps:
         return AppsIcon;
-      case UIIcon::Gomoku:
-        return GomokuIcon;
 #ifndef RICKYOS_PRODUCT
       case UIIcon::Sudoku:
         return SudokuIcon;

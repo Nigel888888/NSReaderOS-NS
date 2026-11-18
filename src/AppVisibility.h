@@ -9,6 +9,8 @@ enum class AppId : uint8_t {
   ReadingStats = 0,
   WeRead = 1,
   Sudoku = 2,
+  // Gomoku was retired to reclaim Flash; the bit stays reserved so older saved
+  // hiddenAppsMask values keep pointing at the same slot.
   Gomoku = 3,
   ChineseChess = 4,
   Minesweeper = 5,
