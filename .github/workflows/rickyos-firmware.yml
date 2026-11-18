@@ -94,7 +94,41 @@ jobs:
             if [ -n "$NM" ]; then
               "$NM" --size-sort -S -C --radix=d .pio/build/rickyos_readpico/firmware.elf | tail -120
             fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee flash-symbols.txt
+          cat flash-symbols.txt >> "$GITHUB_STEP_SUMMARY"
+
+      # The device-side guard compares the image rounded up to 4 KiB against the
+      # slot minus the 512 KiB reserve, so the binary is what decides whether an
+      # OTA install is accepted -- not the PlatformIO "Flash: used" number.
+      - name: Check the OTA image against the slot budget
+        run: |
+          set -euo pipefail
+          IMAGE=.pio/build/rickyos_readpico/firmware.bin
+          BYTES="$(stat -c%s "$IMAGE")"
+          ROUNDED=$(( (BYTES + 4095) / 4096 * 4096 ))
+          LIMIT=6029312
+          {
+            echo "## OTA image budget"
+            echo "| metric | bytes |"
+            echo "| --- | --- |"
+            echo "| firmware.bin | ${BYTES} |"
+            echo "| rounded up to 4 KiB | ${ROUNDED} |"
+            echo "| limit (slot 6,553,600 - 512 KiB reserve) | ${LIMIT} |"
+            echo "| headroom | $(( LIMIT - ROUNDED )) |"
+          } | tee ota-budget.txt
+          cat ota-budget.txt >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ROUNDED" -gt "$LIMIT" ]; then
+            echo "::error::firmware.bin needs ${ROUNDED} bytes, over the ${LIMIT} byte OTA budget by $(( ROUNDED - LIMIT ))"
+          fi
+
+      - name: Upload the Flash symbol report
+        uses: actions/upload-artifact@v6
+        with:
+          name: flash-symbols
+          path: |
+            flash-symbols.txt
+            ota-budget.txt
+          if-no-files-found: error
 
       - name: Upload firmware.bin artifact
         uses: actions/upload-artifact@v6
