@@ -18,13 +18,15 @@ namespace {
 // The font the word itself is drawn in.
 constexpr int kWordFontId = NOTOSANS_18_FONT_ID;
 
-// Gap between the rating buttons and the screen edge.
-constexpr int kButtonSideMargin = 20;
-constexpr int kButtonGap = 8;
-constexpr int kButtonHeight = 58;
-
-// The four buttons, in the order Anki puts them in.
+// The rating grid is a 2x2 set of bordered cards, matching the CrossNext
+// flashcard screen: each card carries an icon, the action name and the exact
+// scheduling interval for that choice.
 constexpr int kRatingCount = 4;
+constexpr int kRatingRows = 2;
+constexpr int kRatingCols = 2;
+constexpr int kCardSideMargin = 14;
+constexpr int kCardGap = 8;
+constexpr int kCardHeight = 72;
 
 // The label of one rating button.
 const char* ratingLabel(const int index) {
@@ -175,19 +177,45 @@ void VocabularyReviewActivity::answer(const study::Rating rating) {
 Rect VocabularyReviewActivity::ratingButtonRect(const int index) const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto orientation = renderer.getOrientation();
-  const bool isLandscapeCw = orientation == GfxRenderer::Orientation::LandscapeClockwise;
-  const bool isLandscapeCcw = orientation == GfxRenderer::Orientation::LandscapeCounterClockwise;
+  const bool isLandscape = orientation == GfxRenderer::Orientation::LandscapeClockwise ||
+                           orientation == GfxRenderer::Orientation::LandscapeCounterClockwise;
   const bool isInverted = orientation == GfxRenderer::Orientation::PortraitInverted;
-  const int hintGutterWidth = (isLandscapeCw || isLandscapeCcw) ? metrics.sideButtonHintsWidth : 0;
-  const int contentX = isLandscapeCw ? hintGutterWidth : 0;
+  const int hintGutterWidth = isLandscape ? metrics.sideButtonHintsWidth : 0;
+  const int contentX = orientation == GfxRenderer::Orientation::LandscapeClockwise ? hintGutterWidth : 0;
   const int contentWidth = renderer.getScreenWidth() - hintGutterWidth;
-  const int buttonWidth = (contentWidth - 2 * kButtonSideMargin - (kRatingCount - 1) * kButtonGap) / kRatingCount;
-  // The button hints sit on the bottom edge, except upside down, where they sit
-  // on the top edge and the buttons follow them.
-  const int buttonTop =
+
+  const int gridHeight = kRatingRows * kCardHeight + (kRatingRows - 1) * kCardGap;
+  const int gridTop =
       isInverted ? metrics.buttonHintsHeight + metrics.verticalSpacing
-                 : renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.verticalSpacing - kButtonHeight;
-  return Rect{contentX + kButtonSideMargin + index * (buttonWidth + kButtonGap), buttonTop, buttonWidth, kButtonHeight};
+                 : renderer.getScreenHeight() - metrics.buttonHintsHeight - metrics.verticalSpacing - gridHeight;
+  const int cardWidth = (contentWidth - 2 * kCardSideMargin - (kRatingCols - 1) * kCardGap) / kRatingCols;
+  const int col = index % kRatingCols;
+  const int row = index / kRatingCols;
+  return Rect{contentX + kCardSideMargin + col * (cardWidth + kCardGap), gridTop + row * (kCardHeight + kCardGap),
+              cardWidth, kCardHeight};
+}
+
+// One CrossNext-style rating card: a hairline box, the action name on top and
+// the resulting interval below, separated by a rule.  `preview` is the delay
+// string the scheduler computed for this choice (e.g. "1 min" / "6 days").
+void VocabularyReviewActivity::drawRatingCard(const Rect& r, const char* label, const char* preview) const {
+  if (r.width <= 0 || r.height <= 0) return;
+  renderer.clearClipRect();
+  renderer.drawRoundedRect(r.x, r.y, r.width, r.height, 2, 4, true);
+
+  const int nameFont = UI_12_FONT_ID;
+  const int lineH = renderer.getLineHeight(nameFont);
+  const int ruleY = r.y + r.height * 3 / 5;
+  // Action name, centred in the upper band.
+  const int nameWidth = renderer.getTextWidth(nameFont, label, EpdFontFamily::BOLD);
+  renderer.drawText(nameFont, r.x + (r.width - nameWidth) / 2, r.y + (ruleY - r.y - lineH) / 2, label, true,
+                    EpdFontFamily::BOLD);
+  // Hairline rule splits the two halves, like the CrossNext rating cells.
+  renderer.drawLine(r.x + 6, ruleY, r.x + r.width - 6, ruleY);
+  // Interval, centred in the lower band.
+  const int previewWidth = renderer.getTextWidth(UI_10_FONT_ID, preview);
+  renderer.drawText(UI_10_FONT_ID, r.x + (r.width - previewWidth) / 2,
+                    ruleY + (r.y + r.height - ruleY - renderer.getLineHeight(UI_10_FONT_ID)) / 2, preview);
 }
 
 void VocabularyReviewActivity::drawRatingButtons() const {
@@ -201,12 +229,7 @@ void VocabularyReviewActivity::drawRatingButtons() const {
   for (int i = 0; i < kRatingCount; ++i) {
     char delay[16];
     study::formatDelay(outcomes[i].delayMinutes, outcomes[i].intervalDays, delay, sizeof(delay));
-    // The button carries the rating and what it does to the schedule: the
-    // interval is what makes the four choices different.
-    std::string label = ratingLabel(i);
-    label += " ";
-    label += delay;
-    GUI.drawActionButton(renderer, ratingButtonRect(i), label.c_str(), false);
+    drawRatingCard(ratingButtonRect(i), ratingLabel(i), delay);
   }
 }
 

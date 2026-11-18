@@ -59,8 +59,10 @@ class VocabularyReviewActivity final : public Activity {
   void reveal();
   // Applies a rating and moves to the next card.
   void answer(study::Rating rating);
-  // The screen box of one of the four rating buttons.
+  // The screen box of one of the four rating cards (2x2 grid).
   Rect ratingButtonRect(int index) const;
-  // Draws the four rating buttons with their interval previews.
+  // One CrossNext-style rating card: action name, rule, interval preview.
+  void drawRatingCard(const Rect& rect, const char* label, const char* preview) const;
+  // Draws the four rating cards with their interval previews.
   void drawRatingButtons() const;
 };

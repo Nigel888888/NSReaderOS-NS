@@ -24,6 +24,34 @@ constexpr const char* VOCABULARY_FILE_PATH = "/.crosspoint/vocabulary.json";
 // The long text of every word lives in this directory, one file per word.
 constexpr const char* VOCABULARY_TEXT_DIR = "/.crosspoint/vocabulary-defs";
 
+// A notebook index can grow past 50 KB (roughly 200-320 words at ~160-256 B
+// each).  PersistableStoreBase::readDocFromFile goes through
+// HalStorage::readFile(), which silently caps a read at 50 KB -- the JSON then
+// fails to parse and, worse, add() rebuilds the array from an empty document
+// and drops every previously saved word.  Read the index with the explicit-cap
+// helper instead; it has no 50 KB ceiling and probes the heap before growing.
+//
+// The cap is deliberately generous: at 1 MiB this holds several thousand
+// words. A corrupted/failed read returns false without touching `doc`, so
+// callers never write a partial index back over a good one.
+bool readIndexDoc(const char* path, JsonDocument& doc) {
+  if (!Storage.exists(path)) {
+    return false;
+  }
+  std::string json;
+  constexpr size_t INDEX_CAP = 1024 * 1024;
+  if (!Storage.readFileToString("VOC", path, INDEX_CAP, json) || json.empty()) {
+    LOG_ERR("VOC", "Cannot read vocabulary index %s", path);
+    return false;
+  }
+  auto error = deserializeJson(doc, json);
+  if (error) {
+    LOG_ERR("VOC", "Vocabulary index parse error: %s", error.c_str());
+    return false;
+  }
+  return true;
+}
+
 // Cuts `text` to at most `limit` bytes without splitting a UTF-8 sequence.
 std::string truncateUtf8(const std::string& text, const size_t limit) {
   if (text.size() <= limit) {
@@ -112,7 +140,7 @@ bool VocabularyFile::load(std::vector<VocabularyFile::Entry>& entries) {
   entries.clear();
 
   JsonDocument doc;
-  if (!PersistableStoreBase::readDocFromFile(VOCABULARY_FILE_PATH, doc)) {
+  if (!readIndexDoc(VOCABULARY_FILE_PATH, doc)) {
     return false;
   }
 
@@ -154,7 +182,13 @@ VocabularyFile::AddResult VocabularyFile::add(const std::string& headword, const
 
   JsonDocument doc;
   // A missing file is not an error here: it is simply the first saved word.
-  PersistableStoreBase::readDocFromFile(VOCABULARY_FILE_PATH, doc);
+  // But a file that exists yet fails to read/parse must abort the add -- writing
+  // an empty rebuilt array over it would silently destroy every saved word.
+  if (Storage.exists(VOCABULARY_FILE_PATH) && !readIndexDoc(VOCABULARY_FILE_PATH, doc)) {
+    LOG_ERR("VOC", "Refusing to add '%s': index unreadable", word.c_str());
+    return AddResult::Failed;
+  }
+  // (A missing file leaves `doc` empty, which is the correct starting point.)
   doc["v"] = VOCABULARY_FILE_VERSION;
 
   JsonArray items = doc["items"].to<JsonArray>();
@@ -201,7 +235,7 @@ VocabularyFile::AddResult VocabularyFile::add(const std::string& headword, const
 
 bool VocabularyFile::remove(const std::string& headword) {
   JsonDocument doc;
-  if (!PersistableStoreBase::readDocFromFile(VOCABULARY_FILE_PATH, doc)) {
+  if (!readIndexDoc(VOCABULARY_FILE_PATH, doc)) {
     return false;
   }
 
@@ -256,7 +290,7 @@ bool VocabularyFile::remove(const std::string& headword) {
 
 bool VocabularyFile::contains(const std::string& headword) {
   JsonDocument doc;
-  if (!PersistableStoreBase::readDocFromFile(VOCABULARY_FILE_PATH, doc)) {
+  if (!readIndexDoc(VOCABULARY_FILE_PATH, doc)) {
     return false;
   }
   JsonArray items = doc["items"].as<JsonArray>();
@@ -291,7 +325,7 @@ bool VocabularyFile::loadText(const std::string& headword, std::string& sentence
 
 bool VocabularyFile::saveCard(const std::string& headword, const study::CardState& card, const uint8_t lastRating) {
   JsonDocument doc;
-  if (!PersistableStoreBase::readDocFromFile(VOCABULARY_FILE_PATH, doc)) {
+  if (!readIndexDoc(VOCABULARY_FILE_PATH, doc)) {
     return false;
   }
   JsonArray items = doc["items"].as<JsonArray>();

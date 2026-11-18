@@ -54,7 +54,7 @@ class VocabularyActivity final : public UiListActivity {
 
   // The counter band above the list: the two cards and the review button.
   void drawStatsBand(const Rect& band);
-  void drawCounterCard(const Rect& rect, int value, const char* label);
+  void drawCounterCard(const Rect& rect, int value, const char* label, const uint8_t* icon);
   // Screen box of the "start review" button, remembered so the tap can be
   // hit-tested outside the list.
   Rect reviewButtonRect() const { return reviewButton; }

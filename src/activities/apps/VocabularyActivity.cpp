@@ -14,6 +14,8 @@
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
+#include "components/icons/book24.h"
+#include "components/icons/bookmark.h"
 #include "fontIds.h"
 
 namespace fui = freeink::ui;
@@ -23,15 +25,17 @@ namespace {
 // Hold time on Confirm that opens the delete confirmation.
 constexpr unsigned long ENTER_ACTIONS_MODE_MS = 700;
 
-// The counter band above the list: two cards side by side.
-constexpr int STATS_CARD_HEIGHT = 92;
+// The CrossNext-style dashboard above the list: two bordered counter cards,
+// each with an icon, a small uppercase label and a large bold number.
+constexpr int STATS_CARD_HEIGHT = 108;
 constexpr int STATS_CARD_GAP = 12;
-// Corner radius of the counter cards.
 constexpr int STATS_CARD_RADIUS = 6;
+constexpr int STATS_ICON_SIZE = 24;
+constexpr int STATS_ICON_PAD = 10;
+// Corner radius of the counter cards.
 // Where the big number sits inside the card, and how much room the small
 // label keeps at the bottom.
-constexpr int STATS_CARD_NUMBER_TOP = 14;
-constexpr int STATS_CARD_LABEL_BOTTOM = 12;
+constexpr int STATS_CARD_NUMBER_TOP = 42;
 // The review button under the counters.
 constexpr int REVIEW_BUTTON_HEIGHT = 44;
 constexpr int REVIEW_BUTTON_GAP = 10;
@@ -225,34 +229,42 @@ void VocabularyActivity::drawStatsBand(const Rect& band) {
   }
   // Left: how many words the notebook holds.
   drawCounterCard(Rect{band.x, band.y, cardWidth, STATS_CARD_HEIGHT}, static_cast<int>(entries.size()),
-                  tr(STR_VOCABULARY_SAVED));
+                  tr(STR_VOCABULARY_SAVED), Book24Icon);
   // Right: how many of them are due for review.
   drawCounterCard(Rect{band.x + cardWidth + STATS_CARD_GAP, band.y, cardWidth, STATS_CARD_HEIGHT}, dueCount,
-                  tr(STR_VOCABULARY_TO_REVIEW));
+                  tr(STR_VOCABULARY_TO_REVIEW), BookmarkIcon);
 
   // The button under the counters starts the session. Its box is remembered
   // so the tap can be hit-tested outside the list.
   const Rect button{band.x, band.y + STATS_CARD_HEIGHT + REVIEW_BUTTON_GAP, band.width, REVIEW_BUTTON_HEIGHT};
   reviewButton = button;
-  GUI.drawActionButton(renderer, button, reviewLabel.c_str(), false);
+  // Active style: a filled black bar, the primary action on this screen.
+  GUI.drawActionButton(renderer, button, reviewLabel.c_str(), true);
 }
 
-// One counter card: the number, and the small label under it.
-void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, const char* label) {
+// One counter card: an icon at the left, a small uppercase label at the top
+// right, and the count set large and bold underneath -- the CrossNext layout.
+void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, const char* label, const uint8_t* icon) {
   if (rect.width <= 0 || rect.height <= 0 || !label) {
     return;
   }
-  renderer.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 1, STATS_CARD_RADIUS, true);
+  renderer.clearClipRect();
+  renderer.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 2, STATS_CARD_RADIUS, true);
 
+  // Icon, optically centred vertically in the card.
+  if (icon) {
+    renderer.drawIcon(icon, rect.x + STATS_ICON_PAD, rect.y + (rect.height - STATS_ICON_SIZE) / 2, STATS_ICON_SIZE);
+  }
+  // Small label, top-right.
+  const int labelWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
+  renderer.drawText(UI_10_FONT_ID, rect.x + rect.width - STATS_ICON_PAD - labelWidth, rect.y + 10, label);
+
+  // The count: large and bold, under the label.
   char number[16];
   std::snprintf(number, sizeof(number), "%d", value);
   const int numberWidth = renderer.getTextWidth(STATS_FONT_ID, number, EpdFontFamily::BOLD);
   renderer.drawText(STATS_FONT_ID, rect.x + (rect.width - numberWidth) / 2, rect.y + STATS_CARD_NUMBER_TOP, number,
                     true, EpdFontFamily::BOLD);
-
-  const int labelWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
-  renderer.drawText(UI_10_FONT_ID, rect.x + (rect.width - labelWidth) / 2,
-                    rect.y + rect.height - STATS_CARD_LABEL_BOTTOM - renderer.getLineHeight(UI_10_FONT_ID), label);
 }
 
 void VocabularyActivity::buildScreen(UiScreen& screen) {
