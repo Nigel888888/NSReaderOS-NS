@@ -12,6 +12,15 @@ const root = path.resolve(__dirname, '..');
 const sourceDir = path.join(root, 'src/components/icons/sources/rickyos');
 const names = ['home', 'library', 'apps', 'settings', 'statistics', 'storage'];
 const labels = ['首页', '书库', '应用', '设置', '统计'];
+
+// clang-format lays a braced list out in columns: it keeps as many items per line as
+// fit the column limit, then spreads the items evenly over the rows that are left.
+// A plain "19 per line" split leaves a single item on the last line, which
+// clang-format re-flows, so the generator has to use the same rule.
+function itemsPerLine(count, maxPerLine) {
+  const rows = Math.ceil(count / maxPerLine);
+  return Math.ceil(count / rows);
+}
 const args = process.argv.slice(2);
 let output = path.join(root, 'src/components/icons/rickyNavigationIcons.h');
 let preview;
@@ -43,8 +52,9 @@ async function main() {
       }
       lines.push(`// ${name}; ${size} x ${size}; ${bits.length} bytes in Flash.`);
       lines.push(`static constexpr uint8_t ricky_nav_${name}_${size}[] = {`);
-      for (let offset = 0; offset < bits.length; offset += 19) {  // clang-format packs 19 per line
-        lines.push('    ' + [...bits.subarray(offset, offset + 19)]
+      const perLine = itemsPerLine(bits.length, 19);  // clang-format packs 19 per line
+      for (let offset = 0; offset < bits.length; offset += perLine) {
+        lines.push('    ' + [...bits.subarray(offset, offset + perLine)]
           .map(byte => '0x' + byte.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
       }
       lines.push('};', '');

@@ -18,6 +18,15 @@ for (let i = 0; i < args.length; ++i) {
 }
 const width = 384, height = 448, threshold = 128;
 
+// clang-format lays a braced list out in columns: it keeps as many items per line as
+// fit the column limit, then spreads the items evenly over the rows that are left.
+// A plain "19 per line" split leaves a single item on the last line, which
+// clang-format re-flows, so the generator has to use the same rule.
+function itemsPerLine(count, maxPerLine) {
+  const rows = Math.ceil(count / maxPerLine);
+  return Math.ceil(count / rows);
+}
+
 async function main() {
   const original = fs.readFileSync(source);
   const sha = crypto.createHash('sha256').update(original).digest('hex');
@@ -81,8 +90,9 @@ async function main() {
     if (name === 'bits') fullPacked = packed;
     else for (let p = 0; p < packed.length; ++p) packed[p] |= fullPacked[p];
     lines.push(`inline constexpr uint8_t ${name}[] = {`);
-    for (let start = 0; start < packed.length; start += 19) {  // clang-format packs 19 per line
-      lines.push('    ' + [...packed.subarray(start, start + 19)]
+    const perLine = itemsPerLine(packed.length, 19);  // clang-format packs 19 per line
+    for (let start = 0; start < packed.length; start += perLine) {
+      lines.push('    ' + [...packed.subarray(start, start + perLine)]
         .map(value => '0x' + value.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
     }
     lines.push('};');

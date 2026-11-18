@@ -22,6 +22,15 @@ function sized(svg, size) {
   return Buffer.from(svg.replace('<svg ', `<svg width="${size}" height="${size}" `));
 }
 
+// clang-format lays a braced list out in columns: it keeps as many items per line as
+// fit the column limit, then spreads the items evenly over the rows that are left.
+// A plain "19 per line" split leaves a single item on the last line, which
+// clang-format re-flows, so the generator has to use the same rule.
+function itemsPerLine(count, maxPerLine) {
+  const rows = Math.ceil(count / maxPerLine);
+  return Math.ceil(count / rows);
+}
+
 const sets = [
   ...['transfer', 'opds', 'weread', 'stats', 'bookmark', 'calculator', 'standby'].map(name => ({
     name: `ricky_app_${name}_56`, size: 56,
@@ -83,13 +92,21 @@ async function main() {
     total += rle.length;
     const id = set.name.replace(/_bits$/, '');
     out.push(`inline constexpr uint8_t k_${id}[] = {`);
-    for (let i = 0; i < rle.length; i += 19) {  // clang-format packs 19 per line
-      out.push('    ' + rle.slice(i, i + 19).map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
+    const perLine = itemsPerLine(rle.length, 19);  // clang-format packs 19 per line
+    for (let i = 0; i < rle.length; i += perLine) {
+      out.push('    ' + rle.slice(i, i + perLine).map(b => '0x' + b.toString(16).padStart(2, '0').toUpperCase()).join(', ') + ',');
     }
     out.push('};');
-    entries.push(`    {0x${fnv1a(bits).toString(16).padStart(8, '0').toUpperCase()}u, ${set.size}, ${set.size}, k_${id}, ${rle.length}},  // ${set.name}`);
+    entries.push({
+      code: `    {0x${fnv1a(bits).toString(16).padStart(8, '0').toUpperCase()}u, ${set.size}, ${set.size}, k_${id}, ${rle.length}},`,
+      note: set.name,
+    });
   }
-  out.push('', 'inline constexpr Icon kIcons[] = {', ...entries, '};', '', '}  // namespace ricky_aa_icons', '');
+  // clang-format aligns the trailing comments of consecutive lines into one column,
+  // so the table has to be padded to the longest entry before the comment starts.
+  const column = Math.max(...entries.map(entry => entry.code.length)) + 2;
+  out.push('', 'inline constexpr Icon kIcons[] = {',
+    ...entries.map(entry => entry.code.padEnd(column) + `// ${entry.note}`), '};', '', '}  // namespace ricky_aa_icons', '');
   fs.writeFileSync(path.join(iconRoot, 'rickyAaIcons.h'), out.join('\n'));
   console.log(`rickyAaIcons.h: ${sets.length} icons, ${total} bytes of coverage`);
 }
