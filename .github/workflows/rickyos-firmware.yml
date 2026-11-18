@@ -80,7 +80,7 @@ jobs:
 
       # The OTA updater refuses an image that leaves less than 512 KiB free in
       # the 6,553,600 byte app slot (src/network/RickyOtaPolicy.h), so the
-      # release budget is a hard limit. Print the largest symbols to make the
+      # release budget is a hard limit. Print where the bytes go to make the
       # next cut a measured decision instead of a guess.
       - name: Report Flash usage by symbol
         run: |
@@ -90,12 +90,28 @@ jobs:
           {
             echo "### sections"
             if [ -n "$SIZE" ]; then "$SIZE" -A .pio/build/rickyos_readpico/firmware.elf | head -30; fi
-            echo "### biggest symbols"
+            echo "### every symbol of 64 bytes or more"
             if [ -n "$NM" ]; then
-              "$NM" --size-sort -S -C --radix=d .pio/build/rickyos_readpico/firmware.elf | tail -120
+              "$NM" --size-sort -S -C --radix=d .pio/build/rickyos_readpico/firmware.elf | awk '$2 >= 64'
             fi
           } | tee flash-symbols.txt
           cat flash-symbols.txt >> "$GITHUB_STEP_SUMMARY"
+
+      # Which source file costs how much: the object files keep the answer in the
+      # same order as the tree, so a cut can be pointed at a file, not a guess.
+      - name: Report Flash usage by source file
+        run: |
+          set -euo pipefail
+          SIZE="$(find "$PLATFORMIO_CORE_DIR/packages" -type f -name 'xtensa-esp32s3-elf-size' 2>/dev/null | head -1)"
+          {
+            if [ -n "$SIZE" ]; then
+              find .pio/build/rickyos_readpico -name '*.o' -type f | while read -r obj; do
+                total=$("$SIZE" "$obj" | awk 'NR==2 {print $1 + $2}')
+                printf '%10d  %s\n' "${total:-0}" "${obj#.pio/build/rickyos_readpico/}"
+              done | sort -rn | head -60
+            fi
+          } | tee flash-by-source.txt
+          cat flash-by-source.txt >> "$GITHUB_STEP_SUMMARY"
 
       # The device-side guard compares the image rounded up to 4 KiB against the
       # slot minus the 512 KiB reserve, so the binary is what decides whether an
@@ -127,6 +143,7 @@ jobs:
           name: flash-symbols
           path: |
             flash-symbols.txt
+            flash-by-source.txt
             ota-budget.txt
           if-no-files-found: error
 
