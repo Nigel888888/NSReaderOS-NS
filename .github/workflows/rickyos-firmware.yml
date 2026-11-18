@@ -99,18 +99,20 @@ jobs:
 
       # Which source file costs how much: the object files keep the answer in the
       # same order as the tree, so a cut can be pointed at a file, not a guess.
+      # This is a measurement, so it must not take the build down with it.
       - name: Report Flash usage by source file
         run: |
-          set -euo pipefail
+          set -uo pipefail
           SIZE="$(find "$PLATFORMIO_CORE_DIR/packages" -type f -name 'xtensa-esp32s3-elf-size' 2>/dev/null | head -1)"
-          {
-            if [ -n "$SIZE" ]; then
-              find .pio/build/rickyos_readpico -name '*.o' -type f | while read -r obj; do
-                total=$("$SIZE" "$obj" | awk 'NR==2 {print $1 + $2}')
-                printf '%10d  %s\n' "${total:-0}" "${obj#.pio/build/rickyos_readpico/}"
-              done | sort -rn | head -60
-            fi
-          } | tee flash-by-source.txt
+          : > object-sizes.txt
+          if [ -n "$SIZE" ]; then
+            while IFS= read -r obj; do
+              total=$("$SIZE" "$obj" 2>/dev/null | awk 'NR==2 {print $1 + $2}')
+              printf '%10d  %s\n' "${total:-0}" "${obj#.pio/build/rickyos_readpico/}" >> object-sizes.txt
+            done < <(find .pio/build/rickyos_readpico -name '*.o' -type f)
+          fi
+          sort -rn object-sizes.txt > object-sizes-sorted.txt
+          head -60 object-sizes-sorted.txt | tee flash-by-source.txt
           cat flash-by-source.txt >> "$GITHUB_STEP_SUMMARY"
 
       # The device-side guard compares the image rounded up to 4 KiB against the
@@ -120,6 +122,7 @@ jobs:
       # still has to be uploaded, and the upstream baseline is over the same
       # line, so this is a measurement rather than a gate.
       - name: Check the OTA image against the slot budget
+        if: always()
         continue-on-error: true
         run: |
           set -euo pipefail
@@ -141,7 +144,11 @@ jobs:
             echo "::error::firmware.bin needs ${ROUNDED} bytes, over the ${LIMIT} byte OTA budget by $(( ROUNDED - LIMIT ))"
           fi
 
+      # The image is the point of the workflow: upload it even when a report step
+      # above stumbled, and never let a missing report hide the firmware.
       - name: Upload the Flash symbol report
+        if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: flash-symbols
@@ -149,9 +156,11 @@ jobs:
             flash-symbols.txt
             flash-by-source.txt
             ota-budget.txt
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Upload firmware.bin artifact
+        if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v6
         with:
           name: firmware.bin
