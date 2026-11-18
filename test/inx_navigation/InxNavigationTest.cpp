@@ -567,12 +567,11 @@ TEST(InxNavigation, PaginatesButtonMenusAndKeepsIconIdsStable) {
 }
 
 TEST(InxNavigation, KeepsAppIconAssetsValidAndDistinct) {
-  constexpr std::array<const InxAppIcons::Icon*, 17> icons = {
-      &InxAppIcons::Transfer,    &InxAppIcons::Opds,        &InxAppIcons::WeRead,     &InxAppIcons::ReadingStats,
-      &InxAppIcons::Sudoku,      &InxAppIcons::Gomoku,      &InxAppIcons::Sokoban,    &InxAppIcons::ChineseChess,
-      &InxAppIcons::Minesweeper, &InxAppIcons::Game2048,    &InxAppIcons::Avatar,     &InxAppIcons::AirPage,
-      &InxAppIcons::Buddy,       &InxAppIcons::PixelSwitch, &InxAppIcons::Calculator, &InxAppIcons::Standby,
-      &InxAppIcons::Woodfish,
+  constexpr std::array<const InxAppIcons::Icon*, 16> icons = {
+      &InxAppIcons::Transfer,    &InxAppIcons::Opds,       &InxAppIcons::WeRead,       &InxAppIcons::ReadingStats,
+      &InxAppIcons::Sudoku,      &InxAppIcons::Sokoban,    &InxAppIcons::ChineseChess, &InxAppIcons::Minesweeper,
+      &InxAppIcons::Game2048,    &InxAppIcons::Avatar,     &InxAppIcons::AirPage,      &InxAppIcons::Buddy,
+      &InxAppIcons::PixelSwitch, &InxAppIcons::Calculator, &InxAppIcons::Standby,      &InxAppIcons::Woodfish,
   };
 
   for (size_t index = 0; index < icons.size(); ++index) {
@@ -588,7 +587,6 @@ TEST(InxNavigation, KeepsAppIconAssetsValidAndDistinct) {
   EXPECT_EQ(InxAppIcons::get(UIIcon::Opds), InxAppIcons::Opds.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::ReadingStats), InxAppIcons::ReadingStats.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::Sudoku), InxAppIcons::Sudoku.data());
-  EXPECT_EQ(InxAppIcons::get(UIIcon::Gomoku), InxAppIcons::Gomoku.data());
   EXPECT_EQ(InxAppIcons::get(UIIcon::Sokoban), InxAppIcons::Sokoban.data());
 #ifdef ENABLE_CHINESE_VERSION
   EXPECT_EQ(InxAppIcons::get(UIIcon::ChineseChess), InxAppIcons::ChineseChess.data());
