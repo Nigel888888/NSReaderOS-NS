@@ -4,6 +4,7 @@
 #include <I18n.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "activities/Activity.h"
@@ -16,11 +17,13 @@
 class DictionaryWordSelectActivity final : public Activity {
  public:
   explicit DictionaryWordSelectActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                                        std::unique_ptr<Page> page, int marginLeft, int marginTop)
+                                        std::unique_ptr<Page> page, int marginLeft, int marginTop,
+                                        std::string bookTitle = "")
       : Activity("DictionaryWordSelect", renderer, mappedInput),
         page(std::move(page)),
         marginLeft(marginLeft),
-        marginTop(marginTop) {}
+        marginTop(marginTop),
+        bookTitle(std::move(bookTitle)) {}
 
   void onEnter() override;
   void loop() override;
@@ -41,6 +44,9 @@ class DictionaryWordSelectActivity final : public Activity {
   enum class Popup : uint8_t { None, Busy, NotFound, Error };
 
   void extractWords();
+  // The text of one page row, used as the sentence a collected word is
+  // reviewed in. Empty when the row is unknown.
+  const std::string& rowText(uint16_t row) const;
   int closestInRow(uint16_t row, int centerX) const;
   int wordAt(int x, int y) const;
   void moveVertical(int direction);
@@ -51,10 +57,18 @@ class DictionaryWordSelectActivity final : public Activity {
   std::unique_ptr<Page> page;
   const int marginLeft;
   const int marginTop;
+  // Title of the book the word came from; passed on to the definition card so
+  // a collected word can record where it was found.
+  const std::string bookTitle;
   int fontId = 0;
   int lineHeight = 0;
 
   std::vector<WordBox> words;
+  // The full text of every page row that holds a selectable word, indexed the
+  // same way as WordBox::row. A collected word is reviewed in the sentence it
+  // came from, so the line has to be kept whole -- including the tokens that
+  // are not selectable on their own.
+  std::vector<std::string> rowTexts;
   int selected = 0;
   uint16_t rowCount = 0;
   unsigned long lastHorizontalMoveTime = 0;

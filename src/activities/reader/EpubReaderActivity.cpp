@@ -708,7 +708,7 @@ void EpubReaderActivity::openDictionaryWordSelect() {
         READING_STATS.resumeSession();
         requestUpdate();
       },
-      std::move(page), orientedMarginLeft, orientedMarginTop);
+      std::move(page), orientedMarginLeft, orientedMarginTop, getBookTitle());
 }
 
 #ifdef ENABLE_CHINESE_VERSION

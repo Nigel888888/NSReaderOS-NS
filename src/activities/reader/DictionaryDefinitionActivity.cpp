@@ -7,12 +7,14 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 
 #include "CrossPointSettings.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/DictHtmlPages.h"
 #include "util/HtmlToPlainText.h"
+#include "util/VocabularyFile.h"
 
 namespace {
 
@@ -30,6 +32,18 @@ constexpr int SIDE_PADDING = 20;
 // path, which holds no per-page copies.
 constexpr size_t MAX_STYLED_HTML_BYTES = 16 * 1024;
 
+// The "add to vocabulary" button band at the bottom of the body, and the gap
+// that separates it from the text above.
+constexpr int VOCABULARY_BUTTON_HEIGHT = 46;
+constexpr int VOCABULARY_BUTTON_GAP = 10;
+
+// Widest the vocabulary button grows; beyond this it would float in the
+// middle of a wide screen instead of reading as an action.
+constexpr int VOCABULARY_BUTTON_MAX_WIDTH = 360;
+
+// How long the result of an add stays on the button.
+constexpr unsigned long VOCABULARY_MESSAGE_MS = 2500;
+
 }  // namespace
 
 void DictionaryDefinitionActivity::onEnter() {
@@ -37,10 +51,17 @@ void DictionaryDefinitionActivity::onEnter() {
   // Normalize StarDict multi-type separators so the wrap loop and the
   // C-string font APIs below both see the whole definition.
   std::replace(definition.begin(), definition.end(), '\0', '\n');
+  // Plain-text copy for the vocabulary notebook. The styled path below
+  // consumes `definition` (the HTML source) and frees it, so the readable
+  // text has to be captured before that happens.
+  std::string plain = htmlDefinition ? htmlToPlainText(definition) : std::string();
   if (!(htmlDefinition && definition.size() <= MAX_STYLED_HTML_BYTES && layoutHtmlPages())) {
     definition = htmlToPlainText(definition);
+    // What ends up on screen is what the notebook stores.
+    plain = definition;
     wrapText();
   }
+  plainDefinition = std::move(plain);
   requestUpdate();
 }
 
@@ -60,8 +81,32 @@ DictionaryDefinitionActivity::BodyArea DictionaryDefinitionActivity::bodyArea() 
   const int hintGutterWidth = isLandscape ? metrics.sideButtonHintsWidth : 0;
   const int topArea = (isInverted ? metrics.buttonHintsHeight : 0) + metrics.topPadding + metrics.headerHeight;
   const int bottomArea = metrics.buttonHintsHeight + metrics.verticalSpacing;
-  return {renderer.getScreenWidth() - hintGutterWidth - 2 * SIDE_PADDING,
-          renderer.getScreenHeight() - topArea - bottomArea};
+  // The vocabulary button owns the bottom of the body band; the text above it
+  // gets whatever is left.
+  const int bodyHeight =
+      renderer.getScreenHeight() - topArea - bottomArea - VOCABULARY_BUTTON_HEIGHT - VOCABULARY_BUTTON_GAP;
+  return {renderer.getScreenWidth() - hintGutterWidth - 2 * SIDE_PADDING, bodyHeight};
+}
+
+// Screen box of the "add to vocabulary" button: it sits directly under the
+// body text and above the button hints.
+Rect DictionaryDefinitionActivity::vocabularyButtonRect() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const auto orientation = renderer.getOrientation();
+  const bool isLandscapeCw = orientation == GfxRenderer::Orientation::LandscapeClockwise;
+  const bool isLandscapeCcw = orientation == GfxRenderer::Orientation::LandscapeCounterClockwise;
+  const bool isInverted = orientation == GfxRenderer::Orientation::PortraitInverted;
+  const int hintGutterWidth = (isLandscapeCw || isLandscapeCcw) ? metrics.sideButtonHintsWidth : 0;
+  const int contentX = isLandscapeCw ? hintGutterWidth : 0;
+  const int contentWidth = renderer.getScreenWidth() - hintGutterWidth;
+  const int contentY = isInverted ? metrics.buttonHintsHeight : 0;
+  const int bodyTop = contentY + metrics.topPadding + metrics.headerHeight;
+  const int buttonY = bodyTop + bodyArea().height + VOCABULARY_BUTTON_GAP;
+  int buttonWidth = contentWidth - 2 * SIDE_PADDING;
+  if (buttonWidth > VOCABULARY_BUTTON_MAX_WIDTH) {
+    buttonWidth = VOCABULARY_BUTTON_MAX_WIDTH;
+  }
+  return Rect{contentX + (contentWidth - buttonWidth) / 2, buttonY, buttonWidth, VOCABULARY_BUTTON_HEIGHT};
 }
 
 // Styled path: lay the HTML definition out through the EPUB chapter parser
@@ -198,16 +243,26 @@ void DictionaryDefinitionActivity::wrapText() {
 }
 
 void DictionaryDefinitionActivity::loop() {
+  expireVocabularyMessage();
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     finish();
     return;
   }
 
   // Same tap zones as the reader page turns: left third = previous page,
-  // the rest = next. Back is the usual left-edge swipe.
+  // the rest = next. Back is the usual left-edge swipe. The vocabulary
+  // button is checked first: collecting a word is a tap on it, never a
+  // button press.
   int tx = 0;
   int ty = 0;
   if (mappedInput.wasScreenTapped(tx, ty)) {
+    const Rect button = vocabularyButtonRect();
+    if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width &&
+        ty >= button.y && ty < button.y + button.height) {
+      addToVocabulary();
+      return;
+    }
     if (tx < renderer.getScreenWidth() / 3) {
       if (currentPage > 0) {
         currentPage--;
@@ -233,6 +288,39 @@ void DictionaryDefinitionActivity::loop() {
       requestUpdate();
     }
   });
+}
+
+// Collects the word into the vocabulary notebook and reports the outcome on
+// the button itself.
+void DictionaryDefinitionActivity::addToVocabulary() {
+  const uint32_t now = static_cast<uint32_t>(time(nullptr));
+  const VocabularyFile::AddResult result =
+      VocabularyFile::add(headword, plainDefinition, sentence, book, now);
+  switch (result) {
+    case VocabularyFile::AddResult::Added:
+      vocabularyMessage = tr(STR_VOCABULARY_ADDED);
+      break;
+    case VocabularyFile::AddResult::AlreadyPresent:
+      vocabularyMessage = tr(STR_VOCABULARY_ALREADY_SAVED);
+      break;
+    default:
+      vocabularyMessage = tr(STR_VOCABULARY_SAVE_FAILED);
+      break;
+  }
+  vocabularyMessageUntil = millis() + VOCABULARY_MESSAGE_MS;
+  requestUpdate();
+}
+
+// Drops the add-result message once it has been on screen long enough.
+void DictionaryDefinitionActivity::expireVocabularyMessage() {
+  if (!vocabularyMessage) {
+    return;
+  }
+  if (static_cast<long>(millis() - vocabularyMessageUntil) < 0) {
+    return;
+  }
+  vocabularyMessage = nullptr;
+  requestUpdate();
 }
 
 // Draws the current page: a styled Page when the HTML layout succeeded,
@@ -291,8 +379,18 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
   scope.endScanAndPrewarm();
   drawBody(fontId, contentX + SIDE_PADDING, bodyStartY);
 
+  drawVocabularyButton();
+
+  // The key hints stay unchanged: no key adds a word, the button does.
   const auto labels =
       mappedInput.mapLabels(tr(STR_BACK), "", (currentPage > 0 ? "<" : ""), (currentPage + 1 < totalPages ? ">" : ""));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
   renderer.displayBuffer();
+}
+
+// Draws the "add to vocabulary" button. While a result is showing it takes
+// over the label, so the answer to the tap stays where the eye already is.
+void DictionaryDefinitionActivity::drawVocabularyButton() const {
+  const char* label = vocabularyMessage ? vocabularyMessage : tr(STR_VOCABULARY_ADD);
+  GUI.drawActionButton(renderer, vocabularyButtonRect(), label, vocabularyMessage != nullptr);
 }

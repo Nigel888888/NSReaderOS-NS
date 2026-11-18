@@ -31,6 +31,7 @@
 #include "apps/airpage/AirPageActivity.h"
 #endif
 #include "apps/calculator/CalculatorActivity.h"
+#include "apps/VocabularyActivity.h"
 #include "components/SubpageLayout.h"
 #ifdef ENABLE_CHINESE_VERSION
 #include "apps/weread/WeReadActivity.h"
@@ -781,6 +782,8 @@ void ActivityManager::goToChineseChess() { replaceActivityWith<ChineseChessMenuA
 #endif
 
 void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>(); }
+
+void ActivityManager::goToVocabulary() { replaceActivityWith<VocabularyActivity>(); }
 
 #ifndef RICKYOS_PRODUCT
 void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }

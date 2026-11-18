@@ -20,6 +20,10 @@ constexpr unsigned long POPUP_DURATION_MS = 1500;
 constexpr unsigned long WORD_REPEAT_START_MS = 500;
 constexpr unsigned long WORD_REPEAT_INTERVAL_MS = 500;
 
+// Longest page row kept as the context of a collected word. A row longer than
+// this is a paragraph the reader never shows on one line, not a sentence.
+constexpr size_t ROW_TEXT_MAX = 400;
+
 // A token is selectable when it has an ASCII alphanumeric or a non-ASCII
 // codepoint outside U+2000-U+206F (dashes, bullets and other General
 // Punctuation that appear as standalone tokens are not words).
@@ -62,6 +66,7 @@ void DictionaryWordSelectActivity::onEnter() {
 void DictionaryWordSelectActivity::extractWords() {
   words.clear();
   words.reserve(128);
+  rowTexts.clear();
   rowCount = 0;
 
   // Single walk: collect the selectable words while accumulating their text
@@ -80,10 +85,18 @@ void DictionaryWordSelectActivity::extractWords() {
     if (!block || !block->valid()) continue;
 
     bool rowHasWords = false;
+    // The whole line, kept as the context a collected word is reviewed in.
+    std::string rowText;
     const int ascender = renderer.getFontAscenderSize(fontId);
     const int rubyShift = block->getRubyShift(ascender);
     for (uint16_t i = 0; i < block->wordCount(); i++) {
       const char* text = block->wordText(i);
+      if (!rowText.empty() && rowText.size() < ROW_TEXT_MAX) {
+        rowText.push_back(' ');
+      }
+      if (rowText.size() < ROW_TEXT_MAX) {
+        rowText.append(text);
+      }
       if (!isSelectableToken(text)) continue;
 
       WordBox box;
@@ -100,7 +113,10 @@ void DictionaryWordSelectActivity::extractWords() {
       pageText.push_back(' ');
       styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(box.style) & 0x03));
     }
-    if (rowHasWords) rowCount++;
+    if (rowHasWords) {
+      rowTexts.push_back(std::move(rowText));
+      rowCount++;
+    }
   }
 
   if (styleMask == 0) styleMask = 0x01;  // REGULAR
@@ -108,6 +124,15 @@ void DictionaryWordSelectActivity::extractWords() {
   for (auto& word : words) {
     word.width = static_cast<int16_t>(renderer.getTextAdvanceX(fontId, word.text, word.style));
   }
+}
+
+// The text of one page row. Words outside the collected range have no row.
+const std::string& DictionaryWordSelectActivity::rowText(const uint16_t row) const {
+  static const std::string empty;
+  if (row >= rowTexts.size()) {
+    return empty;
+  }
+  return rowTexts[row];
 }
 
 // Index of the word whose box (with finger-sized slop) contains the touch
@@ -179,9 +204,11 @@ void DictionaryWordSelectActivity::performLookup() {
 
   if (found) {
     popup = Popup::None;
+    // The line the word was picked from becomes the context it is reviewed in.
+    const std::string context = rowText(words[selected].row);
     startActivityForResultWith<DictionaryDefinitionActivity>([this](const ActivityResult&) { requestUpdate(); },
                                                              std::move(headword), std::move(definition),
-                                                             dict.definitionsAreHtml());
+                                                             dict.definitionsAreHtml(), bookTitle, context);
     return;
   }
   // Name the failure: a genuine miss is "Not found"; a word that WAS found but
