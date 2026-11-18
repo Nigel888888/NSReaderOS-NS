@@ -31,6 +31,7 @@ class QuotesActivity final : public UiTabListActivity {
   void onRowLongPress(int index) override;
   bool handleCustomInput() override;
   bool handleButtons() override;
+  void render(RenderLock&& lock) override;
   void onBackButton() override { activityManager.goToApps(); }
 
   int tabCount() const override { return TabCount; }

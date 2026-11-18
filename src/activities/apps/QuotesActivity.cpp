@@ -76,12 +76,8 @@ void QuotesActivity::rebuildRows() {
   // Counters are computed over the whole notebook, not the current tab.
   const int total = static_cast<int>(quotes.size());
   int bookCount = 0;
-  int favCount = 0;
-  for (const auto& q : quotes) {
-    if (q.favorite) {
-      ++favCount;
-    }
-  }
+  const int favCount = static_cast<int>(
+      std::count_if(quotes.begin(), quotes.end(), [](const QuotesFile::Quote& q) { return q.favorite; }));
   if (tab_ == BooksTab) {
     // One row per distinct source title, newest quote's order preserved.
     std::vector<std::string> seen;
