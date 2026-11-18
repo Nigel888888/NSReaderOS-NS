@@ -50,7 +50,7 @@ async function main() {
       if (data[y * SIZE + x] < THRESHOLD) bits[y * rowBytes + (x >> 3)] &= ~(0x80 >> (x & 7));
     }
     lines.push(`// ${name}; ${bits.length} bytes in Flash.`);
-    lines.push(`static constexpr uint8_t ricky_app_${name}_${SIZE}[] = {`);
+    lines.push(`inline constexpr uint8_t ricky_app_${name}_${SIZE}[] = {`);
     const perLine = itemsPerLine(bits.length, 19);  // clang-format packs 19 per line
     for (let offset = 0; offset < bits.length; offset += perLine) {
       lines.push('    ' + [...bits.subarray(offset, offset + perLine)]

@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GENERATOR = ROOT / 'freeink-sdk/libs/assets/Icons/tools/gen_icons.py'
 SVG_DIR = ROOT / 'src/components/icons/sources/lucide'
 OUTPUT = ROOT / 'src/components/icons/uiChromeIcons.h'
+SHARE = ROOT / 'scripts/share_icon_constants.py'
 
 
 def generate(output):
@@ -70,6 +71,10 @@ def generate(output):
             text += ', '.join(f'0x{byte:02X}' for byte in data) + '};\n'
             text += f'static const freeink::Icon icon_{name} = {{32, 20, 10, {bits}}};\n'
     output.write_text(text)
+    # The SDK generator emits internal-linkage constants, so every translation unit
+    # including this header would carry its own copy of the bitmaps. Rewrite them to
+    # inline constexpr so the linker keeps a single copy.
+    subprocess.run([sys.executable, str(SHARE), str(output)], check=True)
 
 
 if __name__ == '__main__':

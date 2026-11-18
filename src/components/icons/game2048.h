@@ -9,7 +9,7 @@
 // Bitmap data is rotated 90 deg CCW: the device's drawIcon() applies a CW 90°
 // transform at render time, so the stored bytes must be pre-rotated to land
 // upright on screen. (Same convention as sudoku.h.)
-static const uint8_t Game2048Icon[] = {
+inline constexpr uint8_t Game2048Icon[] = {
     0x00, 0x00, 0x00, 0x00,  // row 0
     0x7F, 0xFE, 0x7F, 0xFE,  // row 1
     0x7F, 0xFE, 0x7F, 0xFE,  // row 2

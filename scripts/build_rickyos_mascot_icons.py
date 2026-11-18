@@ -45,7 +45,7 @@ def main() -> None:
              f"inline constexpr int kRickyMascotSize = {SIZE};", ""]
     for name in NAMES:
         data = icon(SOURCES / f"{name}.png")
-        lines.append(f"static constexpr uint8_t ricky_mascot_{name}[] = {{")
+        lines.append(f"inline constexpr uint8_t ricky_mascot_{name}[] = {{")
         for offset in range(0, len(data), 19):  # clang-format packs 19 per line
             lines.append("    " + ", ".join(f"0x{b:02X}" for b in data[offset:offset + 19]) + ",")
         lines += ["};", ""]
