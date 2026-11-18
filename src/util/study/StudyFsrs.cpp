@@ -74,6 +74,12 @@ float Fsrs::recallStability(const float d, const float s, const float retr, cons
   const float easyBonus = (r == Rating::Easy) ? w_[16] : 1.0f;
   // Growth is largest when the card was nearly forgotten (low retr) and least
   // when it was answered while still fresh -- the spacing effect, made explicit.
+  //
+  // The exponent keeps the reference form exp(x) - 1 so the device computes the
+  // same bits as Anki and CrossNext. expm1() would be more accurate for tiny x,
+  // but the port is meant to be verbatim, so the finding is suppressed rather
+  // than the formula rewritten.
+  // cppcheck-suppress unpreciseMathCall
   return s * (1.0f + std::exp(w_[8]) * (11.0f - d) * std::pow(s, -w_[9]) * (std::exp((1.0f - retr) * w_[10]) - 1.0f) *
                          hardPenalty * easyBonus);
 }
@@ -82,7 +88,7 @@ float Fsrs::forgetStability(const float d, const float s, const float retr) cons
   return w_[11] * std::pow(d, -w_[12]) * (std::pow(s + 1.0f, w_[13]) - 1.0f) * std::exp((1.0f - retr) * w_[14]);
 }
 
-float Fsrs::retrievability(const Memory& m, const float elapsedDays) const {
+float Fsrs::retrievability(const Memory& m, const float elapsedDays) {
   if (!m.learned || m.stability <= 0.0f) return 1.0f;
   const float t = elapsedDays < 0.0f ? 0.0f : elapsedDays;
   return std::pow(1.0f + kFactor * t / m.stability, kDecay);

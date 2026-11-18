@@ -86,16 +86,18 @@ void DictionaryWordSelectActivity::extractWords() {
 
     bool rowHasWords = false;
     // The whole line, kept as the context a collected word is reviewed in.
-    std::string rowText;
+    // Named lineText, not rowText: rowText() is the member that reads the
+    // collected rows back, and a local of that name shadows it.
+    std::string lineText;
     const int ascender = renderer.getFontAscenderSize(fontId);
     const int rubyShift = block->getRubyShift(ascender);
     for (uint16_t i = 0; i < block->wordCount(); i++) {
       const char* text = block->wordText(i);
-      if (!rowText.empty() && rowText.size() < ROW_TEXT_MAX) {
-        rowText.push_back(' ');
+      if (!lineText.empty() && lineText.size() < ROW_TEXT_MAX) {
+        lineText.push_back(' ');
       }
-      if (rowText.size() < ROW_TEXT_MAX) {
-        rowText.append(text);
+      if (lineText.size() < ROW_TEXT_MAX) {
+        lineText.append(text);
       }
       if (!isSelectableToken(text)) continue;
 
@@ -114,7 +116,7 @@ void DictionaryWordSelectActivity::extractWords() {
       styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(box.style) & 0x03));
     }
     if (rowHasWords) {
-      rowTexts.push_back(std::move(rowText));
+      rowTexts.push_back(std::move(lineText));
       rowCount++;
     }
   }

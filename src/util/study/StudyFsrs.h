@@ -42,7 +42,9 @@ class Fsrs {
 
   // Probability the card is still recallable `elapsedDays` after its last
   // review. This is the forgetting curve; 1.0 for a card never studied.
-  float retrievability(const Memory& m, float elapsedDays) const;
+  // It depends only on the card and the elapsed time, not on the parameters,
+  // so it is a static member.
+  static float retrievability(const Memory& m, float elapsedDays);
 
   // Apply a review and return the new memory state.
   //
