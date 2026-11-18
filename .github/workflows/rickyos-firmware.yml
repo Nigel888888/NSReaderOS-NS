@@ -78,6 +78,24 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # The OTA updater refuses an image that leaves less than 512 KiB free in
+      # the 6,553,600 byte app slot (src/network/RickyOtaPolicy.h), so the
+      # release budget is a hard limit. Print the largest symbols to make the
+      # next cut a measured decision instead of a guess.
+      - name: Report Flash usage by symbol
+        run: |
+          set -euo pipefail
+          NM="$(find "$PLATFORMIO_CORE_DIR/packages" -type f -name 'xtensa-esp32s3-elf-nm' 2>/dev/null | head -1)"
+          SIZE="$(find "$PLATFORMIO_CORE_DIR/packages" -type f -name 'xtensa-esp32s3-elf-size' 2>/dev/null | head -1)"
+          {
+            echo "### sections"
+            if [ -n "$SIZE" ]; then "$SIZE" -A .pio/build/rickyos_readpico/firmware.elf | head -30; fi
+            echo "### biggest symbols"
+            if [ -n "$NM" ]; then
+              "$NM" --size-sort -S -C --radix=d .pio/build/rickyos_readpico/firmware.elf | tail -120
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload firmware.bin artifact
         uses: actions/upload-artifact@v6
         with:
