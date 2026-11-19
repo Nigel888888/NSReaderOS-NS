@@ -1,9 +1,10 @@
 #include "NutstoreDav.h"
 #ifdef RICKYOS_PRODUCT
 
+#include <Arduino.h>
+#include <Logging.h>
 #include <base64.h>
 #include <expat.h>
-#include <Logging.h>
 
 #include <cctype>
 #include <cstdio>
@@ -25,7 +26,7 @@ int hexVal(char c) {
 }
 
 std::string urlEncode(const std::string& s, bool keepSlash) {
-  static const char* HEX = "0123456789ABCDEF";
+  static const char* kHexDigits = "0123456789ABCDEF";
   std::string out;
   out.reserve(s.size());
   for (unsigned char c : s) {
@@ -35,8 +36,8 @@ std::string urlEncode(const std::string& s, bool keepSlash) {
       out.push_back(static_cast<char>(c));
     } else {
       out.push_back('%');
-      out.push_back(HEX[c >> 4]);
-      out.push_back(HEX[c & 15]);
+      out.push_back(kHexDigits[c >> 4]);
+      out.push_back(kHexDigits[c & 15]);
     }
   }
   return out;
@@ -229,7 +230,8 @@ Result runList(const std::string& folder, const std::string& account, const std:
   // subpath is an already percent-encoded relative folder path with a trailing '/'.
   if (!subpath.empty()) url += subpath;
   const std::string creds = account + ":" + password;
-  const std::string auth = std::string("Basic ") + base64::encode(creds.c_str()).c_str();
+  const String encoded = base64::encode(reinterpret_cast<const uint8_t*>(creds.data()), creds.size());
+  const std::string auth = std::string("Basic ") + encoded.c_str();
   pluginhttp::Headers headers;
   headers.emplace_back("Depth", "1");
   headers.emplace_back("Authorization", auth);
