@@ -205,9 +205,11 @@ class LibraryListActivity final : public UiTabListActivity {
   // touch event that opened it.
   OptionPopup optionPopup;
 #ifdef RICKYOS_PRODUCT
-  static constexpr int SHELF_CAPACITY = 4;
+  // Folio shelf: three columns by two rows per page.
+  static constexpr int SHELF_CAPACITY = 6;
   static constexpr freeink::ui::ActionId ACTION_READING_FILTER = ACTION_BACK + 1;
   static constexpr freeink::ui::ActionId ACTION_SHELF_OPTIONS = ACTION_READING_FILTER + 1;
+  static constexpr freeink::ui::ActionId ACTION_SHELF_PAGE = ACTION_SHELF_OPTIONS + 1;
   uint8_t readingFilter = 0;
   int shelfStart = -1;
   int shelfHeight = 0;

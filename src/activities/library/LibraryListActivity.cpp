@@ -143,6 +143,16 @@ void LibraryListActivity::onEnter() {
         self.requestUpdate();
       },
       this);
+  app.on(
+      ACTION_SHELF_PAGE,
+      [](const fui::ActionEvent& event, void* user) {
+        auto& self = *static_cast<LibraryListActivity*>(user);
+        RenderLock lock(self);
+        self.app.clearTapFlash();
+        self.activeNav().requestScroll(event.value < 0 ? -SHELF_CAPACITY : SHELF_CAPACITY);
+        self.requestUpdate();
+      },
+      this);
 #endif
 
   // Recent is backed by the resident store. Prune before opening the index so
@@ -1126,72 +1136,91 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                   static_cast<int16_t>(renderer.getScreenHeight() - bounds.y - bounds.height),
                   static_cast<int16_t>(renderer.getScreenWidth() - bounds.x - bounds.width)});
   screen.insetContent(fui::Insets{theme.spaceSm, theme.spaceLg, theme.spaceSm, theme.spaceLg});
-  const int gap = std::max<int>(6, theme.spaceSm);
+  const int gap = std::max<int>(8, theme.spaceSm);
   const int labelHeight = screen.target().lineHeight(theme.smallText.font);
   const int count = bookRowCount();
+  auto& target = screen.target();
+  const auto black = fui::Paint::solid(fui::Color::Black);
   RickyPageUi::Bold bold(renderer, 1);
-  auto titleRect = screen.takeTop(screen.target().lineHeight(theme.titleText.font), gap);
-  auto countRect = titleRect;
-  countRect.width = titleRect.width / 3;
-  countRect.x = titleRect.right() - countRect.width;
-  titleRect.width -= countRect.width + gap;
-  auto pageTitle = theme.titleText;
-  pageTitle.bold = true;
-  {
-    // Title-size strokes need two pixels of synthetic weight to read as bold.
-    RickyPageUi::Bold heading(renderer, 2);
-    screen.target().text(titleRect, headerTitle(), pageTitle);
-  }
-  char position[48];
-  snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_COUNT), static_cast<unsigned>(count));
-  auto countStyle = theme.smallText;
-  countStyle.align = fui::TextAlign::Right;
-  screen.target().text(countRect, position, countStyle);
-  auto filters = screen.takeTop(labelHeight + gap * 2, gap * 2);
-  // Search needs text entry, and the device has no Chinese input yet: offer
-  // only the sort/refresh menu, as quiet text at the end of the tab row.
-  const int moreWidth = std::max(44, filters.width / 6);
-  auto moreRect = filters;
-  moreRect.x += filters.width - moreWidth;
-  moreRect.width = moreWidth;
-  moreRect.height -= gap;
-  fui::ButtonProps button;
-  button.label = tr(STR_TOOL_MORE);
-  button.text = theme.smallText;
-  button.text.align = fui::TextAlign::Right;
-  button.action = ACTION_SHELF_OPTIONS;
-  button.inputMask = fui::InputTouch;
-  button.minTouchSize = 0;
-  button.styles = fui::plainStyles(fui::Paint::solid(fui::Color::Black));
-  fui::button(screen.frame(), moreRect, button);
+
+  // Folio header: a large title with a quiet "filter · count" subtitle on the
+  // left, and a rounded three-tool box (search / grid / list) on the right.
   const StrId filterLabels[] = {StrId::STR_RICKY_BOOKS_ALL, StrId::STR_RICKY_BOOKS_READING,
                                 StrId::STR_RICKY_BOOKS_UNREAD};
-  int widestLabel = 0;
-  for (auto id : filterLabels)
-    widestLabel = std::max(
-        widestLabel,
-        static_cast<int>(screen.target().measureText(theme.smallText.font, I18N.get(id), theme.smallText).width));
-  const int width = std::min((moreRect.x - filters.x - gap * 3) / 3, std::max(44, widestLabel + gap * 3));
-  const int separatorY = filters.bottom() - 2;
-  screen.target().fill(fui::Rect{filters.x, static_cast<int16_t>(separatorY + 1), filters.width, 1},
-                       fui::Paint::solid(fui::Color::Black));
-  for (int i = 0; i < 3; ++i) {
-    auto rect = filters;
-    rect.x += i * (width + gap);
-    rect.width = width;
-    screen.frame().hit(rect, ACTION_READING_FILTER, i, fui::InputTouch);
-    auto labelRect = rect;
-    labelRect.height = labelHeight;
-    labelRect.y += gap / 2;
-    auto label = theme.smallText;
-    label.bold = readingFilter == i;
-    screen.target().text(labelRect, I18N.get(filterLabels[i]), label);
-    if (readingFilter == i) {
-      const int markWidth = std::min(width, widestLabel + gap);
-      screen.target().fill(fui::Rect{rect.x, static_cast<int16_t>(separatorY - 2), static_cast<int16_t>(markWidth), 4},
-                           fui::Paint::solid(fui::Color::Black));
-    }
+  char subtitle[64];
+  snprintf(subtitle, sizeof(subtitle), tr(STR_RICKY_LIBRARY_SUBTITLE), I18N.get(filterLabels[readingFilter]),
+           static_cast<unsigned>(count));
+  const int titleH = target.lineHeight(theme.titleText.font);
+  const int toolBoxW = std::min<int>(screen.body().width * 44 / 100, 288);
+  const int toolBoxH = std::max<int>(labelHeight + gap * 2, 56);
+  const int headingH = std::max<int>(titleH + labelHeight + gap / 2, toolBoxH);
+  auto headingBand = screen.takeTop(headingH, gap * 2);
+  auto titleRect = headingBand;
+  titleRect.width = static_cast<int16_t>(headingBand.width - toolBoxW - gap);
+  titleRect.height = static_cast<int16_t>(titleH);
+  auto pageTitle = theme.titleText;
+  pageTitle.bold = true;
+  pageTitle.maxLines = 1;
+  {
+    RickyPageUi::Bold heading(renderer, 2);
+    target.text(titleRect, headerTitle(), pageTitle);
   }
+  auto subtitleRect = titleRect;
+  subtitleRect.y = static_cast<int16_t>(titleRect.y + titleH + gap / 4);
+  subtitleRect.height = static_cast<int16_t>(labelHeight);
+  target.text(subtitleRect, subtitle, theme.smallText);
+  // Tap the subtitle to cycle Reading filters (All / Reading / Unread).
+  screen.frame().hit(subtitleRect, ACTION_READING_FILTER, (readingFilter + 1) % 3, fui::InputTouch);
+
+  // Rounded tool box: three equal cells, thin separators, lowercase glyphs.
+  auto toolBox = headingBand;
+  toolBox.x = static_cast<int16_t>(headingBand.right() - toolBoxW);
+  toolBox.width = static_cast<int16_t>(toolBoxW);
+  toolBox.height = static_cast<int16_t>(toolBoxH);
+  toolBox.y = static_cast<int16_t>(headingBand.y + (headingBand.height - toolBoxH) / 2);
+  target.stroke(toolBox, black, 1, 10);
+  const int cellW = toolBoxW / 3;
+  for (int i = 1; i < 3; ++i)
+    target.fill(fui::Rect{static_cast<int16_t>(toolBox.x + i * cellW), static_cast<int16_t>(toolBox.y + toolBoxH / 5),
+                          1, static_cast<int16_t>(toolBoxH * 3 / 5)},
+                fui::Paint::solid(fui::Color::DarkGray));
+  // Search (magnifier): ring + handle. Touch opens search.
+  auto searchRect = fui::Rect{toolBox.x, toolBox.y, static_cast<int16_t>(cellW), static_cast<int16_t>(toolBoxH)};
+  {
+    const int cx = searchRect.x + cellW / 2 - 2, cy = searchRect.y + toolBoxH / 2 - 2;
+    const int r = std::min<int>(cellW, toolBoxH) / 5;
+    target.stroke(fui::Rect{static_cast<int16_t>(cx - r), static_cast<int16_t>(cy - r),
+                            static_cast<int16_t>(r * 2), static_cast<int16_t>(r * 2)},
+                  black, 2, static_cast<uint8_t>(r));
+    target.line({static_cast<int16_t>(cx + r - 1), static_cast<int16_t>(cy + r - 1)},
+                {static_cast<int16_t>(cx + r + 5), static_cast<int16_t>(cy + r + 5)}, 2, black);
+  }
+  screen.frame().hit(searchRect, ACTION_SEARCH, 0, fui::InputTouch);
+  // Grid icon (current view): three tiles, underlined as selected.
+  auto gridRect = fui::Rect{static_cast<int16_t>(toolBox.x + cellW), toolBox.y, static_cast<int16_t>(cellW),
+                            static_cast<int16_t>(toolBoxH)};
+  {
+    const int tile = std::max<int>(6, cellW / 6);
+    const int gx = gridRect.x + (cellW - tile * 3 - 4) / 2, gy = gridRect.y + (toolBoxH - tile) / 2 - 4;
+    for (int i = 0; i < 3; ++i)
+      target.fill(fui::Rect{static_cast<int16_t>(gx + i * (tile + 2)), static_cast<int16_t>(gy),
+                            static_cast<int16_t>(tile), static_cast<int16_t>(tile)}, black);
+    target.fill(fui::Rect{static_cast<int16_t>(gridRect.x + cellW / 2 - 10),
+                          static_cast<int16_t>(toolBox.y + toolBoxH - 12), 20, 3}, black);
+  }
+  screen.frame().hit(gridRect, ACTION_SHELF_OPTIONS, 0, fui::InputTouch);
+  // List icon: three rules; opens the same tools menu (sort / rebuild).
+  auto listRect = fui::Rect{static_cast<int16_t>(toolBox.x + cellW * 2), toolBox.y, static_cast<int16_t>(cellW),
+                            static_cast<int16_t>(toolBoxH)};
+  {
+    const int lw = cellW / 2;
+    const int lx = listRect.x + (cellW - lw) / 2;
+    for (int i = 0; i < 3; ++i)
+      target.fill(fui::Rect{static_cast<int16_t>(lx), static_cast<int16_t>(listRect.y + toolBoxH / 2 - 8 + i * 7),
+                            static_cast<int16_t>(lw), 2}, black);
+  }
+  screen.frame().hit(listRect, ACTION_SHELF_OPTIONS, 0, fui::InputTouch);
+  char position[48];
   if (count == 0) {
     screen.centeredText(
         filterFailed ? tr(STR_LIBRARY_SEARCH_UNAVAILABLE)
@@ -1199,14 +1228,19 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     return;
   }
   const bool multiplePages = count > SHELF_CAPACITY;
-  const auto positionRect = multiplePages ? screen.takeBottom(labelHeight, gap) : fui::Rect{};
+  // Folio bottom pager: a rounded box with a chevron on each side.
+  const int pagerHeight = std::max<int>(labelHeight + gap * 2, 56);
+  const auto pagerRect = screen.takeBottom(pagerHeight, gap * 2);
   const auto body = screen.body();
-  const int columns = body.width > body.height ? 4 : 2;
+  // Folio shelf is three columns by two rows in portrait; six by one in
+  // landscape. SHELF_CAPACITY (6) stays the page size in both orientations.
+  const bool landscape = body.width > body.height;
+  const int columns = landscape ? SHELF_CAPACITY : 3;
   const int rows = SHELF_CAPACITY / columns;
   const int rowHeight = std::max(1, (body.height - gap * (rows - 1)) / rows);
-  // 3:4 covers with air around them, like printed spines on a shelf.
+  // 3:4 covers. Reserve two text rows (title + format/progress) below each.
   const int coverHeight = std::max(1, std::min(rowHeight - labelHeight * 2 - gap * 3,
-                                               (body.width - gap * (columns - 1)) / columns * 64 / 100 * 4 / 3));
+                                               (body.width - gap * (columns - 1)) / columns * 88 / 100 * 4 / 3));
   auto& n = activeNav();
   fui::ListProps paging;
   // Feed the existing atomic list-nav requests with four virtual one-pixel rows.
@@ -1290,9 +1324,37 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
         return true;
       }
     }
-    // The label under the cover already names the format.
-    RickyPageUi::generatedCover(target, rect, item.title, self.shelfAuthors[slot].c_str(), nullptr,
-                                self.shelfGrid.titleText);
+    // Folio placeholder: pale fill, thin frame, format at the top, the title
+    // centred and wrapped, and a quiet "no cover" line at the bottom.
+    const auto ink = fui::Paint::solid(fui::Color::Black);
+    target.fill(rect, fui::Paint::solid(fui::Color::White));
+    target.stroke(rect, ink, 1);
+    const int lineH = target.lineHeight(self.shelfGrid.titleText.font);
+    if (rect.height < lineH * 3 || rect.width < lineH * 2) return true;
+    const auto& coverPath = self.shelfPaths[slot];
+    const char* format = FsHelpers::hasEpubExtension(coverPath)       ? "EPUB"
+                         : FsHelpers::hasTxtExtension(coverPath)      ? "TXT"
+                         : FsHelpers::hasMarkdownExtension(coverPath) ? "MD"
+                         : FsHelpers::hasXtcExtension(coverPath)      ? "XTC"
+                                                                      : "";
+    auto caption = self.shelfGrid.titleText;
+    caption.align = fui::TextAlign::Center;
+    caption.maxLines = 1;
+    target.text(fui::Rect{rect.x, static_cast<int16_t>(rect.y + 6), rect.width, static_cast<int16_t>(lineH)}, format,
+                caption);
+    auto title = caption;
+    title.bold = true;
+    title.maxLines = 3;
+    const int titleTop = rect.y + lineH + 10;
+    const int titleRoom = rect.height - titleTop - lineH - 10;
+    RickyPageUi::wrappedText(target,
+                             fui::Rect{static_cast<int16_t>(rect.x + 6), static_cast<int16_t>(titleTop),
+                                       static_cast<int16_t>(rect.width - 12), static_cast<int16_t>(titleRoom)},
+                             item.title, title);
+    auto noCover = caption;
+    target.text(fui::Rect{rect.x, static_cast<int16_t>(rect.bottom() - lineH - 6), rect.width,
+                          static_cast<int16_t>(lineH)},
+                tr(STR_RICKY_BOOK_NO_COVER), noCover);
     return true;
   };
   fui::coverGrid(screen.frame(), body, shelfGrid);
@@ -1308,12 +1370,44 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   }
   n.drawnCount = count;
   n.onListRendered(start, visible, paging.selectedIndex >= start && paging.selectedIndex < start + visible);
-  snprintf(position, sizeof(position), tr(STR_RICKY_LIBRARY_PAGE), static_cast<unsigned>(start / SHELF_CAPACITY + 1),
-           static_cast<unsigned>((count + SHELF_CAPACITY - 1) / SHELF_CAPACITY), static_cast<unsigned>(count));
+
+  // Folio pager: one rounded box, a chevron at each end, "n / N" centred.
+  const int pageNow = start / SHELF_CAPACITY + 1;
+  const int pageTotal = std::max(1, (count + SHELF_CAPACITY - 1) / SHELF_CAPACITY);
+  auto pager = pagerRect;
+  if (!multiplePages) {
+    // Still draw the frame with a single page for visual consistency.
+    pager.width = std::min<int>(pager.width, screen.body().width * 40 / 100);
+    pager.x = static_cast<int16_t>(screen.body().x + (screen.body().width - pager.width) / 2);
+  }
+  target.stroke(pager, black, 1, 10);
+  const int arrowW = std::min<int>(pager.width / 4, pager.height);
+  auto prevBox = fui::Rect{pager.x, pager.y, static_cast<int16_t>(arrowW), pager.height};
+  auto nextBox = fui::Rect{static_cast<int16_t>(pager.right() - arrowW), pager.y, static_cast<int16_t>(arrowW),
+                           pager.height};
+  const auto drawChevron = [&](fui::Rect box, bool left) {
+    const int mx = box.x + box.width / 2, my = box.y + box.height / 2, arm = std::min<int>(8, box.width / 3);
+    const int tipX = left ? mx - arm / 2 : mx + arm / 2;
+    const int backX = left ? mx + arm / 2 : mx - arm / 2;
+    target.line({static_cast<int16_t>(tipX), static_cast<int16_t>(my - arm)},
+                {static_cast<int16_t>(backX), static_cast<int16_t>(my)}, 2, black);
+    target.line({static_cast<int16_t>(backX), static_cast<int16_t>(my)},
+                {static_cast<int16_t>(tipX), static_cast<int16_t>(my + arm)}, 2, black);
+  };
+  if (multiplePages && pageNow > 1) {
+    drawChevron(prevBox, true);
+    screen.frame().hit(prevBox, ACTION_SHELF_PAGE, -1, fui::InputTouch);
+  }
+  if (multiplePages && pageNow < pageTotal) {
+    drawChevron(nextBox, false);
+    screen.frame().hit(nextBox, ACTION_SHELF_PAGE, 1, fui::InputTouch);
+  }
+  snprintf(position, sizeof(position), "%d / %d", pageNow, pageTotal);
   auto style = theme.smallText;
-  style.align = fui::TextAlign::Right;
-  if (multiplePages) screen.target().text(positionRect, position, style);
-  GUI.drawSideScrollBar(renderer, Rect{body.x, body.y, body.width, body.height}, count, start, SHELF_CAPACITY);
+  style.align = fui::TextAlign::Center;
+  target.text(fui::Rect{static_cast<int16_t>(prevBox.right()), pager.y,
+                        static_cast<int16_t>(nextBox.x - prevBox.right()), pager.height},
+              position, style);
 }
 #endif
 
