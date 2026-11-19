@@ -143,6 +143,7 @@ void InxRecentActivity::onEnter() {
     bookStats[i] = READING_STATS.findMatchingBookForPath(book.path, book.title, book.author);
   }
   selected = 0;
+  recentStart = 1;
   thumbnailHeight = 0;
   targetCoverStates.fill(CoverCacheState::Unchecked);
   fallbackCoverStates.fill(CoverCacheState::Unchecked);
@@ -443,18 +444,28 @@ void InxRecentActivity::loop() {
   const int count = static_cast<int>(books->size());
   const auto swipe = mappedInput.wasSwipe();
 #ifdef RICKYOS_PRODUCT
-  if (rickyHome && swipe != MappedInputManager::SwipeDir::None) {
-    // A page holds RickyHomeLayout::PAGE_BOOKS books; moving the selection by one book
-    // changed the page only every third swipe, so most swipes did nothing visible.
+  if (rickyHome) {
+    // "Continue reading" is pinned to books[0]; only the "recently opened"
+    // strip pages. It starts at book 1 and shows RickyHomeLayout::PAGE_BOOKS
+    // covers at a time, so there are (count - 1) books spread over N pages.
     const int page = RickyHomeLayout::PAGE_BOOKS;
-    const int pages = (count + page - 1) / page;
-    const int current = RickyHomeLayout::pageStart(selected) / page;
-    const bool forward = swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up;
-    selected = ((current + (forward ? 1 : pages - 1)) % pages) * page;
-    requestUpdate();
-    return;
+    const int recentCount = std::max(0, count - 1);
+    const int pages = std::max(1, (recentCount + page - 1) / page);
+    const bool forward = swipe == MappedInputManager::SwipeDir::Left || swipe == MappedInputManager::SwipeDir::Up ||
+                         mappedInput.wasReleased(MappedInputManager::Button::NavNext);
+    const bool backward = swipe == MappedInputManager::SwipeDir::Right ||
+                          swipe == MappedInputManager::SwipeDir::Down ||
+                          mappedInput.wasReleased(MappedInputManager::Button::NavPrevious);
+    if (forward || backward) {
+      const int current = std::clamp((recentStart - 1) / page, 0, pages - 1);
+      const int next = (current + (forward ? 1 : pages - 1)) % pages;
+      recentStart = next * page + 1;
+      requestUpdate();
+      return;
+    }
   }
 #endif
+#if !defined(RICKYOS_PRODUCT)
   if (mappedInput.wasReleased(MappedInputManager::Button::NavNext) || swipe == MappedInputManager::SwipeDir::Up ||
       swipe == MappedInputManager::SwipeDir::Left) {
     selected = (selected + 1) % count;
@@ -467,6 +478,7 @@ void InxRecentActivity::loop() {
     requestUpdate();
     return;
   }
+#endif
 }
 
 void InxRecentActivity::drawFlow(const Rect& content) {
@@ -623,10 +635,10 @@ void InxRecentActivity::render(RenderLock&&) {
     const GfxRenderer::ClipScope clip(renderer, content.x, content.y, content.width, content.height);
 #ifdef RICKYOS_PRODUCT
     if (rickyHome) {
-      const int start = RickyHomeLayout::pageStart(selected);
       const int inset = UiHighDpiProfile::contentPadding;
       const Rect bounds{content.x + inset, content.y, std::max(1, content.width - inset * 2), content.height};
-      rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(start)));
+      // Progress belongs to the pinned "continue reading" book at index 0.
+      rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(0)), recentStart);
       rickyHome->renderUi();
     } else
 #endif
@@ -637,10 +649,9 @@ void InxRecentActivity::render(RenderLock&&) {
         case InxRecentLayout::Flow:
 #ifdef RICKYOS_PRODUCT
           if (rickyHome) {
-            const int start = RickyHomeLayout::pageStart(selected);
             const int inset = UiHighDpiProfile::contentPadding;
             const Rect bounds{content.x + inset, content.y, std::max(1, content.width - inset * 2), content.height};
-            rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(start)));
+            rickyHome->configure(bounds, selected, showMainTabContentSelection(), progressOf(statsAt(0)), recentStart);
             rickyHome->renderUi();
           } else
 #endif

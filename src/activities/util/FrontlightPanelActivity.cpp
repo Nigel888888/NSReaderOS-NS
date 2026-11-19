@@ -466,10 +466,18 @@ constexpr int kRefreshPages[] = {1, 5, 10, 15, 30, 0};
 
 void FrontlightPanelActivity::runRickyTile(const Tile tile) {
   switch (tile) {
-    case Tile::Night:
-      SETTINGS.screenInverted = SETTINGS.screenInverted ? 0 : 1;
+    case Tile::Touch:
+      // Toggle the reader's touch controls (Settings -> Controls option), not
+      // anything lower-level: the panel's own gestures, including the swipe
+      // that reopens it, keep working while reader touch is off. Remember the
+      // mode (Tap/Swipe/Inverted Tap) so toggling back restores the choice.
+      if (SETTINGS.touchReaderControls != CrossPointSettings::TOUCH_READER_OFF) {
+        touchModeRestore = SETTINGS.touchReaderControls;
+        SETTINGS.touchReaderControls = CrossPointSettings::TOUCH_READER_OFF;
+      } else {
+        SETTINGS.touchReaderControls = touchModeRestore;
+      }
       SETTINGS.saveToFile();
-      cleanRefreshPending = true;
       requestUpdate();
       break;
     case Tile::Refresh:
@@ -609,9 +617,9 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
   };
 
   rule();
-  const bool night = SETTINGS.screenInverted != 0;
+  const bool touchOn = SETTINGS.touchReaderControls != CrossPointSettings::TOUCH_READER_OFF;
   const RoundAction common[] = {
-      {Tile::Night, &icon_ricky_night_40, tr(STR_NIGHT_MODE), night},
+      {Tile::Touch, &icon_ricky_reader_40, tr(STR_RICKY_TOUCH_FUNCTION), touchOn},
       {Tile::Refresh, &icon_ricky_refresh_40, tr(STR_FORCE_REFRESH), false},
       {Tile::Standby, &icon_ricky_standby_40, tr(STR_RICKY_STANDBY_NOW), false},
       {Tile::Transfer, &icon_ricky_transfer_40, tr(STR_FILE_TRANSFER), false},

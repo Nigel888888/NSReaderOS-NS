@@ -14,7 +14,9 @@ class RickyHomeUi final : public UiAppHost {
   using CoverPainter = bool (*)(void*, int, const Rect&);
   explicit RickyHomeUi(GfxRenderer& renderer) : UiAppHost(renderer), renderer(renderer) {}
   void begin(const std::vector<RecentBook>& recent, CoverPainter painter, void* owner);
-  void configure(Rect content, int selection, bool showSelection, int progress);
+  // recentStart is the first book shown in the "recently opened" strip; the
+  // "continue reading" card is pinned to books[0] and never follows paging.
+  void configure(Rect content, int selection, bool showSelection, int progress, int recentStart);
   int selectedAction(const MappedInputManager& input);
   int coverHeight() const { return thumbnailHeight; }
   static constexpr int LIBRARY = -3;
@@ -32,7 +34,8 @@ class RickyHomeUi final : public UiAppHost {
   void* owner = nullptr;
   Rect content{};
   int selected = 0;
-  int start = 0;
+  int start = 0;        // pinned "continue reading" book (always 0)
+  int recentStart = 0;  // first book in the paged "recently opened" strip
   int progress = 0;
   int pending = -1;
   int thumbnailHeight = 0;

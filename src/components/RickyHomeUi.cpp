@@ -47,10 +47,13 @@ void RickyHomeUi::begin(const std::vector<RecentBook>& recent, CoverPainter cove
   app.setScreen(&RickyHomeUi::screenFn, this);
 }
 
-void RickyHomeUi::configure(Rect bounds, int selection, bool show, int percent) {
+void RickyHomeUi::configure(Rect bounds, int selection, bool show, int percent, int recent) {
   content = bounds;
   selected = selection;
-  start = RickyHomeLayout::pageStart(selection);
+  // "Continue reading" is pinned to the most recent book; paging only moves
+  // the "recently opened" strip below it, so the two blocks are independent.
+  start = 0;
+  recentStart = recent;
   showSelection = show;
   progress = std::clamp(percent, 0, 100);
   snprintf(progressText, sizeof(progressText), "%d%%", progress);
@@ -156,9 +159,8 @@ void RickyHomeUi::draw(UiScreen& screen) {
   const auto layout = RickyHomeLayout::fit(body.width, body.height, headingHeight, labelHeight, gap, padding);
   const auto textFit = RickyHomeLayout::fitText(layout.coverHeight, headingHeight, labelHeight, gap, layout.rows == 1);
   thumbnailHeight = layout.coverHeight;
-  screen.target().text(screen.takeTop(headingHeight, gap),
-                       start == 0 ? tr(STR_CONTINUE_READING) : tr(STR_MENU_RECENT_BOOKS), heading);
-  const auto& book = (*books)[start];
+  screen.target().text(screen.takeTop(headingHeight, gap), tr(STR_CONTINUE_READING), heading);
+  const auto& book = (*books)[0];
   card = {};
   card.title = book.title.empty() ? book.path.c_str() : book.title.c_str();
   card.author = book.author.empty() || !textFit.author ? nullptr : book.author.c_str();
@@ -177,22 +179,24 @@ void RickyHomeUi::draw(UiScreen& screen) {
   card.centerTextOnCover = true;
   card.progressHeight = 6;
   card.action = OPEN_BOOK;
-  card.value = start;
-  card.state = showSelection && selected == start ? fui::StateSelected : fui::StateNormal;
+  card.value = 0;
+  card.state = showSelection && selected == 0 ? fui::StateSelected : fui::StateNormal;
   card.styles = theme.listRow;
   card.selectionIndicator = fui::BookCardSelectionIndicator::CoverFrame;
   card.coverPainterUserData = this;
   card.coverPainter = [](fui::DrawTarget&, fui::Rect rect, const fui::BookCardProps&, void* user) {
     auto& self = *static_cast<RickyHomeUi*>(user);
-    return self.paint(rect, self.start);
+    return self.paint(rect, 0);
   };
   fui::bookCard(screen.frame(), screen.takeTop(layout.rowHeight, gap), card);
   auto recentHeading = screen.takeTop(headingHeight, gap);
   screen.frame().hit(recentHeading, OPEN_BOOK, LIBRARY, fui::InputTouch);
-  const int pages = (books->size() + RickyHomeLayout::PAGE_BOOKS - 1) / RickyHomeLayout::PAGE_BOOKS;
+  const int recentCount = std::max(0, static_cast<int>(books->size()) - 1);
+  const int pages = std::max(1, (recentCount + RickyHomeLayout::PAGE_BOOKS - 1) / RickyHomeLayout::PAGE_BOOKS);
   if (pages > 1) {
     char pageText[16];
-    snprintf(pageText, sizeof(pageText), "%d / %d", start / RickyHomeLayout::PAGE_BOOKS + 1, pages);
+    snprintf(pageText, sizeof(pageText), "%d / %d",
+             std::clamp((recentStart - 1) / RickyHomeLayout::PAGE_BOOKS + 1, 1, pages), pages);
     auto pageStyle = theme.smallText;
     pageStyle.align = fui::TextAlign::Right;
     auto pageRect = recentHeading;
@@ -203,11 +207,13 @@ void RickyHomeUi::draw(UiScreen& screen) {
   }
   screen.target().text(recentHeading, tr(STR_MENU_RECENT_BOOKS), heading);
   grid = {};
-  grid.count = std::min<int>(RickyHomeLayout::PAGE_BOOKS - 1, books->size() - start - 1);
-  grid.columns = layout.columns;
+  grid.count = std::min<int>(RickyHomeLayout::PAGE_BOOKS, recentCount - (recentStart - 1));
+  grid.columns = RickyHomeLayout::PAGE_BOOKS;
   grid.rowHeight = layout.rowHeight;
   grid.gap = grid.rowGap = gap;
-  grid.coverSize = card.coverSize;
+  // Smaller thumbnails so three sit in the strip without dwarfing the card.
+  grid.coverSize = fui::Size{static_cast<int16_t>(card.coverSize.width * 2 / 3),
+                             static_cast<int16_t>(card.coverSize.height * 2 / 3)};
   grid.cellInset = card.padding;
   grid.labelHeight = labelHeight;
   grid.labelGap = 0;
@@ -217,20 +223,22 @@ void RickyHomeUi::draw(UiScreen& screen) {
   grid.minTouchSize = 0;  // Keep hit regions inside drawn cells, never expand into gaps.
   grid.action = OPEN_BOOK;
   grid.inputMask = fui::InputTouch;
-  grid.selectedIndex = showSelection && selected > start ? selected - start - 1 : -1;
+  grid.selectedIndex = showSelection && selected >= recentStart && selected < recentStart + grid.count
+                           ? selected - recentStart
+                           : -1;
   grid.selectionIndicator = fui::CoverGridSelectionIndicator::CoverFrame;
   grid.scrollIndicator = false;
   grid.itemProviderUserData = this;
   grid.itemProvider = [](uint16_t index, void* user) {
     auto& self = *static_cast<RickyHomeUi*>(user);
-    const int bookIndex = self.start + index + 1;
+    const int bookIndex = self.recentStart + static_cast<int>(index);
     const auto& item = (*self.books)[bookIndex];
     return fui::coverGridItem(item.title.empty() ? item.path.c_str() : item.title.c_str(), bookIndex);
   };
   grid.coverPainterUserData = this;
   grid.coverPainter = [](fui::DrawTarget&, fui::Rect rect, const fui::CoverGridItem&, uint16_t index, void* user) {
     auto& self = *static_cast<RickyHomeUi*>(user);
-    return self.paint(rect, self.start + index + 1);
+    return self.paint(rect, self.recentStart + static_cast<int>(index));
   };
   fui::coverGrid(screen.frame(), screen.body(), grid);
 }
@@ -321,9 +329,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     return;
   }
 
-  // Continue reading: generated or real cover, bold title, author, progress.
-  target.text(screen.takeTop(smallHeight, gap), start == 0 ? tr(STR_CONTINUE_READING) : tr(STR_MENU_RECENT_BOOKS),
-              small);
+  // Continue reading: pinned to books[0] and framed so paging below never
+  // touches it. Generated or real cover, bold title, author, progress.
+  target.text(screen.takeTop(smallHeight, gap), tr(STR_CONTINUE_READING), small);
   // Fixed proportions first, then share what is left between the section gaps
   // so the page breathes evenly instead of collecting space above the note.
   // The current book and the two recent ones share one cover size (and one
@@ -337,10 +345,12 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const int section = gap + std::min(spare / 3, gap * 2);
   thumbnailHeight = coverHeight;
   const auto row = screen.takeTop(coverHeight, section);
-  const auto& book = (*books)[start];
+  const auto& book = (*books)[0];
   const fui::Rect cover{row.x, row.y, static_cast<int16_t>(coverHeight * 3 / 4), static_cast<int16_t>(coverHeight)};
-  paint(cover, start);
-  if (showSelection && selected == start) target.stroke(cover, fui::Paint::solid(fui::Color::Black), 3);
+  // Rounded frame around the whole pinned card, the CrossNext counter-card look.
+  target.stroke(row, fui::Paint::solid(fui::Color::Black), 1, 6);
+  paint(cover, 0);
+  if (showSelection && selected == 0) target.stroke(cover, fui::Paint::solid(fui::Color::Black), 3);
   auto info = row;
   info.x += cover.width + gap * 2;
   info.width -= cover.width + gap * 2;
@@ -365,7 +375,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   rightAction(fui::Rect{static_cast<int16_t>(progressRow.x + progressRow.width / 2), progressRow.y,
                         static_cast<int16_t>(progressRow.width - progressRow.width / 2), progressRow.height},
               tr(STR_RICKY_HOME_RESUME), true);
-  screen.frame().hit(row, OPEN_BOOK, start, fui::InputTouch);
+  screen.frame().hit(row, OPEN_BOOK, 0, fui::InputTouch);
 
   // Today's reading belongs to the current book, then a hairline closes the block.
   const auto stats = screen.takeTop(smallHeight + gap, section);
@@ -382,16 +392,19 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
               fui::Paint::solid(fui::Color::Black));
   screen.frame().hit(stats, OPEN_BOOK, STATISTICS, fui::InputTouch);
 
-  // Recently opened: two covers, real artwork when the book has it.
+  // Recently opened: a paged strip of three smaller covers. Independent of
+  // the pinned card above -- swiping here only moves `recentStart`.
   auto recent = screen.takeTop(smallHeight, gap);
   auto all = recent;
   all.width = recent.width / 3;
   all.x = recent.right() - all.width;
   recent.width -= all.width + gap;
-  const int pages = (books->size() + RickyHomeLayout::PAGE_BOOKS - 1) / RickyHomeLayout::PAGE_BOOKS;
+  const int recentCount = std::max(0, static_cast<int>(books->size()) - 1);
+  const int pages = std::max(1, (recentCount + RickyHomeLayout::PAGE_BOOKS - 1) / RickyHomeLayout::PAGE_BOOKS);
   if (pages > 1) {
     char pageText[16];
-    snprintf(pageText, sizeof(pageText), "%d / %d", start / RickyHomeLayout::PAGE_BOOKS + 1, pages);
+    snprintf(pageText, sizeof(pageText), "%d / %d",
+             std::clamp((recentStart - 1) / RickyHomeLayout::PAGE_BOOKS + 1, 1, pages), pages);
     auto page = recent;
     page.width = smallHeight * 3;
     page.x = recent.right() - page.width;
@@ -402,22 +415,28 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   rightAction(all, tr(STR_RICKY_HOME_ALL_BOOKS), true);
   screen.frame().hit(all, OPEN_BOOK, LIBRARY, fui::InputTouch);
   const auto body = screen.body();
-  const int count = std::min<int>(2, books->size() - start - 1);
-  const int column = gap * 2;
-  const int width = (body.width - column) / 2;
+  const int count = std::min<int>(RickyHomeLayout::PAGE_BOOKS, recentCount - (recentStart - 1));
+  const int columns = RickyHomeLayout::PAGE_BOOKS;
+  const int column = gap;
+  const int width = (body.width - column * (columns - 1)) / columns;
+  // Smaller thumbnails: about half the pinned cover's height, leaving room for
+  // three across and keeping the primary card visually dominant.
+  const int thumbHeight = std::max(smallHeight * 2, coverHeight / 2);
+  const int thumbWidth = std::min<int>(width, thumbHeight * 3 / 4);
   auto centeredTitle = strong;
   centeredTitle.align = fui::TextAlign::Center;
   auto centeredSmall = small;
   centeredSmall.align = fui::TextAlign::Center;
   for (int i = 0; i < count; ++i) {
-    const int index = start + i + 1;
+    const int index = recentStart + i;
+    if (index <= 0 || index >= static_cast<int>(books->size())) break;
     const auto& item = (*books)[index];
     const fui::Rect cell{static_cast<int16_t>(body.x + i * (width + column)), body.y, static_cast<int16_t>(width),
-                         static_cast<int16_t>(coverHeight + labels)};
-    const fui::Rect thumb{static_cast<int16_t>(cell.x + (width - cover.width) / 2), cell.y, cover.width,
-                          static_cast<int16_t>(coverHeight)};
+                         static_cast<int16_t>(thumbHeight + labels)};
+    const fui::Rect thumb{static_cast<int16_t>(cell.x + (width - thumbWidth) / 2), cell.y,
+                          static_cast<int16_t>(thumbWidth), static_cast<int16_t>(thumbHeight)};
     paint(thumb, index);
-    if (showSelection && selected == index) target.stroke(thumb, fui::Paint::solid(fui::Color::Black), 3);
+    if (showSelection && selected == index) target.stroke(thumb, fui::Paint::solid(fui::Color::Black), 2, 4);
     auto label =
         fui::Rect{cell.x, static_cast<int16_t>(thumb.bottom() + gap), cell.width, static_cast<int16_t>(smallHeight)};
     target.text(label, titleOf(item), centeredTitle);

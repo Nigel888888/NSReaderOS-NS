@@ -53,6 +53,7 @@ class InxRecentActivity final : public Activity {
   size_t cachedCoverBytes = 0;
 #endif
   int selected = 0;
+  int recentStart = 1;  // first book in the paged "recently opened" strip (books[0] is pinned)
   int thumbnailHeight = 0;
 #ifdef RICKYOS_PRODUCT
   std::unique_ptr<RickyHomeUi> rickyHome;

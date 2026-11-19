@@ -311,26 +311,13 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
 
 #endif
 
-  // Interface text scale (Settings > Reader > Interface text size). Medium is
-  // zero so the calibrated sizes are unchanged; the user can step the whole UI
-  // up or down a couple of point sizes on the dense Read Pico panel. A family
-  // that does not ship the requested size falls back to the built-in face at
-  // its original size, so an over-large choice degrades safely.
-  int scaleDelta = 0;
-  switch (SETTINGS.uiFontScale) {
-    case CrossPointSettings::UI_FONT_SCALE_SMALL:
-      scaleDelta = -2;
-      break;
-    case CrossPointSettings::UI_FONT_SCALE_LARGE:
-      scaleDelta = 2;
-      break;
-    case CrossPointSettings::UI_FONT_SCALE_XLARGE:
-      scaleDelta = 4;
-      break;
-    case CrossPointSettings::UI_FONT_SCALE_MEDIUM:
-    default:
-      break;
-  }
+  // System font size (Settings > System > System font size), as a percentage
+  // of the calibrated point sizes (100%-160%, step 10). 100 keeps the shipped
+  // sizes unchanged; the panel is scaled proportionally. A family that does
+  // not ship the requested size falls back to the built-in face at its original
+  // size, so an over-large choice degrades safely.
+  const int scalePercent = std::clamp<int>(SETTINGS.uiFontScale, CrossPointSettings::UI_FONT_SCALE_MIN,
+                                           CrossPointSettings::UI_FONT_SCALE_MAX);
 
   for (size_t i = 0; i < std::size(kUiFontSizes); ++i) {
     const auto& ui = kUiFontSizes[i];
@@ -339,7 +326,9 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
 #else
     const int base = ui.pointSize;
 #endif
-    const int adjusted = std::max(8, std::min(24, base + scaleDelta));
+    // Round to nearest point so 110% of 14 -> 15, 130% of 12 -> 16, etc.
+    const int scaled = (base * scalePercent + 50) / 100;
+    const int adjusted = std::max(8, std::min(28, scaled));
     const uint8_t pointSize = static_cast<uint8_t>(adjusted);
     const int exactId = manager_.loadFamilyExtraSize(*family, renderer, pointSize);
     if (exactId != 0) {

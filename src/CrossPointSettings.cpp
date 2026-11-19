@@ -401,6 +401,20 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     }
   }
 
+  // Legacy interface text scale: older firmware stored a 0..3 enum slot
+  // (SMALL/MEDIUM/LARGE/XLARGE) under "uiFontScale". Real percentages are
+  // >= 100, so a saved value <= 3 is unambiguously the old scale. The generic
+  // loop above clamps that up to the 100 minimum; fold it onto the percentage
+  // scale here and resave once. This runs after the loop so it wins.
+  if (doc["uiFontScale"].is<uint8_t>()) {
+    const uint8_t legacyScale = doc["uiFontScale"].as<uint8_t>();
+    if (legacyScale <= LEGACY_UI_FONT_SCALE_MAX) {
+      static constexpr uint8_t kLegacyToPercent[] = {100, 100, 130, 160};
+      uiFontScale = kLegacyToPercent[legacyScale];
+      needsResave = true;
+    }
+  }
+
   if ((doc["fakeBoldVersion"] | static_cast<uint8_t>(0)) < FAKE_BOLD_VERSION) {
     if (doc["fakeBold"].is<uint8_t>()) {
       const uint8_t legacyFakeBold = doc["fakeBold"].as<uint8_t>();

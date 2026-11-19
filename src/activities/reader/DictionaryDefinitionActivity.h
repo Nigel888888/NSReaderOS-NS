@@ -71,6 +71,8 @@ class DictionaryDefinitionActivity final : public Activity {
   // vocabulary notebook. Zero-width when there is no word list.
   Rect prevWordButtonRect() const;
   Rect nextWordButtonRect() const;
+  // Shared baseline for the bottom prev/next pager (CrossNext-style).
+  int wordNavY() const;
   void drawVocabularyButton() const;
   void drawWordNavigation() const;
   void addToVocabulary();

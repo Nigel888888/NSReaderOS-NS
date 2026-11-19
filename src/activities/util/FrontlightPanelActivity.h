@@ -43,8 +43,9 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
 #ifdef RICKYOS_PRODUCT
   // RickyOS: a clock header, a row of round actions that work anywhere, and a
   // reading row (orientation, clean-refresh interval) only over a book, so no
-  // control is shown where it has nothing to change.
-  enum class Tile : uint8_t { Night, Refresh, Standby, Transfer, Orientation, Clean };
+  // control is shown where it has nothing to change. Touch toggles the reader's
+  // touch controls; the panel's own gestures keep working while it is off.
+  enum class Tile : uint8_t { Touch, Refresh, Standby, Transfer, Orientation, Clean };
   struct RoundAction {
     Tile tile;
     const freeink::Icon* icon;

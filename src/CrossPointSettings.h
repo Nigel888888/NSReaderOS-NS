@@ -170,9 +170,17 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // slot; fromJson() folds that range up (see LEGACY_FONT_SIZE_MAX).
   static constexpr uint8_t LEGACY_FONT_SIZE_MAX = 3;
   static constexpr uint8_t DEFAULT_FONT_POINT_SIZE = UiHighDpiProfile::enabled ? 14 : 12;
-  // Interface text scale. Medium keeps the calibrated point sizes unchanged.
-  enum UI_FONT_SCALE { UI_FONT_SCALE_SMALL = 0, UI_FONT_SCALE_MEDIUM = 1, UI_FONT_SCALE_LARGE = 2,
-                       UI_FONT_SCALE_XLARGE = 3, UI_FONT_SCALE_COUNT = 4 };
+  // Interface (system) text scale, as a percentage of the calibrated point
+  // sizes. 100 keeps the shipped sizes unchanged; 160 enlarges them by 60%.
+  // Persisted under the legacy key "uiFontScale"; old 0..3 enum-slot values are
+  // migrated to percentages in fromJson().
+  static constexpr uint8_t UI_FONT_SCALE_MIN = 100;
+  static constexpr uint8_t UI_FONT_SCALE_MAX = 160;
+  static constexpr uint8_t UI_FONT_SCALE_STEP = 10;
+  static constexpr uint8_t UI_FONT_SCALE_DEFAULT = 100;
+  // Highest old enum slot; values <= this in a saved file are legacy, because
+  // every real percentage is >= 100.
+  static constexpr uint8_t LEGACY_UI_FONT_SCALE_MAX = 3;
   enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, EXTRA_WIDE = 3, LINE_COMPRESSION_COUNT };
   enum SYNTHETIC_BOLD {
     SYNTHETIC_BOLD_OFF = 0,
@@ -406,10 +414,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
   // available size (and persists the snap) whenever the family changes.
   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
-  // Interface (non-reader) text size. Offsets the UI font point sizes on the
-  // high-DPI Read Pico panel, where the fixed UI sizes read as too small.
-  // 0=small, 1=medium (default/no change), 2=large, 3=extra large.
-  uint8_t uiFontScale = UI_FONT_SCALE_MEDIUM;
+  // Interface (non-reader) text size, as a percentage (100..160, step 10) of
+  // the calibrated UI point sizes. Useful on the high-DPI Read Pico panel,
+  // where the fixed UI sizes read as too small.
+  uint8_t uiFontScale = UI_FONT_SCALE_DEFAULT;
   uint8_t lineSpacing = NORMAL;
   uint8_t paragraphAlignment = JUSTIFIED;
   // Auto-sleep timeout setting (default 10 minutes). Legacy sleepTimeout enum values are migration-only.

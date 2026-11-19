@@ -1253,6 +1253,12 @@ void SettingsActivity::toggleCurrentSetting() {
   if (changedValuePtr == &CrossPointSettings::uiTheme) {
     applyUiSettingChange(changedValuePtr);
   } else {
+    // Interface text scale changes the SD-card UI point sizes; re-assert the
+    // fallbacks under the render lock so the change is visible on this screen.
+    if (changedValuePtr == &CrossPointSettings::uiFontScale) {
+      RenderLock lock(*this);
+      sdFontSystem.ensureLoaded(renderer);
+    }
     rebuildSettingsLists();
 #ifdef RICKYOS_PRODUCT
     activeNav().selected = std::clamp(selectedSetting, 0, std::max(0, settingsCount - 1));
@@ -1435,6 +1441,12 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
       }
       char valueBuffer[32];
       snprintf(valueBuffer, sizeof(valueBuffer), tr(STR_SLEEP_TIMER_VALUE_FORMAT),
+               static_cast<unsigned int>(SETTINGS.*(setting.valuePtr)));
+      return valueBuffer;
+    }
+    if (setting.nameId == StrId::STR_UI_FONT_SCALE) {
+      char valueBuffer[32];
+      snprintf(valueBuffer, sizeof(valueBuffer), tr(STR_UI_FONT_SCALE_VALUE_FORMAT),
                static_cast<unsigned int>(SETTINGS.*(setting.valuePtr)));
       return valueBuffer;
     }
