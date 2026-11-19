@@ -284,8 +284,10 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyBannerFontSize"] = rickyBannerFontSize;
   doc["rickyNutstoreFolder"] = rickyNutstoreFolder;
   doc["rickyNutstoreAccount"] = rickyNutstoreAccount;
-  if (rickyNutstorePassword[0] != '\0')
-    doc["rickyNutstorePassword"] = obfuscation::obfuscateToBase64(rickyNutstorePassword);
+  // Always write the key so "clear account" really clears a previously stored
+  // app password instead of leaving the old obfuscated value behind.
+  doc["rickyNutstorePassword"] =
+      rickyNutstorePassword[0] ? obfuscation::obfuscateToBase64(rickyNutstorePassword) : String("");
   doc["rickyGestureBack"] = rickyGestureBack;
   doc["rickyGestureHome"] = rickyGestureHome;
   doc["rickyGestureControl"] = rickyGestureControl;

@@ -78,8 +78,8 @@ bool childNameFromHref(const std::string& href, const std::string& folder, std::
   const auto q = path.find_first_of("?#");
   if (q != std::string::npos) path.erase(q);
 
-  const std::string encFolder = urlEncode(folder, true);
-  std::string marker = "/" + encFolder;
+  // `folder` is already the URL-encoded collection path (see runList).
+  std::string marker = "/" + folder;
   const size_t pos = path.find(marker);
   if (pos == std::string::npos) return false;
   std::string rest = path.substr(pos + marker.size());
@@ -100,9 +100,11 @@ struct Parser {
   int depth = 0;
   int responseDepth = 0;
   bool inHref = false;
+  bool inSize = false;
   bool collection = false;
   std::string text;
   std::string href;
+  uint64_t size = 0;
   bool failed = false;
   bool truncated = false;
 };
@@ -125,12 +127,13 @@ void XMLCALL onStart(void* data, const char* name, const char** /*attrs*/) {
     p->responseDepth = p->depth;
     p->href.clear();
     p->collection = false;
+    p->size = 0;
   }
 }
 
 void XMLCALL onText(void* data, const char* value, int len) {
   auto* p = static_cast<Parser*>(data);
-  if (p->inHref && len > 0 && p->text.size() < 2048)
+  if ((p->inHref || p->inSize) && len > 0 && p->text.size() < 2048)
     p->text.append(value, static_cast<size_t>(len));
 }
 
@@ -144,14 +147,25 @@ void XMLCALL onEnd(void* data, const char* name) {
     p->href = p->text.substr(b, e - b);
     p->inHref = false;
   }
+  if (p->inSize && !std::strcmp(tag, "getcontentlength")) {
+    uint64_t value = 0;
+    for (char c : p->text) {
+      if (c < '0' || c > '9') continue;
+      if (value > (UINT64_MAX - static_cast<uint64_t>(c - '0')) / 10) break;
+      value = value * 10 + static_cast<uint64_t>(c - '0');
+    }
+    p->size = value;
+    p->inSize = false;
+  }
   if (!std::strcmp(tag, "response") && p->responseDepth == p->depth) {
     std::string childName;
     if (!p->href.empty() && childNameFromHref(p->href, p->folder, childName, p->collection)) {
       Entry entry;
       entry.name = childName;
-      entry.href = urlEncode(name, false);
+      entry.href = "/" + urlEncode(childName, false);
+      entry.bytes = p->size;
       entry.isDirectory = p->collection;
-      if (!entry.isDirectory && !supportedFile(name)) {
+      if (!entry.isDirectory && !supportedFile(childName)) {
         // skip unsupported files
       } else if (p->out->size() < MAX_ENTRIES) {
         p->out->push_back(std::move(entry));
@@ -172,6 +186,9 @@ void XMLCALL onStartFull(void* data, const char* name, const char** attrs) {
   const char* tag = localName(name);
   if (!std::strcmp(tag, "href")) {
     p->inHref = true;
+    p->text.clear();
+  } else if (!std::strcmp(tag, "getcontentlength")) {
+    p->inSize = true;
     p->text.clear();
   } else if (!std::strcmp(tag, "collection")) {
     p->collection = true;
@@ -235,6 +252,7 @@ Result runList(const std::string& folder, const std::string& account, const std:
   std::string base = folder;
   while (!base.empty() && base.front() == '/') base.erase(base.begin());
   while (!base.empty() && base.back() == '/') base.pop_back();
+  base = urlEncode(base, true);
   if (!subpath.empty()) {
     std::string sp = subpath;
     while (!sp.empty() && sp.back() == '/') sp.pop_back();
