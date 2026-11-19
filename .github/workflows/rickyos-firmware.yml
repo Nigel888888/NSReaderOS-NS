@@ -248,3 +248,95 @@ jobs:
             .pio/build/rickyos_readpico/firmware.factory.bin
             boot-components.txt
           if-no-files-found: error
+
+  # Publish every successful main-branch build as an immutable GitHub Release.
+  # CI artifacts expire after 90 days; Release assets are retained permanently.
+  # Tag is derived from the commit so each build has its own version, and a
+  # re-run clobbers the assets of an existing release instead of failing.
+  publish:
+    name: Publish firmware Release
+    needs: build-rickyos-readpico
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: rickyos-install
+          path: install
+
+      - name: Assemble release assets
+        run: |
+          set -euo pipefail
+          BUILD=install/.pio/build/rickyos_readpico
+          # Keep the bootloader/boot components from this same build only: the
+          # device refuses a mixed set, and the factory slot layout is exact.
+          test -f "$BUILD/firmware.bin"
+          cp "$BUILD/firmware.bin" firmware.bin
+          cp "$BUILD/bootloader.bin" bootloader.bin
+          cp "$BUILD/partitions.bin" partitions.bin
+          cp "$BUILD/boot_app0.bin" boot_app0.bin
+          cp "$BUILD/firmware.factory.bin" firmware.factory.bin
+          cp install/boot-components.txt boot-components.txt
+          sha256sum firmware.bin bootloader.bin partitions.bin \
+            boot_app0.bin firmware.factory.bin boot-components.txt > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Build release notes
+        env:
+          SHORT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          short="${SHORT_SHA::7}"
+          {
+            echo "## RickyOS for MindReset Read Pico — \`$short\`"
+            echo
+            echo "Automated build from commit \`$short\` (CI run #${RUN_NUMBER})."
+            echo "Firmware for the Read Pico (ESP32-S3, 16 MB flash)."
+            echo
+            echo "### Install"
+            echo
+            echo "- **App-only upgrade** (device already on this partition layout): write \`firmware.bin\` at \`0x10000\`. Books, vocabulary, quotes and settings are preserved."
+            echo "- **Full install** (factory layout): write \`bootloader.bin\` at \`0x0\`, \`partitions.bin\` at \`0x8000\`, \`boot_app0.bin\` at \`0xe000\`, \`firmware.bin\` at \`0x10000\`. Take a full 16 MB backup first."
+            echo
+            echo "All boot/application binaries come from the **same CI build** — do not mix with other releases."
+            echo
+            echo "### Verify"
+            echo
+            echo "\`SHA256SUMS\` lists the sha256 of every payload file:"
+            echo
+            echo '```'
+            echo 'sha256sum -c SHA256SUMS'
+            echo '```'
+            echo
+            echo "\`boot-components.txt\` is the CI-generated manifest with per-component sizes and hashes."
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Publish immutable Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHORT_SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          short="${SHORT_SHA::7}"
+          tag="rickyos-readpico-${short}"
+          title="RickyOS Read Pico ${short} #${RUN_NUMBER}"
+          assets=(firmware.bin bootloader.bin partitions.bin boot_app0.bin \
+                  firmware.factory.bin boot-components.txt SHA256SUMS)
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $tag exists; refreshing assets."
+            gh release upload "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
+              --title "$title" --notes-file release-notes.md --prerelease
+          else
+            echo "Creating Release $tag."
+            gh release create "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --title "$title" \
+              --notes-file release-notes.md --prerelease
+          fi
