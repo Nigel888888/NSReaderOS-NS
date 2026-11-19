@@ -10,14 +10,14 @@ class RickyHomePhraseActivity final : public UiListActivity {
       : UiListActivity("RickyHomePhrase", renderer, input) {}
 
  protected:
-  int listCount() const override { return 2; }
+  int listCount() const override { return 4; }
   const char* headerTitle() const override;
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   bool handleCustomInput() override;
 
  private:
-  std::array<freeink::ui::ListItem, 2> rows{};
+  std::array<freeink::ui::ListItem, 4> rows{};
   bool failed = false;
   bool waitForConfirmRelease = false;
 };

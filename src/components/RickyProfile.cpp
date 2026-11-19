@@ -47,6 +47,89 @@ bool setHomePhrase(const std::string& text) {
   return false;
 }
 
+// ---- Home banner (custom picture + large phrase, ifink-style) ----
+namespace {
+// The banner spans the content width and about a quarter of the portrait page;
+// 684x340 (logical) keeps a 2:1-ish band with bound memory on the 1-bit panel.
+constexpr int HOME_BANNER_WIDTH = 684;
+constexpr int HOME_BANNER_HEIGHT = 340;
+constexpr char BANNER_A[] = "/.crosspoint/ricky-banner-a.bmp";
+constexpr char BANNER_B[] = "/.crosspoint/ricky-banner-b.bmp";
+}  // namespace
+
+const char* homeBannerPath() { return SETTINGS.rickyHomeBannerPath; }
+
+bool setHomeBanner(const char* value) {
+  char previous[sizeof(SETTINGS.rickyHomeBannerPath)];
+  memcpy(previous, SETTINGS.rickyHomeBannerPath, sizeof(previous));
+  strncpy(SETTINGS.rickyHomeBannerPath, value ? value : "", sizeof(SETTINGS.rickyHomeBannerPath) - 1);
+  SETTINGS.rickyHomeBannerPath[sizeof(SETTINGS.rickyHomeBannerPath) - 1] = '\0';
+  if (SETTINGS.saveToFile()) return true;
+  memcpy(SETTINGS.rickyHomeBannerPath, previous, sizeof(previous));
+  return false;
+}
+
+bool importHomeBanner(const std::string& path) {
+  if (path.empty() || path.front() != '/' || path.size() > 512) return false;
+  const bool png = FsHelpers::hasPngExtension(path);
+  const bool jpg = FsHelpers::hasJpgExtension(path);
+  if (!png && !jpg && !FsHelpers::hasBmpExtension(path)) return false;
+  // Alternate private slots: a failed conversion never destroys the live banner.
+  const char* target = strcmp(SETTINGS.rickyHomeBannerPath, BANNER_A) == 0 ? BANNER_B : BANNER_A;
+  if (path == target) return false;
+  if (!Storage.ensureDirectoryExists("/.crosspoint")) return false;
+  bool ok = false;
+  {
+    HalFile input, output;
+    if (!Storage.openFileForRead("PROFILE", path, input) || input.isDirectory() || input.fileSize() == 0 ||
+        input.fileSize() > 16 * 1024 * 1024)
+      return false;
+    if (!png && !jpg) {
+      Bitmap bitmap(input);
+      if (!validAvatarBitmap(input, bitmap) || input.fileSize() > 4 * 1024 * 1024 || !input.seek(0)) return false;
+    }
+    if (!Storage.openFileForWrite("PROFILE", target, output)) return false;
+    if (png) {
+      ok = PngToBmpConverter::pngFileTo1BitBmpStreamWithSize(input, output, HOME_BANNER_WIDTH, HOME_BANNER_HEIGHT);
+    } else if (jpg) {
+      ok = JpegToBmpConverter::jpegFileTo1BitBmpStreamWithSize(input, output, HOME_BANNER_WIDTH, HOME_BANNER_HEIGHT);
+    } else {
+      uint8_t chunk[512];
+      size_t remaining = input.fileSize();
+      ok = true;
+      while (remaining) {
+        const size_t count = std::min(remaining, sizeof(chunk));
+        if (input.read(chunk, count) != static_cast<int>(count) || output.write(chunk, count) != count) {
+          ok = false;
+          break;
+        }
+        remaining -= count;
+      }
+    }
+    output.flush();
+  }
+  if (!ok) {
+    LOG_ERR("PROFILE", "home banner import failed");
+    return false;
+  }
+  {
+    HalFile file;
+    if (!Storage.openFileForRead("PROFILE", target, file)) return false;
+    Bitmap bitmap(file);
+    if (!validAvatarBitmap(file, bitmap)) return false;
+  }
+  return setHomeBanner(target);
+}
+
+bool drawHomeBanner(const GfxRenderer& renderer, const Rect& rect) {
+  if (rect.width <= 0 || rect.height <= 0 || !SETTINGS.rickyHomeBannerPath[0]) return false;
+  HalFile file;
+  if (!Storage.openFileForRead("PROFILE", SETTINGS.rickyHomeBannerPath, file)) return false;
+  Bitmap bitmap(file);
+  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
+  return renderer.drawBitmapCropToFill(bitmap, rect.x, rect.y, rect.width, rect.height);
+}
+
 namespace {
 constexpr char PRESET_PREFIX[] = "@avatar:";
 }  // namespace

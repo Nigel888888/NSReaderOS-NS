@@ -527,6 +527,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char rickyNickname[49] = "";
   char rickyAvatarPath[96] = "";
   char rickyHomePhrase[97] = "";  // Empty uses the localized default; at most 96 UTF-8 bytes.
+  // Home banner: an imported 1-bit BMP drawn behind the large home phrase.
+  char rickyHomeBannerPath[96] = "";  // Empty draws the quiet placeholder banner.
   // Settings -> System -> Gestures: the touch gestures that act everywhere. Swiping up
   // from the bottom to go Home is off by default: on this device it sat right on the
   // last lines of a page and on the tab bar, so readers left books by accident.

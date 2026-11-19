@@ -8,6 +8,12 @@ using UiScreen = UiAppHost::UiScreen;
 const char* nickname();
 const char* homePhrase();
 bool setHomePhrase(const std::string& text);
+// Home banner: a user-picked picture converted to a 1-bit BMP drawn behind the
+// large home phrase. Empty path draws the quiet generated placeholder.
+const char* homeBannerPath();
+bool setHomeBanner(const char* value);
+bool importHomeBanner(const std::string& path);
+bool drawHomeBanner(const GfxRenderer& renderer, const Rect& rect);
 void drawAvatar(const GfxRenderer& renderer, const Rect& rect);
 // The default avatar: the brand badge, framed by its own ring.
 void drawBrandAvatar(const GfxRenderer& renderer, const Rect& rect);

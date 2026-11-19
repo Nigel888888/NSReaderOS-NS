@@ -16,6 +16,7 @@
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #ifdef RICKYOS_PRODUCT
+#include "activities/settings/RickyHomePhraseActivity.h"
 #include "components/RickyHomeLayout.h"
 #endif
 #include "components/icons/cover.h"
@@ -399,6 +400,10 @@ void InxRecentActivity::loop() {
     }
     if (action == RickyHomeUi::STATISTICS) {
       activityManager.goToRickyReadingStats();
+      return;
+    }
+    if (action == RickyHomeUi::BANNER) {
+      startActivityForResultWith<RickyHomePhraseActivity>([this](const ActivityResult&) { requestUpdate(); });
       return;
     }
     if (books && action >= 0 && action < static_cast<int>(books->size())) {

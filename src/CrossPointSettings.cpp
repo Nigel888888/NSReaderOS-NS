@@ -278,6 +278,7 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyNickname"] = rickyNickname;
   doc["rickyAvatarPath"] = rickyAvatarPath;
   doc["rickyHomePhrase"] = rickyHomePhrase;
+  doc["rickyHomeBannerPath"] = rickyHomeBannerPath;
   doc["rickyGestureBack"] = rickyGestureBack;
   doc["rickyGestureHome"] = rickyGestureHome;
   doc["rickyGestureControl"] = rickyGestureControl;
@@ -518,6 +519,7 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   copyToField(rickyAvatarPath, doc["rickyAvatarPath"] | "", sizeof(rickyAvatarPath));
   copyToField(rickyHomePhrase, doc["rickyHomePhrase"] | "", sizeof(rickyHomePhrase));
   rickyHomePhrase[utf8SafeTruncateBuffer(rickyHomePhrase, strlen(rickyHomePhrase))] = '\0';
+  copyToField(rickyHomeBannerPath, doc["rickyHomeBannerPath"] | "", sizeof(rickyHomeBannerPath));
   // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
   rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
   rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
