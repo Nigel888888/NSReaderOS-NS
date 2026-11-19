@@ -8,6 +8,7 @@
 #include <cstdio>
 
 #include "MappedInputManager.h"
+#include "QuoteViewerActivity.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
@@ -223,67 +224,20 @@ void QuotesActivity::openQuote(int index) {
   if (quoteIndex < 0 || quoteIndex >= static_cast<int>(quotes.size())) {
     return;
   }
-  const auto& q = quotes[quoteIndex];
-  char meta[160];
-  if (q.page > 0) {
-    char page[40];
-    std::snprintf(page, sizeof(page), tr(STR_QUOTES_PAGE), q.page);
-    std::snprintf(meta, sizeof(meta), "%s - %s", q.book.c_str(), page);
-  } else {
-    std::snprintf(meta, sizeof(meta), "%s", q.book.c_str());
+  // Build the visible quote list in row order so Prev/Next in the viewer
+  // follows the current tab and book drill-down, then find this row's place.
+  std::vector<QuotesFile::Quote> visible;
+  visible.reserve(rows.size());
+  int viewerIndex = 0;
+  for (int i = 0; i < static_cast<int>(rows.size()); ++i) {
+    if (rows[i].kind != RowKind::Quote) continue;
+    const auto& q = quotes[rows[i].index];
+    if (i == index) viewerIndex = static_cast<int>(visible.size());
+    visible.push_back(q);
   }
-  const char* options[] = {tr(STR_QUOTES_FAVORITE), tr(STR_QUOTES_DELETE), tr(STR_QUOTES_BACK)};
-  // The dialog remembers which row it describes via `selected`; reuse the
-  // book filter slot is wrong, so store the index in a dedicated member.
-  activeQuoteIndex = index;
-  // The sentence is the body (6 wrapped lines), the source is the title.
-  const char* favLabel = q.favorite ? tr(STR_QUOTES_UNFAVORITE) : tr(STR_QUOTES_FAVORITE);
-  options[0] = favLabel;
-  dialog.showMessage(meta, q.sentence.c_str(), options, 3, 0, [this](int choice) {
-    const int idx = activeQuoteIndex;
-    activeQuoteIndex = -1;
-    if (choice == 0) {
-      toggleFavorite(idx);
-    } else if (choice == 1) {
-      confirmDelete(idx);
-    }
-    requestUpdate();
-  });
-  requestUpdate();
-}
-
-void QuotesActivity::toggleFavorite(int index) {
-  if (index < 0 || index >= static_cast<int>(rows.size())) {
-    return;
-  }
-  const Row& row = rows[index];
-  if (row.kind != RowKind::Quote || !QuotesFile::setFavorite(row.key, !row.favorite)) {
-    LOG_ERR("QUOTES", "Could not update favorite");
-    return;
-  }
-  reload();
-}
-
-void QuotesActivity::confirmDelete(int index) {
-  if (index < 0 || index >= static_cast<int>(rows.size())) {
-    return;
-  }
-  const Row& row = rows[index];
-  if (row.kind != RowKind::Quote) {
-    return;
-  }
-  const char* options[] = {tr(STR_CANCEL), tr(STR_DELETE)};
-  dialog.show(tr(STR_QUOTES_DELETE), tr(STR_QUOTES_DELETE_CONFIRM), options, 2, 0, [this, key = row.key](int choice) {
-    if (choice == 1) {
-      if (QuotesFile::remove(key)) {
-        reload();
-      } else {
-        LOG_ERR("QUOTES", "Could not delete quote");
-      }
-    }
-    requestUpdate();
-  });
-  requestUpdate();
+  app.clearTapFlash();
+  startActivityForResultWith<QuoteViewerActivity>([this](const ActivityResult&) { reload(); }, std::move(visible),
+                                                  viewerIndex);
 }
 
 bool QuotesActivity::handleCustomInput() {

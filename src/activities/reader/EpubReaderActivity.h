@@ -250,7 +250,7 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string moreRowValue(int row) const;
   void activateMoreRow(int row);
   void openFootnoteSelect(bool reopenMenuOnCancel);
-  void openDictionaryWordSelect();
+  void openDictionaryWordSelect(int preselectX = -1, int preselectY = -1);
   bool launchKOReaderSync();
 #ifdef ENABLE_CHINESE_VERSION
   bool launchWeReadSync();

@@ -34,21 +34,40 @@ constexpr int SIDE_PADDING = 20;
 constexpr size_t MAX_STYLED_HTML_BYTES = 16 * 1024;
 
 // The "add to vocabulary" button band at the bottom of the body, and the gap
-// that separates it from the text above.
-constexpr int VOCABULARY_BUTTON_HEIGHT = 46;
-constexpr int VOCABULARY_BUTTON_GAP = 10;
+// that separates it from the text above. Bigger than the old 46 px so it is
+// easy to find and to hit on the high-DPI Read Pico panel.
+constexpr int VOCABULARY_BUTTON_HEIGHT = 64;
+constexpr int VOCABULARY_BUTTON_GAP = 12;
 
 // Widest the vocabulary button grows; beyond this it would float in the
 // middle of a wide screen instead of reading as an action.
-constexpr int VOCABULARY_BUTTON_MAX_WIDTH = 360;
+constexpr int VOCABULARY_BUTTON_MAX_WIDTH = 560;
 
 // How long the result of an add stays on the button.
 constexpr unsigned long VOCABULARY_MESSAGE_MS = 2500;
+
+// Prev/next-word buttons shown under the header while browsing the vocabulary
+// notebook. Sized as full touch targets, not tiny glyphs.
+constexpr int WORD_NAV_HEIGHT = 48;
+constexpr int WORD_NAV_WIDTH = 130;
+constexpr int WORD_NAV_GAP = 12;
+constexpr int WORD_NAV_TOP = 8;
 
 }  // namespace
 
 void DictionaryDefinitionActivity::onEnter() {
   Activity::onEnter();
+  layoutCurrentWord();
+  requestUpdate();
+}
+
+// Lays out whatever word/text is currently held. Shared by onEnter() and
+// showWordAt() so navigating to another saved word reuses the same pipeline.
+void DictionaryDefinitionActivity::layoutCurrentWord() {
+  pages.clear();
+  lines.clear();
+  currentPage = 0;
+  totalPages = 1;
   wordSaved = VocabularyFile::contains(headword);
   // Normalize StarDict multi-type separators so the wrap loop and the
   // C-string font APIs below both see the whole definition.
@@ -64,7 +83,6 @@ void DictionaryDefinitionActivity::onEnter() {
     wrapText();
   }
   plainDefinition = std::move(plain);
-  requestUpdate();
 }
 
 void DictionaryDefinitionActivity::onExit() {
@@ -83,10 +101,11 @@ DictionaryDefinitionActivity::BodyArea DictionaryDefinitionActivity::bodyArea() 
   const int hintGutterWidth = isLandscape ? metrics.sideButtonHintsWidth : 0;
   const int topArea = (isInverted ? metrics.buttonHintsHeight : 0) + metrics.topPadding + metrics.headerHeight;
   const int bottomArea = metrics.buttonHintsHeight + metrics.verticalSpacing;
-  // The vocabulary button owns the bottom of the body band; the text above it
-  // gets whatever is left.
-  const int bodyHeight =
-      renderer.getScreenHeight() - topArea - bottomArea - VOCABULARY_BUTTON_HEIGHT - VOCABULARY_BUTTON_GAP;
+  // The vocabulary button owns the bottom of the body band; when browsing the
+  // notebook the prev/next-word row also takes a strip under the header.
+  const int navReserve = hasWordNavigation() ? (WORD_NAV_TOP + WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
+  const int bodyHeight = renderer.getScreenHeight() - topArea - bottomArea - navReserve - VOCABULARY_BUTTON_HEIGHT -
+                         VOCABULARY_BUTTON_GAP;
   return {renderer.getScreenWidth() - hintGutterWidth - 2 * SIDE_PADDING, bodyHeight};
 }
 
@@ -108,7 +127,8 @@ Rect DictionaryDefinitionActivity::vocabularyButtonRect() const {
   const int contentWidth = renderer.getScreenWidth() - hintGutterWidth;
   const int contentY = isInverted ? metrics.buttonHintsHeight : 0;
   const int bodyTop = contentY + metrics.topPadding + metrics.headerHeight;
-  const int buttonY = bodyTop + bodyArea().height + VOCABULARY_BUTTON_GAP;
+  const int navReserve = hasWordNavigation() ? (WORD_NAV_TOP + WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
+  const int buttonY = bodyTop + navReserve + bodyArea().height + VOCABULARY_BUTTON_GAP;
   int buttonWidth = contentWidth - 2 * SIDE_PADDING;
   if (buttonWidth > VOCABULARY_BUTTON_MAX_WIDTH) {
     buttonWidth = VOCABULARY_BUTTON_MAX_WIDTH;
@@ -124,10 +144,80 @@ Rect DictionaryDefinitionActivity::vocabularyButtonRect() const {
 
 Rect DictionaryDefinitionActivity::quoteButtonRect() const {
   const Rect vocab = vocabularyButtonRect();
-  const bool split = !sentence.empty();
+  const bool split = showQuoteButton && !sentence.empty();
   const int width = split ? vocab.width : 0;
   const int x = split ? vocab.x + vocab.width + ACTION_BUTTON_GAP : 0;
   return Rect{x, vocab.y, width, VOCABULARY_BUTTON_HEIGHT};
+}
+
+Rect DictionaryDefinitionActivity::prevWordButtonRect() const {
+  if (!hasWordNavigation()) return Rect{0, 0, 0, 0};
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const bool isInverted = renderer.getOrientation() == GfxRenderer::Orientation::PortraitInverted;
+  const int contentY = isInverted ? metrics.buttonHintsHeight : 0;
+  const int y = contentY + metrics.topPadding + metrics.headerHeight + WORD_NAV_TOP;
+  return Rect{SIDE_PADDING, y, WORD_NAV_WIDTH, WORD_NAV_HEIGHT};
+}
+
+Rect DictionaryDefinitionActivity::nextWordButtonRect() const {
+  if (!hasWordNavigation()) return Rect{0, 0, 0, 0};
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const auto orientation = renderer.getOrientation();
+  const bool isLandscapeCw = orientation == GfxRenderer::Orientation::LandscapeClockwise;
+  const bool isLandscapeCcw = orientation == GfxRenderer::Orientation::LandscapeCounterClockwise;
+  const bool isInverted = orientation == GfxRenderer::Orientation::PortraitInverted;
+  const int hintGutterWidth = (isLandscapeCw || isLandscapeCcw) ? metrics.sideButtonHintsWidth : 0;
+  const int contentWidth = renderer.getScreenWidth() - hintGutterWidth;
+  const int contentY = isInverted ? metrics.buttonHintsHeight : 0;
+  const int y = contentY + metrics.topPadding + metrics.headerHeight + WORD_NAV_TOP;
+  return Rect{contentWidth - SIDE_PADDING - WORD_NAV_WIDTH, y, WORD_NAV_WIDTH, WORD_NAV_HEIGHT};
+}
+
+// Draws the prev/next-word row and the "index / total" counter between them.
+// Only shown while browsing the vocabulary notebook; a plain reader lookup
+// has no word list and draws nothing here.
+void DictionaryDefinitionActivity::drawWordNavigation() const {
+  if (!hasWordNavigation()) return;
+  const Rect prev = prevWordButtonRect();
+  const Rect next = nextWordButtonRect();
+  const int total = static_cast<int>(navWords.size());
+
+  char prevLabel[48];
+  std::snprintf(prevLabel, sizeof(prevLabel), "< %s", tr(STR_VOC_PREV_WORD));
+  GUI.drawActionButton(renderer, prev, prevLabel, navIndex > 0);
+  char nextLabel[48];
+  std::snprintf(nextLabel, sizeof(nextLabel), "%s >", tr(STR_VOC_NEXT_WORD));
+  GUI.drawActionButton(renderer, next, nextLabel, navIndex + 1 < total);
+
+  char counter[24];
+  std::snprintf(counter, sizeof(counter), "%d / %d", navIndex + 1, total);
+  const int counterWidth = renderer.getTextWidth(UI_10_FONT_ID, counter);
+  const int counterX = (prev.x + prev.width + next.x - counterWidth) / 2;
+  const int counterY = prev.y + (WORD_NAV_HEIGHT - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
+  renderer.drawText(UI_10_FONT_ID, counterX, counterY, counter);
+}
+
+// Loads the saved word at `index` from disk and re-lays the card out, so the
+// reader can step through the whole notebook without returning to the list.
+void DictionaryDefinitionActivity::showWordAt(int index) {
+  if (!hasWordNavigation() || index < 0 || index >= static_cast<int>(navWords.size())) {
+    return;
+  }
+  navIndex = index;
+  headword = navWords[index];
+  std::string loadedSentence;
+  std::string loadedDefinition;
+  if (VocabularyFile::loadText(headword, loadedSentence, loadedDefinition)) {
+    sentence = std::move(loadedSentence);
+    definition = std::move(loadedDefinition);
+  } else {
+    // Long text missing: still show the headword with an empty definition.
+    sentence.clear();
+    definition.clear();
+  }
+  book.clear();
+  layoutCurrentWord();
+  requestUpdate();
 }
 
 // Styled path: lay the HTML definition out through the EPUB chapter parser
@@ -291,6 +381,18 @@ void DictionaryDefinitionActivity::loop() {
       saveAsQuote();
       return;
     }
+    // The prev/next-word row (vocabulary browsing only) takes taps before the
+    // generic left/right page-turn zones.
+    const Rect prev = prevWordButtonRect();
+    if (prev.width > 0 && tx >= prev.x && tx < prev.x + prev.width && ty >= prev.y && ty < prev.y + prev.height) {
+      if (navIndex > 0) showWordAt(navIndex - 1);
+      return;
+    }
+    const Rect next = nextWordButtonRect();
+    if (next.width > 0 && tx >= next.x && tx < next.x + next.width && ty >= next.y && ty < next.y + next.height) {
+      if (navIndex + 1 < static_cast<int>(navWords.size())) showWordAt(navIndex + 1);
+      return;
+    }
     if (tx < renderer.getScreenWidth() / 3) {
       if (currentPage > 0) {
         currentPage--;
@@ -300,6 +402,18 @@ void DictionaryDefinitionActivity::loop() {
       currentPage++;
       requestUpdate();
     }
+    return;
+  }
+
+  // While browsing the notebook the physical Prev/Next buttons step through
+  // the saved words; for a reader lookup they page through the definition.
+  if (hasWordNavigation()) {
+    buttonNavigator.onNext([this] {
+      if (navIndex + 1 < static_cast<int>(navWords.size())) showWordAt(navIndex + 1);
+    });
+    buttonNavigator.onPrevious([this] {
+      if (navIndex > 0) showWordAt(navIndex - 1);
+    });
     return;
   }
 
@@ -450,11 +564,15 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
     renderer.drawText(UI_10_FONT_ID, contentX + contentWidth - SIDE_PADDING - counterWidth, headerY, counter);
   }
 
+  // The prev/next-word row sits just under the header and pushes the body down.
+  drawWordNavigation();
+  const int navReserve = hasWordNavigation() ? (WORD_NAV_TOP + WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
+
   // Body: two-pass draw inside a prewarm scope (same pattern as the reader's
   // renderContents) so SD-card font glyphs load from SD in one batch instead
   // of one on-demand overflow read per character on every page turn.
   const int fontId = SETTINGS.getReaderFontId();
-  const int bodyStartY = contentY + metrics.topPadding + metrics.headerHeight;
+  const int bodyStartY = contentY + metrics.topPadding + metrics.headerHeight + navReserve;
   auto* fcm = renderer.getFontCacheManager();
   auto scope = fcm->createPrewarmScope();
   drawBody(fontId, contentX + SIDE_PADDING, bodyStartY);  // scan pass: records codepoints only

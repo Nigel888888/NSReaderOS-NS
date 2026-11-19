@@ -170,6 +170,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // slot; fromJson() folds that range up (see LEGACY_FONT_SIZE_MAX).
   static constexpr uint8_t LEGACY_FONT_SIZE_MAX = 3;
   static constexpr uint8_t DEFAULT_FONT_POINT_SIZE = UiHighDpiProfile::enabled ? 14 : 12;
+  // Interface text scale. Medium keeps the calibrated point sizes unchanged.
+  enum UI_FONT_SCALE { UI_FONT_SCALE_SMALL = 0, UI_FONT_SCALE_MEDIUM = 1, UI_FONT_SCALE_LARGE = 2,
+                       UI_FONT_SCALE_XLARGE = 3, UI_FONT_SCALE_COUNT = 4 };
   enum LINE_COMPRESSION { TIGHT = 0, NORMAL = 1, WIDE = 2, EXTRA_WIDE = 3, LINE_COMPRESSION_COUNT };
   enum SYNTHETIC_BOLD {
     SYNTHETIC_BOLD_OFF = 0,
@@ -403,6 +406,10 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // are selectable; SdCardFontSystem::ensureLoaded() snaps this to the nearest
   // available size (and persists the snap) whenever the family changes.
   uint8_t fontPointSize = DEFAULT_FONT_POINT_SIZE;
+  // Interface (non-reader) text size. Offsets the UI font point sizes on the
+  // high-DPI Read Pico panel, where the fixed UI sizes read as too small.
+  // 0=small, 1=medium (default/no change), 2=large, 3=extra large.
+  uint8_t uiFontScale = UI_FONT_SCALE_MEDIUM;
   uint8_t lineSpacing = NORMAL;
   uint8_t paragraphAlignment = JUSTIFIED;
   // Auto-sleep timeout setting (default 10 minutes). Legacy sleepTimeout enum values are migration-only.

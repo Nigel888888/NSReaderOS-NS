@@ -25,8 +25,10 @@ constexpr int kRatingCount = 4;
 constexpr int kRatingRows = 2;
 constexpr int kRatingCols = 2;
 constexpr int kCardSideMargin = 14;
-constexpr int kCardGap = 8;
-constexpr int kCardHeight = 72;
+// Finger-sized rating cards for the high-DPI Read Pico panel: the old 72 px
+// rows with 8 px gaps were cramped. Two 92 px rows + a 14 px gap = 198 px.
+constexpr int kCardGap = 14;
+constexpr int kCardHeight = 92;
 
 // The label of one rating button.
 const char* ratingLabel(const int index) {

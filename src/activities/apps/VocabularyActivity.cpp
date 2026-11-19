@@ -36,12 +36,13 @@ constexpr int STATS_ICON_PAD = 10;
 // Where the big number sits inside the card, and how much room the small
 // label keeps at the bottom.
 constexpr int STATS_CARD_NUMBER_TOP = 42;
-// The review button under the counters.
-constexpr int REVIEW_BUTTON_HEIGHT = 44;
-constexpr int REVIEW_BUTTON_GAP = 8;
+// The review button under the counters. Enlarged for the high-DPI Read Pico
+// panel: the old 44/40 px bars were hard to see and to hit.
+constexpr int REVIEW_BUTTON_HEIGHT = 64;
+constexpr int REVIEW_BUTTON_GAP = 12;
 // The Anki export button, beneath the review button.
-constexpr int EXPORT_BUTTON_HEIGHT = 40;
-constexpr int EXPORT_BUTTON_GAP = 8;
+constexpr int EXPORT_BUTTON_HEIGHT = 60;
+constexpr int EXPORT_BUTTON_GAP = 10;
 // How long the export result stays on the button.
 constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
 // The font the counters are drawn in.
@@ -116,8 +117,18 @@ void VocabularyActivity::activateIndex(const int index) {
   std::string sentence;
   std::string definition;
   VocabularyFile::loadText(entry.headword, sentence, definition);
-  startActivityForResultWith<DictionaryDefinitionActivity>([this](const ActivityResult&) { requestUpdate(); },
-                                                           entry.headword, definition, false, entry.book, sentence);
+  // Hand the card the whole ordered word list plus this position so Prev/Next
+  // can step through the notebook without returning here.
+  std::vector<std::string> navWords;
+  navWords.reserve(entries.size());
+  for (const auto& e : entries) {
+    navWords.push_back(e.headword);
+  }
+  // Re-reading a saved word: the sentence is already attached to the card, so
+  // do not offer the "save as quote" action here (it belongs to the reader).
+  startActivityForResultWith<DictionaryDefinitionActivity>(
+      [this](const ActivityResult&) { requestUpdate(); }, entry.headword, definition, false, entry.book, sentence,
+      /*showQuoteButton=*/false, std::move(navWords), index);
 }
 
 void VocabularyActivity::onRowLongPress(const int index) {

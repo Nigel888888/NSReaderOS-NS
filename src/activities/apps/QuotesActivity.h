@@ -45,12 +45,8 @@ class QuotesActivity final : public UiTabListActivity {
   void rebuildRows();
   // Re-reads the notebook from disk and rebuilds the visible rows.
   void reload();
-  // Shows a quote with its full text and Star/Delete actions.
+  // Opens the full-screen paged viewer on the quote at `index`.
   void openQuote(int index);
-  // Star/unstar the quote behind the open dialog.
-  void toggleFavorite(int index);
-  // Ask, then delete, the quote behind the open dialog.
-  void confirmDelete(int index);
 
   enum class RowKind : uint8_t { Quote, Book };
 
@@ -74,7 +70,5 @@ class QuotesActivity final : public UiTabListActivity {
   std::string filteredBook;
   // The count line drawn under the tab band.
   std::string countLine;
-  // Row the currently open quote dialog describes (-1 when none).
-  int activeQuoteIndex = -1;
   OptionPopup dialog{true};
 };

@@ -686,7 +686,7 @@ void EpubReaderActivity::showBuildPopup(GfxRenderer& renderer, int& pagesUntilFu
   buildPopupPending = false;
 }
 
-void EpubReaderActivity::openDictionaryWordSelect() {
+void EpubReaderActivity::openDictionaryWordSelect(const int preselectX, const int preselectY) {
   if (SETTINGS.dictionaryName[0] == '\0') {
     showDictionaryMessage = true;
     dictionaryMessageTime = millis();
@@ -708,7 +708,7 @@ void EpubReaderActivity::openDictionaryWordSelect() {
         READING_STATS.resumeSession();
         requestUpdate();
       },
-      std::move(page), orientedMarginLeft, orientedMarginTop, getBookTitle());
+      std::move(page), orientedMarginLeft, orientedMarginTop, getBookTitle(), preselectX, preselectY);
 }
 
 #ifdef ENABLE_CHINESE_VERSION
@@ -1003,6 +1003,19 @@ void EpubReaderActivity::loop() {
         return;
       default:
         break;
+    }
+  }
+
+  // A stationary long-press on the page selects the word under the finger
+  // directly (CrossNext-style), without a trip through the menu. It fires
+  // while the finger is still down and consumes the contact, so the release
+  // cannot also turn a page or open the menu.
+  if (!endOfBookMenuOpen && mappedInput.hasTouch()) {
+    int lpX = 0;
+    int lpY = 0;
+    if (mappedInput.wasScreenLongPress(lpX, lpY)) {
+      openDictionaryWordSelect(lpX, lpY);
+      return;
     }
   }
 

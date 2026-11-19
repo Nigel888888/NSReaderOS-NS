@@ -17,15 +17,22 @@
 // page renders spans of the original string, so no per-line copies are held.
 class DictionaryDefinitionActivity final : public Activity {
  public:
+  // `navWords` + `navIndex` are supplied by the vocabulary notebook so the
+  // card can page directly to the previous/next saved word. Empty when the
+  // card is opened from the reader (a single lookup).
   explicit DictionaryDefinitionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string headword,
                                         std::string definition, bool htmlDefinition = false, std::string book = "",
-                                        std::string sentence = "")
+                                        std::string sentence = "", bool showQuoteButton = true,
+                                        std::vector<std::string> navWords = {}, int navIndex = 0)
       : Activity("DictionaryDefinition", renderer, mappedInput),
         headword(std::move(headword)),
         definition(std::move(definition)),
         htmlDefinition(htmlDefinition),
         book(std::move(book)),
-        sentence(std::move(sentence)) {}
+        sentence(std::move(sentence)),
+        showQuoteButton(showQuoteButton),
+        navWords(std::move(navWords)),
+        navIndex(navIndex) {}
 
   void onEnter() override;
   void onExit() override;
@@ -47,6 +54,8 @@ class DictionaryDefinitionActivity final : public Activity {
   };
 
   BodyArea bodyArea() const;
+  // Lays out the current headword/definition (shared by entry and navigation).
+  void layoutCurrentWord();
   bool layoutHtmlPages();
   void wrapText();
   int measureSpan(int fontId, const char* text, size_t len) const;
@@ -58,25 +67,43 @@ class DictionaryDefinitionActivity final : public Activity {
   // Screen box of the "save as quote" button, beside the vocabulary one. Only
   // shown when the word came from a line of text.
   Rect quoteButtonRect() const;
+  // Screen boxes of the prev/next-word buttons shown when navigating the
+  // vocabulary notebook. Zero-width when there is no word list.
+  Rect prevWordButtonRect() const;
+  Rect nextWordButtonRect() const;
   void drawVocabularyButton() const;
+  void drawWordNavigation() const;
   void addToVocabulary();
   // Adds the word when unsaved, removes it when already saved.
   void toggleVocabulary();
   void saveAsQuote();
+  // Loads `navWords[navIndex]` from disk and re-lays the card out.
+  void showWordAt(int index);
+  // True while a word list is attached (not a plain reader lookup).
+  bool hasWordNavigation() const { return !navWords.empty(); }
   void expireVocabularyMessage();
   void expireQuoteMessage();
 
-  const std::string headword;
-  // Not const: onEnter() normalizes embedded NULs (StarDict multi-type
-  // separators) to newlines so C-string APIs see the whole text.
+  // Mutable because word navigation can swap in the next/previous saved word.
+  // onEnter() also normalizes embedded NULs (StarDict multi-type separators)
+  // to newlines so C-string APIs see the whole text.
+  std::string headword;
   std::string definition;
   const bool htmlDefinition;
   // Where the word was collected from (the book title). Empty when it did not
   // come from a book.
-  const std::string book;
-  // The line the word was picked from. It is the context the word is reviewed
-  // in later on; empty when the word did not come from a page of text.
-  const std::string sentence;
+  std::string book;
+  // The full sentence the word came from, used as its review context.
+  std::string sentence;
+  // The reader offers "save as quote" next to "add to vocabulary". The
+  // vocabulary notebook reuses this card to re-read a saved word, and there a
+  // quote action makes no sense -- the sentence is already attached to the
+  // saved word. Hide the quote button in that case.
+  const bool showQuoteButton;
+  // Vocabulary browsing: the ordered headwords and the current position.
+  // Empty for a plain reader lookup.
+  std::vector<std::string> navWords;
+  int navIndex = 0;
   // Plain-text copy of the definition, kept for the vocabulary notebook: the
   // styled path below consumes `definition` (the HTML source) and frees it.
   std::string plainDefinition;

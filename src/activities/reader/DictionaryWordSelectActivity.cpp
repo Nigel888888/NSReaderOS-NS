@@ -9,6 +9,7 @@
 #include <cctype>
 #include <climits>
 #include <cstdlib>
+#include <cstring>
 
 #include "CrossPointSettings.h"
 #include "DictionaryDefinitionActivity.h"
@@ -54,9 +55,19 @@ void DictionaryWordSelectActivity::onEnter() {
   // full-repaint path as the fallback.
   snapshot = makeUniqueNoThrow<uint8_t[]>(SNAPSHOT_CAPACITY);
   extractWords();
-  // Start on the middle row's word nearest mid-screen instead of top-left:
-  // any word on the page is then at most half a page of moves away.
-  if (!words.empty()) {
+  // A reader long-press carries the exact touch point: highlight the word
+  // under the finger so the tap that follows looks up what was pressed.
+  bool preselected = false;
+  if (preselectX >= 0 && preselectY >= 0 && !words.empty()) {
+    const int hit = wordAt(preselectX, preselectY);
+    if (hit >= 0) {
+      selected = hit;
+      preselected = true;
+    }
+  }
+  // Otherwise start on the middle row's word nearest mid-screen instead of
+  // top-left: any word is then at most half a page of moves away.
+  if (!preselected && !words.empty()) {
     const int initial = closestInRow(rowCount / 2, renderer.getScreenWidth() / 2);
     if (initial >= 0) selected = initial;
   }
@@ -74,7 +85,7 @@ void DictionaryWordSelectActivity::extractWords() {
   // afterwards: merging the page's codepoints into the SD font's persistent
   // advance table first keeps getTextAdvanceX on the in-RAM path instead of
   // loading glyphs from SD one overflow slot at a time.
-  std::string pageText;
+  pageText.clear();
   pageText.reserve(2048);
   uint8_t styleMask = 0;
 
@@ -93,6 +104,13 @@ void DictionaryWordSelectActivity::extractWords() {
     const int rubyShift = block->getRubyShift(ascender);
     for (uint16_t i = 0; i < block->wordCount(); i++) {
       const char* text = block->wordText(i);
+      // Every token goes into pageText in reading order, so a collected word
+      // can be reviewed inside its complete original sentence -- not just the
+      // words on either side of the EPUB layout row.
+      if (!pageText.empty()) pageText.push_back(' ');
+      const uint32_t tokenOffset = static_cast<uint32_t>(pageText.size());
+      pageText.append(text);
+
       if (!lineText.empty() && lineText.size() < ROW_TEXT_MAX) {
         lineText.push_back(' ');
       }
@@ -108,11 +126,10 @@ void DictionaryWordSelectActivity::extractWords() {
       box.width = 0;  // measured below, once the advance table is ready
       box.row = rowCount;
       box.text = text;
+      box.textOffset = tokenOffset;
       words.push_back(box);
       rowHasWords = true;
 
-      pageText.append(text);
-      pageText.push_back(' ');
       styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(box.style) & 0x03));
     }
     if (rowHasWords) {
@@ -135,6 +152,85 @@ const std::string& DictionaryWordSelectActivity::rowText(const uint16_t row) con
     return empty;
   }
   return rowTexts[row];
+}
+
+// Byte length of a sentence-ending mark starting at `pos`, or 0. Covers the
+// ASCII stops plus the common CJK full-width stops, all UTF-8 encoded.
+static size_t sentenceEndLength(const std::string& text, const size_t pos) {
+  if (pos >= text.size()) return 0;
+  const unsigned char c = static_cast<unsigned char>(text[pos]);
+  if (c == '.' || c == '!' || c == '?' || c == ';') return 1;
+  if (pos + 2 < text.size() && c == 0xE3 && static_cast<unsigned char>(text[pos + 1]) == 0x80 &&
+      static_cast<unsigned char>(text[pos + 2]) == 0x82) {
+    return 3;  // 。 U+3002
+  }
+  if (pos + 2 < text.size() && c == 0xEF && static_cast<unsigned char>(text[pos + 1]) == 0xBC) {
+    const unsigned char c2 = static_cast<unsigned char>(text[pos + 2]);
+    if (c2 == 0x81 || c2 == 0x9F || c2 == 0x89) return 3;  // ！ ？ ；
+  }
+  return 0;
+}
+
+std::string DictionaryWordSelectActivity::sentenceForWord(const int wordIndex) const {
+  if (wordIndex < 0 || wordIndex >= static_cast<int>(words.size())) {
+    return std::string();
+  }
+  if (pageText.empty()) return rowText(words[wordIndex].row);
+
+  const size_t wordStart = words[wordIndex].textOffset;
+  const size_t wordEndExclusive = wordStart + std::strlen(words[wordIndex].text);
+  if (wordStart >= pageText.size()) return rowText(words[wordIndex].row);
+
+  // Walk back to the first sentence boundary before the word. Test every
+  // byte position: sentenceEndLength() recognizes the lead byte of a
+  // multi-byte CJK mark, which is exactly the position a codepoint-boundary
+  // scan would skip.
+  size_t start = 0;
+  for (size_t i = wordStart; i > 0; --i) {
+    const size_t n = sentenceEndLength(pageText, i - 1);
+    if (n > 0) {
+      start = i - 1 + n;
+      break;
+    }
+  }
+  // Walk forward to the first sentence boundary after the word.
+  size_t end = pageText.size();
+  for (size_t i = wordEndExclusive; i < pageText.size(); ++i) {
+    if ((static_cast<unsigned char>(pageText[i]) & 0xC0) == 0x80) continue;
+    const size_t n = sentenceEndLength(pageText, i);
+    if (n > 0) {
+      end = i + n;
+      break;
+    }
+  }
+  if (end <= start || start >= pageText.size()) return rowText(words[wordIndex].row);
+
+  std::string sentence = pageText.substr(start, end - start);
+  // Collapse the spaces we inserted between tokens back to single spaces.
+  std::string flat;
+  flat.reserve(sentence.size());
+  bool pendingSpace = false;
+  for (const char ch : sentence) {
+    if (ch == ' ' || ch == '\t' || ch == '\n') {
+      pendingSpace = !flat.empty();
+      continue;
+    }
+    if (pendingSpace) {
+      flat.push_back(' ');
+      pendingSpace = false;
+    }
+    flat.push_back(ch);
+  }
+  // Keep within the storage cap, cutting on a UTF-8 boundary.
+  constexpr size_t kMaxSentenceBytes = 380;  // < VocabularyFile::MAX_SENTENCE_LENGTH (400)
+  if (flat.size() > kMaxSentenceBytes) {
+    size_t cut = kMaxSentenceBytes;
+    while (cut > 0 && (static_cast<unsigned char>(flat[cut]) & 0xC0) == 0x80) {
+      --cut;
+    }
+    flat = flat.substr(0, cut);
+  }
+  return flat;
 }
 
 // Index of the word whose box (with finger-sized slop) contains the touch
@@ -206,8 +302,9 @@ void DictionaryWordSelectActivity::performLookup() {
 
   if (found) {
     popup = Popup::None;
-    // The line the word was picked from becomes the context it is reviewed in.
-    const std::string context = rowText(words[selected].row);
+    // The complete source sentence the word came from becomes the context it
+    // is reviewed in -- not just the words on the EPUB layout row.
+    const std::string context = sentenceForWord(selected);
     startActivityForResultWith<DictionaryDefinitionActivity>([this](const ActivityResult&) { requestUpdate(); },
                                                              std::move(headword), std::move(definition),
                                                              dict.definitionsAreHtml(), bookTitle, context);

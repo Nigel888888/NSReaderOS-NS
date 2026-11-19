@@ -286,6 +286,12 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                             StrId::STR_CAT_DISPLAY),
 
         // --- Reader ---
+        // Interface text size: scales the non-reader UI fonts (Read Pico's
+        // high-DPI panel renders the fixed sizes too small).
+        SettingInfo::Enum(StrId::STR_UI_FONT_SCALE, &CrossPointSettings::uiFontScale,
+                          {StrId::STR_UI_FONT_SCALE_SMALL, StrId::STR_UI_FONT_SCALE_MEDIUM,
+                           StrId::STR_UI_FONT_SCALE_LARGE, StrId::STR_UI_FONT_SCALE_XLARGE},
+                          "uiFontScale", StrId::STR_CAT_READER),
         // Built-in font-family entry. Replaced per-call with a registry-aware
         // version when SD fonts are installed.
         SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,
