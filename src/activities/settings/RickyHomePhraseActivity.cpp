@@ -60,15 +60,15 @@ void RickyHomePhraseActivity::buildScreen(UiScreen& screen) {
   if (failed)
     screen.target().text(screen.takeTop(screen.target().lineHeight(hint.font), theme.spaceSm),
                          tr(STR_RICKY_PROFILE_FAILED), hint);
-  static constexpr StrId kSizeLabels[] = {STR_RICKY_BANNER_SIZE_12, STR_RICKY_BANNER_SIZE_14,
-                                           STR_RICKY_BANNER_SIZE_16};
+  static const char* const kSizeLabels[] = {tr(STR_RICKY_BANNER_SIZE_12), tr(STR_RICKY_BANNER_SIZE_14),
+                                            tr(STR_RICKY_BANNER_SIZE_16)};
   rows[0].label = tr(STR_RICKY_PHRASE_EDIT);
   rows[1].label = tr(STR_RICKY_BANNER_CHOOSE);
   rows[2].label = tr(STR_RICKY_BANNER_CLEAR);
   rows[3].label = tr(STR_RICKY_BANNER_FONT);
   rows[3].subtitle = SETTINGS.rickyBannerFont == 0 ? tr(STR_RICKY_BANNER_SANS) : tr(STR_RICKY_BANNER_SERIF);
   rows[4].label = tr(STR_RICKY_BANNER_SIZE);
-  rows[4].subtitle = tr(kSizeLabels[SETTINGS.rickyBannerFontSize < 3 ? SETTINGS.rickyBannerFontSize : 1]);
+  rows[4].subtitle = kSizeLabels[SETTINGS.rickyBannerFontSize < 3 ? SETTINGS.rickyBannerFontSize : 1];
   rows[5].label = tr(STR_RICKY_PHRASE_RESET);
   for (int i = 0; i < listCount(); ++i) rows[i].actionValue = i;
   fui::ListProps props;
