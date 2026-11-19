@@ -33,15 +33,13 @@ constexpr int SIDE_PADDING = 20;
 // path, which holds no per-page copies.
 constexpr size_t MAX_STYLED_HTML_BYTES = 16 * 1024;
 
-// The "add to vocabulary" button band at the bottom of the body, and the gap
-// that separates it from the text above. Bigger than the old 46 px so it is
-// easy to find and to hit on the high-DPI Read Pico panel.
-constexpr int VOCABULARY_BUTTON_HEIGHT = 64;
+// Gap between the word row and the framed definition card below it.
 constexpr int VOCABULARY_BUTTON_GAP = 12;
 
-// Widest the vocabulary button grows; beyond this it would float in the
-// middle of a wide screen instead of reading as an action.
-constexpr int VOCABULARY_BUTTON_MAX_WIDTH = 560;
+// In the word row the action sits as a compact, centered chip; the headword
+// is drawn to its left and the page counter to its right.
+constexpr int HEADER_ACTION_WIDTH = 176;
+constexpr int HEADER_ACTION_HEIGHT = 52;
 
 // How long the result of an add stays on the button.
 constexpr unsigned long VOCABULARY_MESSAGE_MS = 2500;
@@ -101,63 +99,61 @@ void DictionaryDefinitionActivity::onExit() {
   }
 }
 
+namespace {
+// Gap between the two action chips when both are shown.
+constexpr int ACTION_BUTTON_GAP = 10;
+}  // namespace
+
+int DictionaryDefinitionActivity::wordRowY() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const bool isInverted = renderer.getOrientation() == GfxRenderer::Orientation::PortraitInverted;
+  return (isInverted ? metrics.buttonHintsHeight : 0) + metrics.topPadding;
+}
+
+int DictionaryDefinitionActivity::wordRowHeight() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  // Tall enough to hold the centered action chip with a little air.
+  return std::max(metrics.headerHeight, HEADER_ACTION_HEIGHT + 8);
+}
+
 DictionaryDefinitionActivity::BodyArea DictionaryDefinitionActivity::bodyArea() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto orientation = renderer.getOrientation();
   const bool isLandscape = orientation == GfxRenderer::Orientation::LandscapeClockwise ||
                            orientation == GfxRenderer::Orientation::LandscapeCounterClockwise;
-  const bool isInverted = orientation == GfxRenderer::Orientation::PortraitInverted;
   const int hintGutterWidth = isLandscape ? metrics.sideButtonHintsWidth : 0;
-  const int topArea = (isInverted ? metrics.buttonHintsHeight : 0) + metrics.topPadding + metrics.headerHeight;
   const int bottomArea = metrics.buttonHintsHeight + metrics.verticalSpacing;
-  // CrossNext-style card: the save / un-favorite action owns a strip directly
-  // under the header (with a gap above and below it), the definition sits in
-  // the middle, and prev/next paging is anchored at the bottom. Both strips
-  // are reserved from the body height.
+  // The word row holds the headword, the centered save chip and the page
+  // counter; the framed definition sits below it and paging is anchored at
+  // the bottom. Only the bottom pager is reserved from the body height.
+  const int topArea = wordRowY() + wordRowHeight();
   const int navReserve = hasWordNavigation() ? (WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
-  const int actionReserve = 2 * VOCABULARY_BUTTON_GAP + VOCABULARY_BUTTON_HEIGHT;
-  const int bodyHeight = renderer.getScreenHeight() - topArea - bottomArea - navReserve - actionReserve;
+  const int bodyHeight = renderer.getScreenHeight() - topArea - bottomArea - navReserve - VOCABULARY_BUTTON_GAP;
   return {renderer.getScreenWidth() - hintGutterWidth - 2 * SIDE_PADDING, bodyHeight};
 }
 
-// Screen box of the "save / un-favorite" button: a CrossNext-style action
-// strip pinned directly under the header, above the definition.
-namespace {
-// Gap between the two action buttons in the strip under the header.
-constexpr int ACTION_BUTTON_GAP = 10;
-}  // namespace
-
+// The save / un-favorite chip is centered in the word row, between the
+// headword (left) and the page counter (right).
 Rect DictionaryDefinitionActivity::vocabularyButtonRect() const {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto orientation = renderer.getOrientation();
   const bool isLandscapeCw = orientation == GfxRenderer::Orientation::LandscapeClockwise;
   const bool isLandscapeCcw = orientation == GfxRenderer::Orientation::LandscapeCounterClockwise;
-  const bool isInverted = orientation == GfxRenderer::Orientation::PortraitInverted;
   const int hintGutterWidth = (isLandscapeCw || isLandscapeCcw) ? metrics.sideButtonHintsWidth : 0;
   const int contentX = isLandscapeCw ? hintGutterWidth : 0;
   const int contentWidth = renderer.getScreenWidth() - hintGutterWidth;
-  const int contentY = isInverted ? metrics.buttonHintsHeight : 0;
-  const int bodyTop = contentY + metrics.topPadding + metrics.headerHeight;
-  const int buttonY = bodyTop + VOCABULARY_BUTTON_GAP;
-  int buttonWidth = contentWidth - 2 * SIDE_PADDING;
-  if (buttonWidth > VOCABULARY_BUTTON_MAX_WIDTH) {
-    buttonWidth = VOCABULARY_BUTTON_MAX_WIDTH;
-  }
-  // When a line is available the row splits into two equal buttons; otherwise
-  // the vocabulary button keeps the whole width.
-  if (sentence.empty()) {
-    return Rect{contentX + (contentWidth - buttonWidth) / 2, buttonY, buttonWidth, VOCABULARY_BUTTON_HEIGHT};
-  }
-  const int half = (buttonWidth - ACTION_BUTTON_GAP) / 2;
-  return Rect{contentX + (contentWidth - buttonWidth) / 2, buttonY, half, VOCABULARY_BUTTON_HEIGHT};
+  const int chipY = wordRowY() + (wordRowHeight() - HEADER_ACTION_HEIGHT) / 2;
+  const bool split = showQuoteButton && !sentence.empty();
+  const int groupWidth = split ? 2 * HEADER_ACTION_WIDTH + ACTION_BUTTON_GAP : HEADER_ACTION_WIDTH;
+  const int groupX = contentX + (contentWidth - groupWidth) / 2;
+  return Rect{groupX, chipY, HEADER_ACTION_WIDTH, HEADER_ACTION_HEIGHT};
 }
 
 Rect DictionaryDefinitionActivity::quoteButtonRect() const {
   const Rect vocab = vocabularyButtonRect();
   const bool split = showQuoteButton && !sentence.empty();
-  const int width = split ? vocab.width : 0;
-  const int x = split ? vocab.x + vocab.width + ACTION_BUTTON_GAP : 0;
-  return Rect{x, vocab.y, width, VOCABULARY_BUTTON_HEIGHT};
+  if (!split) return Rect{0, 0, 0, 0};
+  return Rect{vocab.x + vocab.width + ACTION_BUTTON_GAP, vocab.y, vocab.width, vocab.height};
 }
 
 // Prev/next-word paging is anchored at the bottom of the card, above the key
@@ -192,12 +188,10 @@ void DictionaryDefinitionActivity::drawWordNavigation() const {
   const Rect next = nextWordButtonRect();
   const int total = static_cast<int>(navWords.size());
 
-  char prevLabel[48];
-  std::snprintf(prevLabel, sizeof(prevLabel), "< %s", tr(STR_VOC_PREV_WORD));
-  GUI.drawActionButton(renderer, prev, prevLabel, navIndex > 0);
-  char nextLabel[48];
-  std::snprintf(nextLabel, sizeof(nextLabel), "%s >", tr(STR_VOC_NEXT_WORD));
-  GUI.drawActionButton(renderer, next, nextLabel, navIndex + 1 < total);
+  // Just the arrows: the word labels ("previous/next word") made the pager
+  // noisy. The boxes keep their size and the counter still shows position.
+  GUI.drawActionButton(renderer, prev, "<", navIndex > 0);
+  GUI.drawActionButton(renderer, next, ">", navIndex + 1 < total);
 
   char counter[24];
   std::snprintf(counter, sizeof(counter), "%d / %d", navIndex + 1, total);
@@ -562,31 +556,36 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
   const int hintGutterWidth = (isLandscapeCw || isLandscapeCcw) ? metrics.sideButtonHintsWidth : 0;
   const int contentX = isLandscapeCw ? hintGutterWidth : 0;
   const int contentWidth = renderer.getScreenWidth() - hintGutterWidth;
-  const int contentY = isInverted ? metrics.buttonHintsHeight : 0;
-  const int bodyTop = contentY + metrics.topPadding + metrics.headerHeight;
+  const int rowTop = wordRowY();
+  const int rowHeight = wordRowHeight();
+  const int rowMid = rowTop + rowHeight / 2;
 
-  // Header: matched headword left, page counter right, hairline underneath --
-  // the CrossNext title-band treatment without inverting the whole screen.
-  const int headerY = contentY + metrics.topPadding + 10;
-  renderer.drawText(UI_12_FONT_ID, contentX + SIDE_PADDING, headerY, headword.c_str(), true, EpdFontFamily::BOLD);
+  // Word row: headword on the left, page counter on the right, and the
+  // save / un-favorite chip centered between them.
+  const Rect saveChip = vocabularyButtonRect();
+  const int headwordBaseline = rowMid - renderer.getLineHeight(UI_12_FONT_ID) / 2;
+  const int headwordRoom = saveChip.x - SIDE_PADDING - ACTION_BUTTON_GAP - (contentX + SIDE_PADDING);
+  const std::string headwordLabel = renderer.truncatedText(UI_12_FONT_ID, headword.c_str(),
+                                                           std::max(16, headwordRoom), EpdFontFamily::BOLD);
+  renderer.drawText(UI_12_FONT_ID, contentX + SIDE_PADDING, headwordBaseline, headwordLabel.c_str(), true,
+                    EpdFontFamily::BOLD);
   if (totalPages > 1) {
     char counter[16];
     snprintf(counter, sizeof(counter), "%d/%d", currentPage + 1, totalPages);
     const int counterWidth = renderer.getTextWidth(UI_10_FONT_ID, counter);
-    renderer.drawText(UI_10_FONT_ID, contentX + contentWidth - SIDE_PADDING - counterWidth, headerY, counter);
+    renderer.drawText(UI_10_FONT_ID, contentX + contentWidth - SIDE_PADDING - counterWidth,
+                      rowMid - renderer.getLineHeight(UI_10_FONT_ID) / 2, counter);
   }
-  drawHairline(renderer, contentX + CARD_INSET, bodyTop - 4, contentWidth - 2 * CARD_INSET);
-
-  // Top action strip: save / un-favorite (and save-quote) sit above the
-  // definition, directly under the header, per the user's layout request.
   drawVocabularyButton();
+  drawHairline(renderer, contentX + CARD_INSET, rowTop + rowHeight + VOCABULARY_BUTTON_GAP / 2 - 2,
+               contentWidth - 2 * CARD_INSET);
 
   // Body: a framed card holding the definition. Two-pass draw inside a
   // prewarm scope (same pattern as the reader's renderContents) so SD-card
   // font glyphs load from SD in one batch instead of one on-demand overflow
   // read per character on every page turn.
   const int fontId = SETTINGS.getReaderFontId();
-  const int bodyStartY = bodyTop + VOCABULARY_BUTTON_GAP + VOCABULARY_BUTTON_HEIGHT + VOCABULARY_BUTTON_GAP;
+  const int bodyStartY = rowTop + rowHeight + VOCABULARY_BUTTON_GAP;
   const BodyArea body = bodyArea();
   renderer.drawRoundedRect(contentX + SIDE_PADDING - CARD_INSET, bodyStartY - 6, body.width + 2 * CARD_INSET,
                            body.height + 12, 1, CARD_RADIUS, true);

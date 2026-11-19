@@ -73,6 +73,10 @@ class DictionaryDefinitionActivity final : public Activity {
   Rect nextWordButtonRect() const;
   // Shared baseline for the bottom prev/next pager (CrossNext-style).
   int wordNavY() const;
+  // The top band that holds the headword, the centered save action and the
+  // page counter. Shared by render() and the action-button rects.
+  int wordRowY() const;
+  int wordRowHeight() const;
   void drawVocabularyButton() const;
   void drawWordNavigation() const;
   void addToVocabulary();
