@@ -11,6 +11,7 @@
 #include "components/RickyPageUi.h"
 #include "components/RickyProfile.h"
 #include "components/UITheme.h"
+#include "fontIds.h"
 #include "util/RickyStorageLayout.h"
 
 const char* RickyHomePhraseActivity::headerTitle() const { return tr(STR_RICKY_PHRASE_TITLE); }
@@ -40,18 +41,24 @@ void RickyHomePhraseActivity::buildScreen(UiScreen& screen) {
                         static_cast<int16_t>(preview.right() - gap - panelX),
                         static_cast<int16_t>(preview.height - gap * 2)};
   screen.target().fill(panel, fui::Paint::solid(fui::Color::White), 4);
+  // TextStyle.font is a slot index, not a raw font id. Bind the selected real
+  // font to the LABEL slot, draw the preview, then restore the slot.
+  auto& uiTarget = screen.target();
+  auto* gfxTarget = static_cast<fui::GfxRendererTarget*>(&uiTarget);
+  const int bannerFontId = SETTINGS.rickyBannerFontId(SETTINGS.rickyBannerFont, SETTINGS.rickyBannerFontSize);
+  gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, bannerFontId);
   auto phrase = theme.titleText;
-  phrase.font = SETTINGS.rickyBannerFontId(SETTINGS.rickyBannerFont, SETTINGS.rickyBannerFontSize);
+  phrase.font = fui::GfxRendererTarget::FONT_LABEL;
   phrase.bold = true;
   phrase.align = fui::TextAlign::Center;
   phrase.maxLines = 4;
   {
     RickyPageUi::Bold bold(renderer, 2);
     RickyPageUi::wrappedText(
-        screen.target(),
-        fui::Rect{panel.x, panel.y, panel.width, static_cast<int16_t>(panel.height)}, RickyProfile::homePhrase(),
-        phrase);
+        uiTarget, fui::Rect{panel.x, panel.y, panel.width, static_cast<int16_t>(panel.height)},
+        RickyProfile::homePhrase(), phrase);
   }
+  gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
 
   auto hint = theme.smallText;
   hint.maxLines = 2;

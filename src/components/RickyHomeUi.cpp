@@ -15,6 +15,7 @@
 #include "RickyPageUi.h"
 #include "RickyProfile.h"
 #include "UITheme.h"
+#include "fontIds.h"
 #include "util/TimeUtils.h"
 
 namespace fui = freeink::ui;
@@ -253,7 +254,6 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const auto& theme = screen.theme();
   auto& target = screen.target();
   const int gap = std::max<int>(10, theme.spaceSm);
-  const int titleHeight = target.lineHeight(theme.titleText.font);
   const int smallHeight = target.lineHeight(theme.smallText.font);
   screen.insetContent(fui::Insets{static_cast<int16_t>(gap), 6, static_cast<int16_t>(gap), 6});
   // One CJK weight ships; synthetic bold (held for this whole page) supplies hierarchy.
@@ -273,19 +273,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const int totalHeight = screen.body().height;
   std::tm local{};
   const bool dated = halClock.localTime(local);
-  char clockText[24];
-  if (dated && !TimeUtils::formatCurrentTime(clockText, sizeof(clockText), SETTINGS.clockFormat == 1))
-    snprintf(clockText, sizeof(clockText), "%s", "--:--");
-  if (!dated) snprintf(clockText, sizeof(clockText), "%s", "--:--");
-  // ---- Status row: time only; no date / app name / battery. ----
-  const auto status = screen.takeTop(titleHeight, gap);
-  {
-    RickyPageUi::Bold clock(renderer, 2);
-    target.text(fui::Rect{status.x, status.y, static_cast<int16_t>(status.width),
-                          static_cast<int16_t>(titleHeight)},
-                clockText, heading);
-  }
-  screen.frame().hit(status, OPEN_BOOK, STATISTICS, fui::InputTouch);
+  // No status row: the top of the page starts directly with the banner.
+  // Statistics remain reachable from the reading-record calendar below.
 
   // ---- Banner: custom picture + configurable phrase (tap to configure). ----
   // The text panel shares the exact image bounds inset by one uniform margin,
@@ -306,18 +295,23 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
                         static_cast<int16_t>(banner.right() - bannerInset - panelX),
                         static_cast<int16_t>(banner.height - bannerInset * 2)};
   target.fill(panel, fui::Paint::solid(fui::Color::White), 4);
-  // Phrase typography comes from the persisted banner settings. We resolve the
-  // real font id directly (TextStyle has no size field) and let the renderer's
-  // CJK fallback cover the glyphs.
+  // Phrase typography comes from the persisted banner settings. TextStyle.font
+  // is a FONT SLOT (0..3), not a real GfxRenderer font id: writing a raw id here
+  // silently falls back to FONT_BODY, which is why the old picker changed
+  // nothing. Bind the chosen real font to the LABEL slot for this one draw,
+  // then restore the slot so the rest of the page keeps its normal chrome.
+  auto* gfxTarget = static_cast<fui::GfxRendererTarget*>(&target);
   const int bannerFontId = SETTINGS.rickyBannerFontId(SETTINGS.rickyBannerFont, SETTINGS.rickyBannerFontSize);
+  gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, bannerFontId);
   auto phraseStyle = heading;
-  phraseStyle.font = bannerFontId;
+  phraseStyle.font = fui::GfxRendererTarget::FONT_LABEL;
   phraseStyle.align = fui::TextAlign::Center;
   phraseStyle.maxLines = 4;
   {
     RickyPageUi::Bold quote(renderer, 2);
     RickyPageUi::wrappedText(target, panel, RickyProfile::homePhrase(), phraseStyle);
   }
+  gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
   target.fill(fui::Rect{banner.x, static_cast<int16_t>(banner.bottom() - 1), banner.width, 1}, black);
   screen.frame().hit(banner, OPEN_BOOK, BANNER, fui::InputTouch);
 
@@ -421,8 +415,13 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   screen.frame().hit(record, OPEN_BOOK, STATISTICS, fui::InputTouch);
 
   // ---- Footer: left "now reading" (books[0]) | right paged "recently read". ----
-  const auto footer = screen.body();
-  if (footer.height <= smallHeight * 2) return;
+  // The calendar's last row can sit visually tight against the section label.
+  // Add one full gap on top of takeTop()'s own gap before starting the footer.
+  const auto footerRect = screen.body();
+  const int footerGap = gap;
+  if (footerRect.height <= footerGap + smallHeight * 2) return;
+  const fui::Rect footer{footerRect.x, static_cast<int16_t>(footerRect.y + footerGap), footerRect.width,
+                         static_cast<int16_t>(footerRect.height - footerGap)};
   const int dividerX = footer.x + footer.width * 38 / 100;
   target.fill(fui::Rect{static_cast<int16_t>(dividerX - 1), footer.y, 1, static_cast<int16_t>(footer.height)}, rule);
   target.text(fui::Rect{footer.x, footer.y, static_cast<int16_t>(dividerX - footer.x - gap),
@@ -434,9 +433,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const int listTop = footer.y + smallHeight + gap / 2;
   const int listHeight = footer.bottom() - listTop;
 
-  // Left column: the pinned current book as one bordered card with the cover,
-  // title and progress text; a progress bar sits immediately BELOW the card,
-  // spanning its exact width so nothing floats or misaligns.
+  // Left column: the pinned current book is a bordered card with only its
+  // cover; a progress bar sits immediately BELOW the card at the same width.
   if (!books || books->empty()) {
     target.text(fui::Rect{footer.x, static_cast<int16_t>(listTop + listHeight / 2),
                           static_cast<int16_t>(dividerX - footer.x - gap), static_cast<int16_t>(smallHeight)},
@@ -456,29 +454,16 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     if (!box.empty()) {
       target.fill(box, fui::Paint::solid(fui::Color::White), 4);
       target.stroke(box, black, 1, 4);
-      // Cover aligns to the card's inner edge with a uniform padding.
+      // Cover is centred in the card; no title or percentage text.
       const int pad = gap / 2;
       const int coverH = std::max<int>(smallHeight * 3, boxH - pad * 2);
-      const int coverW = std::min<int>(coverH * 3 / 4, boxW / 2);
-      const fui::Rect cover{static_cast<int16_t>(box.x + pad), static_cast<int16_t>(box.y + (boxH - coverH) / 2),
-                            static_cast<int16_t>(coverW), static_cast<int16_t>(coverH)};
+      const int coverW = std::min<int>(coverH * 3 / 4, boxW - pad * 2);
+      const fui::Rect cover{static_cast<int16_t>(box.x + (box.width - coverW) / 2),
+                            static_cast<int16_t>(box.y + (boxH - coverH) / 2), static_cast<int16_t>(coverW),
+                            static_cast<int16_t>(coverH)};
       paint(cover, 0);
       thumbnailHeight = coverH;
       if (showSelection && selected == 0) target.stroke(cover, black, 3, 4);
-      const int textX = cover.right() + pad;
-      const int textW = box.right() - pad - textX;
-      const auto& book = (*books)[0];
-      auto bookTitle = strong;
-      bookTitle.maxLines = 3;
-      RickyPageUi::wrappedText(
-          target,
-          fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(box.y + pad), static_cast<int16_t>(textW),
-                    static_cast<int16_t>(std::max<int>(smallHeight, boxH - pad * 2 - smallHeight))},
-          titleOf(book), bookTitle);
-      snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS), static_cast<unsigned>(progress));
-      target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(box.bottom() - pad - smallHeight),
-                            static_cast<int16_t>(textW), static_cast<int16_t>(smallHeight)},
-                  statsText, small);
       // Progress bar below the card, matching the card's left edge and width.
       RickyPageUi::progressBar(
           target, fui::Rect{box.x, static_cast<int16_t>(box.bottom() + barGap), box.width, barHeight}, progress);
