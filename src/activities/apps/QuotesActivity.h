@@ -68,7 +68,5 @@ class QuotesActivity final : public UiTabListActivity {
   // When >= 0, the Books tab is drilled into this source title.
   int bookFilter_ = -1;
   std::string filteredBook;
-  // The count line drawn under the tab band.
-  std::string countLine;
   OptionPopup dialog{true};
 };

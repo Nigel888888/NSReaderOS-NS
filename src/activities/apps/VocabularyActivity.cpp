@@ -47,6 +47,10 @@ constexpr int EXPORT_BUTTON_GAP = 10;
 constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
 // The font the counters are drawn in.
 constexpr int STATS_FONT_ID = NOTOSANS_18_FONT_ID;
+// Small uppercase section label above the list ("YOUR VOCABULARY"), with the
+// word count right-aligned -- the CrossNext list-screen header pattern.
+constexpr int SECTION_LABEL_HEIGHT = 30;
+constexpr int SECTION_LABEL_GAP = 12;
 
 }  // namespace
 
@@ -93,6 +97,8 @@ void VocabularyActivity::rebuildRowItems() {
     item.label = entry.headword.c_str();
     item.subtitle = rowSubtitles.back().c_str();
     item.icon = listIconFor(UIIcon::Bookmark, 32);  // subtitle rows carry the larger icon
+    // CrossNext marks every navigable row with a right-hand chevron.
+    item.value = ">";
     item.actionValue = static_cast<int16_t>(rowItems.size());
     rowItems.push_back(item);
   }
@@ -320,6 +326,20 @@ void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, cons
                     true, EpdFontFamily::BOLD);
 }
 
+// CrossNext-style section label: a small uppercase caption on the left and a
+// right-aligned count, underlined by a hairline rule.
+void VocabularyActivity::drawSectionLabel(const Rect& band, const char* label, const int count) {
+  renderer.clearClipRect();
+  if (band.width <= 0 || band.height <= 0) return;
+  const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
+  renderer.drawText(UI_10_FONT_ID, band.x, baseline, label, true, EpdFontFamily::BOLD);
+  char number[24];
+  std::snprintf(number, sizeof(number), "%d", count);
+  const int countWidth = renderer.getTextWidth(UI_10_FONT_ID, number);
+  renderer.drawText(UI_10_FONT_ID, band.x + band.width - countWidth, baseline, number);
+  renderer.drawLine(band.x, band.y + band.height - 1, band.x + band.width, band.y + band.height - 1);
+}
+
 void VocabularyActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = uiThemeMetrics(usesUpstreamStyle());
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
@@ -343,6 +363,13 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
+  // Uppercase section caption above the list, mirroring CrossNext's
+  // "YOUR VOCABULARY  n" band.
+  const fui::Rect labelBand = screen.takeTop(static_cast<int16_t>(SECTION_LABEL_HEIGHT));
+  drawSectionLabel(Rect{labelBand.x, labelBand.y, labelBand.width, labelBand.height}, tr(STR_VOC_SECTION_WORDS),
+                   static_cast<int>(entries.size()));
+  screen.spacer(static_cast<int16_t>(SECTION_LABEL_GAP));
+
   // On a touch board the long press is the only way to delete, so say so.
   if (mappedInput.hasTouch()) {
     const int helpLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
@@ -357,6 +384,7 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
   props.action = ACTION_ROW;
   // Tap opens the word; long-press deletes it.
   props.inputMask = fui::InputTouch | fui::InputLongPress;
+  props.valueInset = 8;  // air between the trailing chevron and the row edge
   syncListViewport(screen, props);
   screen.list(props);
 }

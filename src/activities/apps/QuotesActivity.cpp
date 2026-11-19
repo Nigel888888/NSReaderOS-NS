@@ -1,5 +1,6 @@
 #include "QuotesActivity.h"
 
+#include <EpdFontFamily.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -74,11 +75,7 @@ void QuotesActivity::rebuildRows() {
   rowSubtitles.clear();
   rowItems.clear();
 
-  // Counters are computed over the whole notebook, not the current tab.
   const int total = static_cast<int>(quotes.size());
-  int bookCount = 0;
-  const int favCount = static_cast<int>(
-      std::count_if(quotes.begin(), quotes.end(), [](const QuotesFile::Quote& q) { return q.favorite; }));
   if (tab_ == BooksTab) {
     // One row per distinct source title, newest quote's order preserved.
     std::vector<std::string> seen;
@@ -109,7 +106,6 @@ void QuotesActivity::rebuildRows() {
       row.subtitle = sub;
       rows.push_back(std::move(row));
     }
-    bookCount = static_cast<int>(rows.size());
   } else {
     for (int i = 0; i < total; ++i) {
       const auto& q = quotes[i];
@@ -128,18 +124,7 @@ void QuotesActivity::rebuildRows() {
       row.subtitle = q.book;
       rows.push_back(std::move(row));
     }
-    bookCount = total;
   }
-  (void)bookCount;
-
-  // The count line is rendered above the list in buildScreen(); keep it here
-  // so the values stay in one place.
-  char counter[96];
-  std::snprintf(counter, sizeof(counter), tr(STR_QUOTES_COUNT), total,
-                static_cast<int>(std::count_if(quotes.begin(), quotes.end(),
-                                               [](const QuotesFile::Quote& q) { return !q.book.empty(); })),
-                favCount);
-  countLine = counter;
 
   rowSubtitles.reserve(rows.size());
   rowItems.reserve(rows.size());
@@ -150,6 +135,8 @@ void QuotesActivity::rebuildRows() {
     item.subtitle = rowSubtitles.back().c_str();
     item.icon = row.kind == RowKind::Book ? listIconFor(UIIcon::Book, ROW_ICON_SIZE)
                                           : listIconFor(UIIcon::Bookmark, ROW_ICON_SIZE);
+    // CrossNext marks every navigable row with a right-hand chevron.
+    item.value = ">";
     item.actionValue = static_cast<int16_t>(rowItems.size());
     rowItems.push_back(item);
   }
@@ -165,13 +152,20 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
 
   buildTabBar(screen);
 
-  // Count line under the tabs (or the drilled-in book title).
+  // CrossNext-style section band under the tabs: a small uppercase caption on
+  // the left (or the drilled-in book title) and the visible quote count right,
+  // closed by a hairline rule.
   renderer.clearClipRect();
   const fui::Rect band = screen.takeTop(static_cast<int16_t>(COUNTER_HEIGHT));
-  const char* line = (tab_ == AllTab && bookFilter_ >= 0) ? filteredBook.c_str() : countLine.c_str();
-  const int tw = renderer.getTextWidth(UI_10_FONT_ID, line);
-  renderer.drawText(UI_10_FONT_ID, band.x + (band.width - tw) / 2,
-                    band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2, line);
+  const bool drilled = tab_ == AllTab && bookFilter_ >= 0;
+  const char* caption = drilled ? filteredBook.c_str() : tr(STR_QUOTES_SECTION);
+  const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
+  renderer.drawText(UI_10_FONT_ID, band.x, baseline, caption, true, EpdFontFamily::BOLD);
+  char count[24];
+  std::snprintf(count, sizeof(count), "%d", static_cast<int>(rows.size()));
+  const int countWidth = renderer.getTextWidth(UI_10_FONT_ID, count);
+  renderer.drawText(UI_10_FONT_ID, band.x + band.width - countWidth, baseline, count);
+  renderer.drawLine(band.x, band.y + band.height - 1, band.x + band.width, band.y + band.height - 1);
 
   if (rows.empty()) {
     const char* msg = tab_ == FavoritesTab ? tr(STR_QUOTES_EMPTY_FAV) : tr(STR_QUOTES_EMPTY);
