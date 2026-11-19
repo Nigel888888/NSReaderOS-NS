@@ -45,9 +45,11 @@
 #endif
 #include "apps/standby/StandbyActivity.h"
 #ifdef RICKYOS_PRODUCT
+#include "apps/nutstore/NutstoreBrowserActivity.h"
 #include "apps/reading-stats/RickyReadingStatsActivity.h"
 #include "apps/standby/RickyStandbySettingsActivity.h"
 #endif
+#include "settings/NutstoreConfigActivity.h"
 #include "boot_sleep/BootActivity.h"
 #include "boot_sleep/SleepActivity.h"
 #include "browser/OpdsBookBrowserActivity.h"
@@ -599,7 +601,19 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
 
 void ActivityManager::goToFileTransfer() { replaceActivityWith<CrossPointWebServerActivity>(); }
 
-void ActivityManager::goToWebDav() { replaceActivityWith<CrossPointWebServerActivity>(); }
+void ActivityManager::goToWebDav() {
+  // Nutstore (坚果云) entry: if no account is configured, open the login/config
+  // screen; otherwise go straight to the cloud browser.
+#ifdef RICKYOS_PRODUCT
+  if (!SETTINGS.rickyNutstoreAccount[0] || !SETTINGS.rickyNutstorePassword[0]) {
+    replaceActivityWith<NutstoreConfigActivity>();
+    return;
+  }
+  replaceActivityWith<NutstoreBrowserActivity>();
+#else
+  replaceActivityWith<CrossPointWebServerActivity>();
+#endif
+}
 
 void ActivityManager::goToJoinNetwork() {
   // Post heap-defrag reboot: enter the web-server activity straight in Join

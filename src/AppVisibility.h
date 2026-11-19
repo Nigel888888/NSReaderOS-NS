@@ -29,8 +29,10 @@ enum class AppId : uint8_t {
   Vocabulary = 17,
   // Quotes notebook: sentences highlighted while reading.
   Quotes = 18,
-  // WebDAV file service entry (built-in file-transfer web server).
-  WebDav = 19,
+  // Nutstore (坚果云) WebDAV cloud sync. Slot 19 was the old built-in WebDAV
+  // file service; repurposed — that function lives under FileTransfer.
+  Nutstore = 19,
+  WebDav = Nutstore,  // legacy alias, do not use in new code
   Count = 20,
 };
 

@@ -19,6 +19,7 @@
 
 #include "I18nKeys.h"
 #include "ReaderFontSizes.h"
+#include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "fontIds.h"
 #include "util/ParagraphIndentMigration.h"
@@ -279,6 +280,12 @@ void CrossPointSettings::toJson(JsonDocument& doc) const {
   doc["rickyAvatarPath"] = rickyAvatarPath;
   doc["rickyHomePhrase"] = rickyHomePhrase;
   doc["rickyHomeBannerPath"] = rickyHomeBannerPath;
+  doc["rickyBannerFont"] = rickyBannerFont;
+  doc["rickyBannerFontSize"] = rickyBannerFontSize;
+  doc["rickyNutstoreFolder"] = rickyNutstoreFolder;
+  doc["rickyNutstoreAccount"] = rickyNutstoreAccount;
+  if (rickyNutstorePassword[0] != '\0')
+    doc["rickyNutstorePassword"] = obfuscation::obfuscateToBase64(rickyNutstorePassword);
   doc["rickyGestureBack"] = rickyGestureBack;
   doc["rickyGestureHome"] = rickyGestureHome;
   doc["rickyGestureControl"] = rickyGestureControl;
@@ -520,6 +527,22 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   copyToField(rickyHomePhrase, doc["rickyHomePhrase"] | "", sizeof(rickyHomePhrase));
   rickyHomePhrase[utf8SafeTruncateBuffer(rickyHomePhrase, strlen(rickyHomePhrase))] = '\0';
   copyToField(rickyHomeBannerPath, doc["rickyHomeBannerPath"] | "", sizeof(rickyHomeBannerPath));
+  rickyBannerFont = doc["rickyBannerFont"] | static_cast<uint8_t>(0);
+  if (rickyBannerFont >= RICKY_BANNER_FONT_COUNT) rickyBannerFont = 0;
+  rickyBannerFontSize = doc["rickyBannerFontSize"] | static_cast<uint8_t>(1);
+  if (rickyBannerFontSize >= RICKY_BANNER_SIZE_COUNT) rickyBannerFontSize = 1;
+  copyToField(rickyNutstoreFolder, doc["rickyNutstoreFolder"] | "", sizeof(rickyNutstoreFolder));
+  if (rickyNutstoreFolder[0] == '\0') strcpy(rickyNutstoreFolder, "PicoBox");
+  copyToField(rickyNutstoreAccount, doc["rickyNutstoreAccount"] | "", sizeof(rickyNutstoreAccount));
+  {
+    bool ok = false;
+    std::string decoded = obfuscation::deobfuscateFromBase64(doc["rickyNutstorePassword"] | "", &ok);
+    if (ok && decoded.size() < sizeof(rickyNutstorePassword)) {
+      strcpy(rickyNutstorePassword, decoded.c_str());
+    } else {
+      rickyNutstorePassword[0] = '\0';
+    }
+  }
   // Missing keys take the defaults: Home swipe starts off for everyone, as agreed.
   rickyGestureBack = (doc["rickyGestureBack"] | 1) ? 1 : 0;
   rickyGestureHome = (doc["rickyGestureHome"] | 0) ? 1 : 0;
@@ -952,6 +975,19 @@ void CrossPointSettings::clearSdFontFamily() {
 #endif
   saveToFile();
 }
+
+#ifdef RICKYOS_PRODUCT
+int CrossPointSettings::rickyBannerFontId(const uint8_t family, const uint8_t size) {
+  // Sans uses the CJK UI faces (complete glyph coverage). Serif uses the
+  // Noto Serif reader faces, which fall back to CJK UI for Chinese glyphs.
+  // Both families ship at 12/14/16 pt; a missing combination clamps to 14.
+  static constexpr int kSans[RICKY_BANNER_SIZE_COUNT] = {CJK_UI_12_FONT_ID, CJK_UI_14_FONT_ID, CJK_UI_16_FONT_ID};
+  static constexpr int kSerif[RICKY_BANNER_SIZE_COUNT] = {NOTOSERIF_12_FONT_ID, NOTOSERIF_14_FONT_ID,
+                                                          NOTOSERIF_16_FONT_ID};
+  const uint8_t s = size < RICKY_BANNER_SIZE_COUNT ? size : 1;
+  return family == 1 ? kSerif[s] : kSans[s];
+}
+#endif
 
 int CrossPointSettings::getReaderFontId() const {
   // Check SD card font first

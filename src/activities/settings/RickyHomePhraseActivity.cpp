@@ -35,14 +35,15 @@ void RickyHomePhraseActivity::buildScreen(UiScreen& screen) {
     screen.target().fill(preview, fui::Paint::dither(fui::Color::LightGray), 6);
     screen.target().stroke(preview, fui::Paint::solid(fui::Color::Black), 1, 6);
   }
-  const int panelX = preview.x + preview.width * 44 / 100;
-  const fui::Rect panel{static_cast<int16_t>(panelX), static_cast<int16_t>(preview.y + gap / 2),
-                        static_cast<int16_t>(preview.right() - panelX - gap / 2),
-                        static_cast<int16_t>(preview.height - gap)};
+  const int panelX = preview.x + preview.width * 42 / 100;
+  const fui::Rect panel{static_cast<int16_t>(panelX), static_cast<int16_t>(preview.y + gap),
+                        static_cast<int16_t>(preview.right() - gap - panelX),
+                        static_cast<int16_t>(preview.height - gap * 2)};
   screen.target().fill(panel, fui::Paint::solid(fui::Color::White), 4);
   auto phrase = theme.titleText;
+  phrase.font = SETTINGS.rickyBannerFontId(SETTINGS.rickyBannerFont, SETTINGS.rickyBannerFontSize);
   phrase.bold = true;
-  phrase.align = fui::TextAlign::Right;
+  phrase.align = fui::TextAlign::Center;
   phrase.maxLines = 4;
   {
     RickyPageUi::Bold bold(renderer, 2);
@@ -59,10 +60,16 @@ void RickyHomePhraseActivity::buildScreen(UiScreen& screen) {
   if (failed)
     screen.target().text(screen.takeTop(screen.target().lineHeight(hint.font), theme.spaceSm),
                          tr(STR_RICKY_PROFILE_FAILED), hint);
+  static constexpr StrId kSizeLabels[] = {STR_RICKY_BANNER_SIZE_12, STR_RICKY_BANNER_SIZE_14,
+                                           STR_RICKY_BANNER_SIZE_16};
   rows[0].label = tr(STR_RICKY_PHRASE_EDIT);
   rows[1].label = tr(STR_RICKY_BANNER_CHOOSE);
   rows[2].label = tr(STR_RICKY_BANNER_CLEAR);
-  rows[3].label = tr(STR_RICKY_PHRASE_RESET);
+  rows[3].label = tr(STR_RICKY_BANNER_FONT);
+  rows[3].subtitle = SETTINGS.rickyBannerFont == 0 ? tr(STR_RICKY_BANNER_SANS) : tr(STR_RICKY_BANNER_SERIF);
+  rows[4].label = tr(STR_RICKY_BANNER_SIZE);
+  rows[4].subtitle = tr(kSizeLabels[SETTINGS.rickyBannerFontSize < 3 ? SETTINGS.rickyBannerFontSize : 1]);
+  rows[5].label = tr(STR_RICKY_PHRASE_RESET);
   for (int i = 0; i < listCount(); ++i) rows[i].actionValue = i;
   fui::ListProps props;
   props.items = rows.data();
@@ -114,6 +121,16 @@ void RickyHomePhraseActivity::activateIndex(int index) {
     failed = !RickyProfile::setHomeBanner("");
     requestUpdate();
   } else if (index == 3) {
+    RenderLock lock(*this);
+    SETTINGS.rickyBannerFont = (SETTINGS.rickyBannerFont + 1) % CrossPointSettings::RICKY_BANNER_FONT_COUNT;
+    SETTINGS.saveToFile();
+    requestUpdate();
+  } else if (index == 4) {
+    RenderLock lock(*this);
+    SETTINGS.rickyBannerFontSize = (SETTINGS.rickyBannerFontSize + 1) % CrossPointSettings::RICKY_BANNER_SIZE_COUNT;
+    SETTINGS.saveToFile();
+    requestUpdate();
+  } else if (index == 5) {
     RenderLock lock(*this);
     failed = !RickyProfile::setHomePhrase("");
     requestUpdate();

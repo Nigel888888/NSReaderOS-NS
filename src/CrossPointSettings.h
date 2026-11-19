@@ -529,6 +529,20 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char rickyHomePhrase[97] = "";  // Empty uses the localized default; at most 96 UTF-8 bytes.
   // Home banner: an imported 1-bit BMP drawn behind the large home phrase.
   char rickyHomeBannerPath[96] = "";  // Empty draws the quiet placeholder banner.
+  // Banner phrase typography. Two independent axes: family (0=Sans, 1=Serif)
+  // and size (0=12pt, 1=14pt, 2=16pt). Stored here so the banner editor and
+  // the home screen agree without re-binding font slots.
+  uint8_t rickyBannerFont = 0;      // family index
+  uint8_t rickyBannerFontSize = 1;  // size index
+  static constexpr uint8_t RICKY_BANNER_FONT_COUNT = 2;
+  static constexpr uint8_t RICKY_BANNER_SIZE_COUNT = 3;
+  // Composes the persisted family + size into a real renderer font id.
+  static int rickyBannerFontId(uint8_t family, uint8_t size);
+  // Nutstore (坚果云) WebDAV sync credentials. Password is stored obfuscated
+  // on disk, like OPDS credentials; folder defaults to the ifink convention.
+  char rickyNutstoreFolder[97] = "PicoBox";
+  char rickyNutstoreAccount[97] = "";
+  char rickyNutstorePassword[257] = "";  // plaintext in memory, obfuscated on disk
   // Settings -> System -> Gestures: the touch gestures that act everywhere. Swiping up
   // from the bottom to go Home is off by default: on this device it sat right on the
   // last lines of a page and on the tab bar, so readers left books by accident.

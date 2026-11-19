@@ -277,27 +277,19 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   if (dated && !TimeUtils::formatCurrentTime(clockText, sizeof(clockText), SETTINGS.clockFormat == 1))
     snprintf(clockText, sizeof(clockText), "%s", "--:--");
   if (!dated) snprintf(clockText, sizeof(clockText), "%s", "--:--");
-  char batteryText[32];
-  snprintf(batteryText, sizeof(batteryText), tr(STR_RICKY_FOLIO_BATTERY),
-           static_cast<unsigned>(powerManager.getBatteryPercentage()));
-
-  // ---- Status row: time on the left, battery on the right; no date / app name. ----
+  // ---- Status row: time only; no date / app name / battery. ----
   const auto status = screen.takeTop(titleHeight, gap);
   {
     RickyPageUi::Bold clock(renderer, 2);
-    target.text(fui::Rect{status.x, status.y, static_cast<int16_t>(status.width / 2),
+    target.text(fui::Rect{status.x, status.y, static_cast<int16_t>(status.width),
                           static_cast<int16_t>(titleHeight)},
                 clockText, heading);
-    auto batteryStyle = heading;
-    batteryStyle.align = fui::TextAlign::Right;
-    target.text(fui::Rect{static_cast<int16_t>(status.x + status.width / 2), status.y,
-                          static_cast<int16_t>(status.width - status.width / 2),
-                          static_cast<int16_t>(titleHeight)},
-                batteryText, batteryStyle);
   }
   screen.frame().hit(status, OPEN_BOOK, STATISTICS, fui::InputTouch);
 
-  // ---- Banner: custom picture + large overlaid phrase (tap to configure). ----
+  // ---- Banner: custom picture + configurable phrase (tap to configure). ----
+  // The text panel shares the exact image bounds inset by one uniform margin,
+  // so picture and text frames line up regardless of imported artwork.
   int bannerHeight = totalHeight * 25 / 100;
   bannerHeight = std::max<int>(smallHeight * 7, std::min<int>(bannerHeight, totalHeight * 32 / 100));
   const auto banner = screen.takeTop(bannerHeight, gap);
@@ -306,42 +298,51 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     target.fill(banner, fui::Paint::dither(fui::Color::LightGray), 6);
     target.stroke(banner, black, 1, 6);
   }
-  // A pale text panel keeps the phrase legible over any imported picture.
-  const int panelX = banner.x + banner.width * 44 / 100;
-  const fui::Rect panel{static_cast<int16_t>(panelX), static_cast<int16_t>(banner.y + gap / 2),
-                        static_cast<int16_t>(banner.right() - panelX - gap / 2),
-                        static_cast<int16_t>(banner.height - gap)};
+  // Text panel sits on the right with the SAME uniform inset on every side as
+  // the image frame, so its top/bottom/right edges line up with the picture.
+  const int bannerInset = gap;
+  const int panelX = banner.x + banner.width * 42 / 100;
+  const fui::Rect panel{static_cast<int16_t>(panelX), static_cast<int16_t>(banner.y + bannerInset),
+                        static_cast<int16_t>(banner.right() - bannerInset - panelX),
+                        static_cast<int16_t>(banner.height - bannerInset * 2)};
   target.fill(panel, fui::Paint::solid(fui::Color::White), 4);
-  {
-    RickyPageUi::Bold kicker(renderer, 2);
-    target.text(fui::Rect{panel.x, panel.y, panel.width, static_cast<int16_t>(smallHeight)},
-                tr(STR_RICKY_HOME_BRAND), small);
-  }
+  // Phrase typography comes from the persisted banner settings. We resolve the
+  // real font id directly (TextStyle has no size field) and let the renderer's
+  // CJK fallback cover the glyphs.
+  const int bannerFontId = SETTINGS.rickyBannerFontId(SETTINGS.rickyBannerFont, SETTINGS.rickyBannerFontSize);
   auto phraseStyle = heading;
-  phraseStyle.align = fui::TextAlign::Right;
+  phraseStyle.font = bannerFontId;
+  phraseStyle.align = fui::TextAlign::Center;
   phraseStyle.maxLines = 4;
   {
-    RickyPageUi::Bold quote(renderer, 3);
-    RickyPageUi::wrappedText(
-        target,
-        fui::Rect{panel.x, static_cast<int16_t>(panel.y + smallHeight + gap / 2), panel.width,
-                  static_cast<int16_t>(panel.bottom() - panel.y - smallHeight - gap / 2)},
-        RickyProfile::homePhrase(), phraseStyle);
+    RickyPageUi::Bold quote(renderer, 2);
+    RickyPageUi::wrappedText(target, panel, RickyProfile::homePhrase(), phraseStyle);
   }
   target.fill(fui::Rect{banner.x, static_cast<int16_t>(banner.bottom() - 1), banner.width, 1}, black);
   screen.frame().hit(banner, OPEN_BOOK, BANNER, fui::InputTouch);
 
-  // ---- Reading record: this-week total + weekday-aligned 4-week heatmap. ----
-  const auto& days = READING_STATS.getReadingDays();
-  const int32_t todayOrdinal = static_cast<int32_t>(READING_STATS.getTodayDayOrdinal());
-  uint32_t heat[28] = {};  // index 0 = 27 days ago, 27 = today
-  for (const auto& day : days) {
-    const int64_t offset = static_cast<int64_t>(day.dayOrdinal) - (static_cast<int64_t>(todayOrdinal) - 27);
-    if (offset >= 0 && offset < 28) heat[offset] = day.readingMs;
+  // ---- Reading record: a real month calendar that follows the current date. ----
+  const int calYear = dated ? local.tm_year + 1900 : 0;
+  const unsigned calMonth = dated ? static_cast<unsigned>(local.tm_mon + 1) : 0;
+  const unsigned todayDom = dated ? static_cast<unsigned>(local.tm_mday) : 0;
+  // Days in month + Monday-based offset of day 1, from the same ordinal math
+  // the Reading Analytics calendar uses.
+  static constexpr unsigned kDaysInMonth[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  unsigned daysInMonth = 31;
+  int firstWeekday = 0;  // 0 = Monday
+  uint64_t monthMs = 0;
+  if (dated && calMonth >= 1 && calMonth <= 12) {
+    const bool leap = (calYear % 4 == 0) && (calYear % 100 != 0 || calYear % 400 == 0);
+    daysInMonth = kDaysInMonth[calMonth - 1] + (calMonth == 2 && leap ? 1 : 0);
+    const uint32_t firstOrdinal = TimeUtils::getDayOrdinalForDate(calYear, calMonth, 1);
+    firstWeekday = static_cast<int>((firstOrdinal + 3U) % 7U);
+    const uint32_t monthStart = firstOrdinal;
+    const uint32_t monthEnd = TimeUtils::getDayOrdinalForDate(
+        calYear, calMonth, daysInMonth);
+    for (const auto& day : READING_STATS.getReadingDays()) {
+      if (day.dayOrdinal >= monthStart && day.dayOrdinal <= monthEnd) monthMs += day.readingMs;
+    }
   }
-  const int mondayCol = dated ? (local.tm_wday + 6) % 7 : 0;  // 0 = Monday
-  uint64_t weekMs = 0;
-  for (int d = 0; d <= mondayCol; ++d) weekMs += heat[27 - d];
   auto formatDuration = [&](uint64_t ms, char* buffer, size_t size) {
     const uint64_t seconds = ms / 1000;
     if (seconds < 3600)
@@ -351,53 +352,70 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
                static_cast<unsigned>(seconds % 3600 / 60));
   };
   char durationBuffer[48];
-  formatDuration(weekMs, durationBuffer, sizeof(durationBuffer));
-  snprintf(statsText, sizeof(statsText), tr(STR_RICKY_WEEK_READ), durationBuffer);
+  formatDuration(monthMs, durationBuffer, sizeof(durationBuffer));
+  snprintf(statsText, sizeof(statsText), tr(STR_RICKY_MONTH_READ), durationBuffer);
 
   int recordHeight = totalHeight * 29 / 100;
-  recordHeight = std::max<int>(smallHeight * 7, std::min<int>(recordHeight, totalHeight * 34 / 100));
+  recordHeight = std::max<int>(smallHeight * 8, std::min<int>(recordHeight, totalHeight * 34 / 100));
   const auto record = screen.takeTop(recordHeight, gap);
-  target.text(fui::Rect{record.x, record.y, static_cast<int16_t>(record.width / 2),
-                        static_cast<int16_t>(smallHeight)},
-              tr(STR_RICKY_READING_RECORD), strong);
-  auto weekStyle = right;
+  char monthTitle[32];
+  if (dated)
+    snprintf(monthTitle, sizeof(monthTitle), "%04d.%02d", calYear, calMonth);
+  else
+    snprintf(monthTitle, sizeof(monthTitle), "%s", tr(STR_RICKY_DATE_UNSET));
+  target.text(fui::Rect{record.x, record.y, static_cast<int16_t>(record.width / 2), static_cast<int16_t>(smallHeight)},
+              monthTitle, strong);
+  auto monthStyle = right;
   target.text(fui::Rect{static_cast<int16_t>(record.x + record.width / 2), record.y,
                         static_cast<int16_t>(record.width - record.width / 2),
                         static_cast<int16_t>(smallHeight)},
-              statsText, weekStyle);
+              statsText, monthStyle);
   target.fill(fui::Rect{record.x, static_cast<int16_t>(record.y + smallHeight + gap / 4), record.width, 1}, rule);
-  // Weekday header row (MON..SUN), then the grid cells below it.
-  static constexpr const char* kWeekHeads[] = {"MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"};
+  // Weekday header row (M..S), then the day-number grid. Each cell is shaded
+  // by that day's reading time. ASCII initials avoid font/locale glyph issues.
+  static constexpr const char* kWeekHeads[] = {"M", "T", "W", "T", "F", "S", "S"};
   const int headsTop = record.y + smallHeight + gap / 2;
   const int colWidth = record.width / 7;
+  auto headStyle = small;
+  headStyle.align = fui::TextAlign::Center;
   for (int c = 0; c < 7; ++c) {
-    auto head = small;
-    head.align = fui::TextAlign::Center;
     target.text(fui::Rect{static_cast<int16_t>(record.x + c * colWidth), static_cast<int16_t>(headsTop),
                           static_cast<int16_t>(colWidth), static_cast<int16_t>(smallHeight)},
-                kWeekHeads[c], head);
+                kWeekHeads[c], headStyle);
   }
   const int gridTop = headsTop + smallHeight + gap / 4;
   const int gridHeight = std::max<int>(0, record.bottom() - gridTop);
-  const int cellGap = std::max<int>(3, gap / 3);
-  const int cell = std::max<int>(3, std::min<int>((colWidth - cellGap * 2) / 2, (gridHeight - cellGap * 3) / 4));
-  for (int row = 0; row < 4; ++row) {
+  const int rows = 6;
+  const int cellH = std::max<int>(smallHeight + 4, gridHeight / rows);
+  const uint32_t monthStartOrdinal = dated ? TimeUtils::getDayOrdinalForDate(calYear, calMonth, 1) : 0;
+  for (int row = 0; row < rows; ++row) {
     for (int col = 0; col < 7; ++col) {
-      const int daysAgo = mondayCol - col + (3 - row) * 7;
-      if (daysAgo < 0 || daysAgo >= 28) continue;
-      const fui::Rect box{static_cast<int16_t>(record.x + col * colWidth + (colWidth - cell) / 2),
-                          static_cast<int16_t>(gridTop + row * (cell + cellGap)), static_cast<int16_t>(cell),
-                          static_cast<int16_t>(cell)};
-      const uint32_t seconds = heat[27 - daysAgo] / 1000;
-      if (seconds == 0) {
-        target.fill(box, fui::Paint::solid(fui::Color::White), 2);
-        target.stroke(box, rule, 1, 2);
-      } else {
-        const auto shade = seconds < 15 * 60  ? fui::Color::LightGray
-                           : seconds < 30 * 60 ? fui::Color::DarkGray
-                                               : fui::Color::Black;
-        target.fill(box, fui::Paint::solid(shade), 2);
+      const int dom = (row * 7 + col) - firstWeekday + 1;
+      if (dom < 1 || static_cast<unsigned>(dom) > daysInMonth) continue;
+      const fui::Rect box{static_cast<int16_t>(record.x + col * colWidth + 2),
+                          static_cast<int16_t>(gridTop + row * cellH),
+                          static_cast<int16_t>(colWidth - 4), static_cast<int16_t>(cellH - 2)};
+      uint64_t dayMs = 0;
+      if (dated) {
+        const uint32_t ordinal = monthStartOrdinal + static_cast<uint32_t>(dom - 1);
+        for (const auto& day : READING_STATS.getReadingDays())
+          if (day.dayOrdinal == ordinal) { dayMs = day.readingMs; break; }
       }
+      const uint32_t seconds = static_cast<uint32_t>(dayMs / 1000);
+      const auto shade = seconds == 0 ? fui::Color::White
+                         : seconds < 15 * 60 ? fui::Color::LightGray
+                         : seconds < 30 * 60 ? fui::Color::DarkGray
+                                             : fui::Color::Black;
+      target.fill(box, fui::Paint::solid(shade), 2);
+      if (seconds == 0) target.stroke(box, rule, 1, 2);
+      // Day number; invert text over dark cells for legibility.
+      auto dayStyle = small;
+      dayStyle.align = fui::TextAlign::Center;
+      dayStyle.inverted = seconds >= 30 * 60;
+      if (static_cast<unsigned>(dom) == todayDom) dayStyle.bold = true;
+      char dayText[4];
+      snprintf(dayText, sizeof(dayText), "%u", static_cast<unsigned>(dom));
+      target.text(fui::Rect{box.x, box.y, box.width, static_cast<int16_t>(smallHeight)}, dayText, dayStyle);
     }
   }
   screen.frame().hit(record, OPEN_BOOK, STATISTICS, fui::InputTouch);
@@ -416,7 +434,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const int listTop = footer.y + smallHeight + gap / 2;
   const int listHeight = footer.bottom() - listTop;
 
-  // Left column: the pinned current book, cover + title + progress.
+  // Left column: the pinned current book as one bordered card with the cover,
+  // title and progress text; a progress bar sits immediately BELOW the card,
+  // spanning its exact width so nothing floats or misaligns.
   if (!books || books->empty()) {
     target.text(fui::Rect{footer.x, static_cast<int16_t>(listTop + listHeight / 2),
                           static_cast<int16_t>(dividerX - footer.x - gap), static_cast<int16_t>(smallHeight)},
@@ -424,31 +444,45 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     screen.frame().hit(fui::Rect{footer.x, footer.y, static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(footer.height)}, OPEN_BOOK, LIBRARY, fui::InputTouch);
   } else {
-    const int leftWidth = dividerX - footer.x - gap * 2;
-    const int coverHeight = std::max<int>(smallHeight * 3, std::min<int>(listHeight - smallHeight * 2, leftWidth * 4 / 3));
-    const int coverWidth = coverHeight * 3 / 4;
-    const fui::Rect cover{static_cast<int16_t>(footer.x + gap / 2), static_cast<int16_t>(listTop + gap / 2),
-                          static_cast<int16_t>(coverWidth), static_cast<int16_t>(coverHeight)};
-    paint(cover, 0);
-    thumbnailHeight = coverHeight;
-    if (showSelection && selected == 0) target.stroke(cover, black, 3, 4);
-    const int textX = cover.right() + gap / 2;
-    const int textWidth = dividerX - textX - gap;
-    const auto& book = (*books)[0];
-    auto bookTitle = strong;
-    bookTitle.maxLines = 3;
-    RickyPageUi::wrappedText(target,
-                             fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(listTop + gap / 2),
-                                       static_cast<int16_t>(textWidth),
-                                       static_cast<int16_t>(std::min<int>(coverHeight - smallHeight, smallHeight * 3))},
-                             titleOf(book), bookTitle);
-    snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS), static_cast<unsigned>(progress));
-    target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(cover.bottom() - smallHeight),
-                          static_cast<int16_t>(textWidth), static_cast<int16_t>(smallHeight)},
-                statsText, small);
-    RickyPageUi::progressBar(target,
-                             fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(cover.bottom()),
-                                       static_cast<int16_t>(textWidth), 4}, progress);
+    const int boxInset = gap / 2;
+    const int boxX = footer.x + boxInset;
+    const int boxW = dividerX - footer.x - gap;
+    const int barHeight = 6;
+    const int barGap = gap / 2;
+    // Reserve room for the progress bar below the bordered card.
+    const int boxH = std::max<int>(0, listHeight - boxInset - barHeight - barGap);
+    const fui::Rect box{static_cast<int16_t>(boxX), static_cast<int16_t>(listTop + boxInset),
+                        static_cast<int16_t>(boxW), static_cast<int16_t>(boxH)};
+    if (!box.empty()) {
+      target.fill(box, fui::Paint::solid(fui::Color::White), 4);
+      target.stroke(box, black, 1, 4);
+      // Cover aligns to the card's inner edge with a uniform padding.
+      const int pad = gap / 2;
+      const int coverH = std::max<int>(smallHeight * 3, boxH - pad * 2);
+      const int coverW = std::min<int>(coverH * 3 / 4, boxW / 2);
+      const fui::Rect cover{static_cast<int16_t>(box.x + pad), static_cast<int16_t>(box.y + (boxH - coverH) / 2),
+                            static_cast<int16_t>(coverW), static_cast<int16_t>(coverH)};
+      paint(cover, 0);
+      thumbnailHeight = coverH;
+      if (showSelection && selected == 0) target.stroke(cover, black, 3, 4);
+      const int textX = cover.right() + pad;
+      const int textW = box.right() - pad - textX;
+      const auto& book = (*books)[0];
+      auto bookTitle = strong;
+      bookTitle.maxLines = 3;
+      RickyPageUi::wrappedText(
+          target,
+          fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(box.y + pad), static_cast<int16_t>(textW),
+                    static_cast<int16_t>(std::max<int>(smallHeight, boxH - pad * 2 - smallHeight))},
+          titleOf(book), bookTitle);
+      snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS), static_cast<unsigned>(progress));
+      target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(box.bottom() - pad - smallHeight),
+                            static_cast<int16_t>(textW), static_cast<int16_t>(smallHeight)},
+                  statsText, small);
+      // Progress bar below the card, matching the card's left edge and width.
+      RickyPageUi::progressBar(
+          target, fui::Rect{box.x, static_cast<int16_t>(box.bottom() + barGap), box.width, barHeight}, progress);
+    }
     screen.frame().hit(fui::Rect{footer.x, static_cast<int16_t>(listTop), static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(listHeight)}, OPEN_BOOK, 0, fui::InputTouch);
   }

@@ -35,7 +35,7 @@ struct AppEntry {
 
 constexpr AppEntry kAppEntries[] = {
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, &ActivityManager::goToFileTransfer},
-    {AppId::WebDav, StrId::STR_WEBDAV_TITLE, UIIcon::Transfer, &ActivityManager::goToWebDav},
+    {AppId::Nutstore, StrId::STR_RICKY_NUTSTORE_TITLE, UIIcon::Transfer, &ActivityManager::goToWebDav},
     {AppId::OpdsBrowser, StrId::STR_OPDS_BROWSER, UIIcon::Opds, &ActivityManager::goToBrowser},
 #ifdef ENABLE_CHINESE_VERSION
     {AppId::WeRead, StrId::STR_WEREAD_TITLE, UIIcon::WeRead, &ActivityManager::goToWeRead},
