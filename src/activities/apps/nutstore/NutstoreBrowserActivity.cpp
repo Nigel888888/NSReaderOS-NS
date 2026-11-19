@@ -22,6 +22,15 @@
 namespace fui = freeink::ui;
 namespace {
 
+bool isTextDocument(const std::string& name) {
+  const auto dot = name.rfind('.');
+  if (dot == std::string::npos) return false;
+  std::string ext = name.substr(dot + 1);
+  for (char& c : ext)
+    if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+  return ext == "md" || ext == "txt";
+}
+
 std::string humanSize(uint64_t bytes) {
   char buf[32];
   if (bytes >= 1024 * 1024)
@@ -165,9 +174,9 @@ void NutstoreBrowserActivity::downloadEntry(const nutstore::Entry& entry) {
   beginDownload(entry.name);
 
   const std::string url = nutstore::childUrl(baseUrl(), entry.href);
-  // md/txt go to /markdown if present, everything else to /books.
+  // md/txt go to /markdown if present; epub goes to the normal books folder.
   const char* destDir = RickyStorageLayout::BOOKS;
-  if (Storage.exists("/markdown")) destDir = "/markdown";
+  if (isTextDocument(entry.name) && Storage.exists("/markdown")) destDir = "/markdown";
   if (!Storage.exists(destDir)) Storage.mkdir(destDir);
 
   char dest[256];
