@@ -29,7 +29,9 @@ enum class AppId : uint8_t {
   Vocabulary = 17,
   // Quotes notebook: sentences highlighted while reading.
   Quotes = 18,
-  Count = 19,
+  // WebDAV file service entry (built-in file-transfer web server).
+  WebDav = 19,
+  Count = 20,
 };
 
 constexpr uint32_t appBit(const AppId id) { return uint32_t{1} << static_cast<uint8_t>(id); }

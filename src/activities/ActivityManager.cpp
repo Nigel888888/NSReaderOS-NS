@@ -599,6 +599,8 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
 
 void ActivityManager::goToFileTransfer() { replaceActivityWith<CrossPointWebServerActivity>(); }
 
+void ActivityManager::goToWebDav() { replaceActivityWith<CrossPointWebServerActivity>(); }
+
 void ActivityManager::goToJoinNetwork() {
   // Post heap-defrag reboot: enter the web-server activity straight in Join
   // Network mode (skips mode selection, does not reboot again).

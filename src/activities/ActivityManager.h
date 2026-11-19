@@ -127,6 +127,7 @@ class ActivityManager {
 
   // goTo... functions are convenient wrapper for replaceActivity()
   void goToFileTransfer();
+  void goToWebDav();  // WebDAV entry: the built-in file-transfer web server.
   void goToJoinNetwork();  // File Transfer straight into Join Network (post heap-defrag reboot)
   void goToUsbDrive();
   void goToSettings();
