@@ -16,6 +16,7 @@
 #include "RickyPageUi.h"
 #include "UITheme.h"
 #include "icons/rickyAvatars.h"
+#include "icons/rickyHomeBanner.h"
 #include "util/TimeUtils.h"
 
 namespace RickyProfile {
@@ -122,12 +123,30 @@ bool importHomeBanner(const std::string& path) {
 }
 
 bool drawHomeBanner(const GfxRenderer& renderer, const Rect& rect) {
-  if (rect.width <= 0 || rect.height <= 0 || !SETTINGS.rickyHomeBannerPath[0]) return false;
-  HalFile file;
-  if (!Storage.openFileForRead("PROFILE", SETTINGS.rickyHomeBannerPath, file)) return false;
-  Bitmap bitmap(file);
-  if (bitmap.parseHeaders() != BmpReaderError::Ok || bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
-  return renderer.drawBitmapCropToFill(bitmap, rect.x, rect.y, rect.width, rect.height);
+  if (rect.width <= 0 || rect.height <= 0) return false;
+  // A user-imported SD-card banner always wins when one is configured.
+  if (SETTINGS.rickyHomeBannerPath[0]) {
+    HalFile file;
+    if (Storage.openFileForRead("PROFILE", SETTINGS.rickyHomeBannerPath, file)) {
+      Bitmap bitmap(file);
+      if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
+        return renderer.drawBitmapCropToFill(bitmap, rect.x, rect.y, rect.width, rect.height);
+      }
+    }
+  }
+  // No SD-card banner: draw the built-in "boy reading" artwork so a freshly
+  // flashed device shows the intended home banner without any SD setup. The
+  // Bitmap memory source is available on PSRAM builds (Read Pico) and in the
+  // emulator; other boards keep the plain placeholder as before.
+#if defined(BOARD_HAS_PSRAM) || defined(CROSSPOINT_EMULATED)
+  {
+    Bitmap bitmap(RickyHomeBanner::BMP, RickyHomeBanner::SIZE);
+    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
+      return renderer.drawBitmapCropToFill(bitmap, rect.x, rect.y, rect.width, rect.height);
+    }
+  }
+#endif
+  return false;
 }
 
 namespace {
