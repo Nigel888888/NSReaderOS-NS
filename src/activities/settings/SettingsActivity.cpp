@@ -1450,6 +1450,12 @@ std::string SettingsActivity::settingValueText(const SettingInfo& setting) {
                static_cast<unsigned int>(SETTINGS.*(setting.valuePtr)));
       return valueBuffer;
     }
+    if (setting.nameId == StrId::STR_BATTERY_CALIBRATION) {
+      char valueBuffer[32];
+      snprintf(valueBuffer, sizeof(valueBuffer), tr(STR_BATTERY_CALIBRATION_VALUE_FORMAT),
+               static_cast<int>(SETTINGS.*(setting.valuePtr)) - 100);
+      return valueBuffer;
+    }
     return std::to_string(SETTINGS.*(setting.valuePtr));
   }
   return "";

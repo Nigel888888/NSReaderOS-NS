@@ -305,6 +305,46 @@ Result verify(const std::string& folder, const std::string& account, const std::
   return runList(folder, account, password, nullptr, message, "");
 }
 
+Result ensureFolder(const std::string& folder, const std::string& account, const std::string& password,
+                    std::string& message, bool* created) {
+  if (created) *created = false;
+  if (folder.empty() || account.empty() || password.empty()) {
+    message = "missing credentials";
+    return Result::AuthFailure;
+  }
+
+  // First check whether the folder already exists / is reachable.
+  const Result first = runList(folder, account, password, nullptr, message, "");
+  if (first == Result::Ok || first == Result::AuthFailure || first == Result::TransportFailure ||
+      first == Result::ParseFailure || first == Result::TooLarge) {
+    return first;
+  }
+
+  // MissingFolder (404) -> create the collection at the DAV root with MKCOL.
+  const std::string url = folderUrl(folder);
+  const std::string creds = account + ":" + password;
+  const String encoded = base64::encode(reinterpret_cast<const uint8_t*>(creds.data()), creds.size());
+  const std::string auth = std::string("Basic ") + encoded.c_str();
+  pluginhttp::Headers headers;
+  headers.emplace_back("Authorization", auth);
+  String body;
+  const int status = pluginhttp::request(nullptr, url, "MKCOL", "", headers, body, 4096);
+  // WebDAV: 201 Created, or 405 when the collection already exists (race).
+  if (status != 201 && status != 405) {
+    if (status == 401 || status == 403) {
+      message = "unauthorized";
+      return Result::AuthFailure;
+    }
+    message = status < 0 ? "transport failure" : "mkcol http " + std::to_string(status);
+    return Result::TransportFailure;
+  }
+
+  // Verify the freshly created folder is listable.
+  const Result second = runList(folder, account, password, nullptr, message, "");
+  if (second == Result::Ok && created) *created = true;
+  return second;
+}
+
 }  // namespace nutstore
 
 #endif

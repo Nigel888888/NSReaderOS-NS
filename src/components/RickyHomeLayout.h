@@ -6,7 +6,7 @@
 // Geometry only: both orientations use the current content/safe area, not
 // panel constants. The SDK components own drawing and their hit rectangles.
 namespace RickyHomeLayout {
-constexpr int PAGE_BOOKS = 3;
+constexpr int PAGE_BOOKS = 4;
 struct Metrics {
   int columns;
   int rows;

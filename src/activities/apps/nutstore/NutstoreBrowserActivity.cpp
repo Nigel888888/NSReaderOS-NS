@@ -2,6 +2,7 @@
 #ifdef RICKYOS_PRODUCT
 
 #include <Arduino.h>
+#include <FreeInkUIIcon.h>
 #include <GfxRenderer.h>
 #include <HalStorage.h>
 #include <I18n.h>
@@ -13,8 +14,11 @@
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/ActivityManager.h"
+#include "activities/settings/NutstoreConfigActivity.h"
 #include "components/CatalogScreens.h"
 #include "components/UITheme.h"
+#include "components/icons/uiChromeIcons.h"
 #include "fontIds.h"
 #include "util/NutstoreDav.h"
 #include "util/RickyStorageLayout.h"
@@ -68,12 +72,19 @@ std::string humanSize(uint64_t bytes) {
 
 void NutstoreBrowserActivity::onEnter() {
   CatalogActivity::onEnter();
+  app.on(ACTION_ACCOUNT, &NutstoreBrowserActivity::onAccountEvent, this);
   folder = SETTINGS.rickyNutstoreFolder;
   currentPath.clear();
   navigationHistory.clear();
   state = State::CHECK_WIFI;
   statusMessage = tr(STR_CHECKING_WIFI);
   checkAndConnectWifi();
+}
+
+void NutstoreBrowserActivity::onAccountEvent(const freeink::ui::ActionEvent&, void* user) {
+  auto* self = static_cast<NutstoreBrowserActivity*>(user);
+  self->app.clearTapFlash();
+  self->app.replaceActivityWith<NutstoreConfigActivity>();
 }
 
 std::string NutstoreBrowserActivity::baseUrl() const {
@@ -91,8 +102,23 @@ void NutstoreBrowserActivity::startBrowse() {
 void NutstoreBrowserActivity::fetchEntries() {
   std::vector<nutstore::Entry> all;
   std::string message;
-  const nutstore::Result r = nutstore::list(folder, SETTINGS.rickyNutstoreAccount, SETTINGS.rickyNutstorePassword, all,
-                                            message, currentPath);
+  nutstore::Result r = nutstore::list(folder, SETTINGS.rickyNutstoreAccount, SETTINGS.rickyNutstorePassword, all,
+                                      message, currentPath);
+  // If the sync folder does not exist on the server yet, create it once and
+  // retry the listing. This keeps the app entry (which goes straight to the
+  // browser when credentials exist) from failing after a fresh login.
+  if (r == nutstore::Result::MissingFolder) {
+    bool created = false;
+    const nutstore::Result ensured = nutstore::ensureFolder(folder, SETTINGS.rickyNutstoreAccount,
+                                                            SETTINGS.rickyNutstorePassword, message, &created);
+    if (ensured == nutstore::Result::Ok) {
+      all.clear();
+      r = nutstore::list(folder, SETTINGS.rickyNutstoreAccount, SETTINGS.rickyNutstorePassword, all, message,
+                         currentPath);
+    } else {
+      r = ensured;
+    }
+  }
   if (r != nutstore::Result::Ok) {
     LOG_ERR("NUTS", "list failed: result=%d detail=%s folder=%s path=%s", static_cast<int>(r), message.c_str(),
             SETTINGS.rickyNutstoreFolder, currentPath.c_str());
@@ -131,7 +157,10 @@ void NutstoreBrowserActivity::rebuildRowItems() {
 }
 
 void NutstoreBrowserActivity::buildScreen(UiScreen& screen) {
-  screenHeader(screen, tr(STR_RICKY_NUTSTORE_TITLE));
+  // Trailing gear opens account settings: sign out / sign in again without
+  // having to leave the app and hunt for the config screen.
+  catalogScreenHeader(screen, renderer, tr(STR_RICKY_NUTSTORE_TITLE),
+                      fui::bitmapFromIcon(icon_settings_2_32), ACTION_ACCOUNT);
   if (!buildStatusScreen(screen, /*boldError=*/false, /*showDownloadTotal=*/true)) {
     if (entries.empty()) {
       screen.centeredText(tr(STR_RICKY_NUTSTORE_EMPTY), screen.theme().bodyText);

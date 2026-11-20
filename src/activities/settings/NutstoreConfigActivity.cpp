@@ -61,7 +61,7 @@ void NutstoreConfigActivity::buildScreen(UiScreen& screen) {
   rows[2].subtitle = SETTINGS.rickyNutstorePassword[0] ? "••••••••" : tr(STR_RICKY_NUTSTORE_NOT_SET);
   rows[3].label = tr(STR_RICKY_NUTSTORE_CONNECT);
   rows[3].subtitle = nutstoreStatus.empty() ? nullptr : nutstoreStatus.c_str();
-  rows[4].label = tr(STR_RICKY_NUTSTORE_CLEAR);
+  rows[4].label = tr(STR_RICKY_NUTSTORE_RELOGIN);
   rows[5].label = tr(STR_RICKY_NUTSTORE_GUIDE_1);
   rows[6].label = tr(STR_RICKY_NUTSTORE_GUIDE_3);
   for (int i = 0; i < ROWS; ++i) rows[i].actionValue = i;
@@ -154,9 +154,13 @@ void NutstoreConfigActivity::activateIndex(const int index) {
       }
       GUI.drawPopup(renderer, tr(STR_RICKY_NUTSTORE_CONNECTING));
       std::string message;
-      const nutstore::Result r = nutstore::verify(SETTINGS.rickyNutstoreFolder, SETTINGS.rickyNutstoreAccount,
-                                                  SETTINGS.rickyNutstorePassword, message);
-      nutstoreStatus = describeNutstoreResult(r, message);
+      bool created = false;
+      const nutstore::Result r = nutstore::ensureFolder(SETTINGS.rickyNutstoreFolder, SETTINGS.rickyNutstoreAccount,
+                                                        SETTINGS.rickyNutstorePassword, message, &created);
+      if (r == nutstore::Result::Ok)
+        nutstoreStatus = created ? tr(STR_RICKY_NUTSTORE_CREATED) : tr(STR_RICKY_NUTSTORE_OK);
+      else
+        nutstoreStatus = describeNutstoreResult(r, message);
       requestUpdate();
       if (r == nutstore::Result::Ok) {
         startActivityForResultWith<NutstoreBrowserActivity>([](const ActivityResult&) {});
@@ -164,12 +168,14 @@ void NutstoreConfigActivity::activateIndex(const int index) {
       break;
     }
     case 4: {
-      RenderLock lock(*this);
+      // Sign out, then drop straight into the account editor so the user lands
+      // on an actual sign-in screen instead of a dead "cleared" status row.
       SETTINGS.rickyNutstoreAccount[0] = '\0';
       SETTINGS.rickyNutstorePassword[0] = '\0';
       SETTINGS.saveToFile();
-      nutstoreStatus.clear();
+      nutstoreStatus = tr(STR_RICKY_NUTSTORE_SIGNED_OUT);
       requestUpdate();
+      editAccount();
       break;
     }
     default:

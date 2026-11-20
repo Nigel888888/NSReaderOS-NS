@@ -293,6 +293,12 @@ inline const std::vector<SettingInfo>& getBaseSettingsList() {
                            {CrossPointSettings::UI_FONT_SCALE_MIN, CrossPointSettings::UI_FONT_SCALE_MAX,
                             CrossPointSettings::UI_FONT_SCALE_STEP},
                            "uiFontScale", StrId::STR_CAT_SYSTEM),
+        // Host-side display offset for the PMU-reported SOC (see the field in
+        // CrossPointSettings). 100 = no correction; 90..110 = -10%..+10%.
+        SettingInfo::Value(StrId::STR_BATTERY_CALIBRATION, &CrossPointSettings::batteryCalibration,
+                           {CrossPointSettings::BATTERY_CALIBRATION_MIN, CrossPointSettings::BATTERY_CALIBRATION_MAX,
+                            CrossPointSettings::BATTERY_CALIBRATION_STEP},
+                           "batteryCalibration", StrId::STR_CAT_SYSTEM),
         // Built-in font-family entry. Replaced per-call with a registry-aware
         // version when SD fonts are installed.
         SettingInfo::Enum(StrId::STR_FONT_FAMILY, &CrossPointSettings::fontFamily,

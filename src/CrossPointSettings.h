@@ -178,6 +178,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   static constexpr uint8_t UI_FONT_SCALE_MAX = 160;
   static constexpr uint8_t UI_FONT_SCALE_STEP = 10;
   static constexpr uint8_t UI_FONT_SCALE_DEFAULT = 100;
+  // Host-side battery display calibration. Read Pico's SOC is computed inside
+  // the CW32L010 PMU and is read-only from the host (the PMU does not accept a
+  // battery profile), so calibration is applied to the *displayed* percentage
+  // only. Stored as a base of 100; 90..110 in steps of 2 => -10%..+10%.
+  static constexpr uint8_t BATTERY_CALIBRATION_MIN = 90;
+  static constexpr uint8_t BATTERY_CALIBRATION_MAX = 110;
+  static constexpr uint8_t BATTERY_CALIBRATION_STEP = 2;
+  static constexpr uint8_t BATTERY_CALIBRATION_DEFAULT = 100;
   // Highest old enum slot; values <= this in a saved file are legacy, because
   // every real percentage is >= 100.
   static constexpr uint8_t LEGACY_UI_FONT_SCALE_MAX = 3;
@@ -340,6 +348,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t statusBarProgressBarThickness = PROGRESS_BAR_NORMAL;
   uint8_t statusBarTitle = CHAPTER_TITLE;
   uint8_t statusBarBattery = 1;
+  uint8_t batteryCalibration = BATTERY_CALIBRATION_DEFAULT;
   uint8_t xtcStatusBarMode = XTC_STATUS_BAR_HIDE;
   // Clock display in the reader status bar.
   uint8_t statusBarClock = STATUS_BAR_CLOCK_HIDE;

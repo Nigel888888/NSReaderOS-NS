@@ -17,6 +17,9 @@ class NutstoreBrowserActivity final : public CatalogActivity {
   void onEnter() override;
 
  private:
+  static constexpr freeink::ui::ActionId ACTION_ACCOUNT = ACTION_USER + 2;
+  static void onAccountEvent(const freeink::ui::ActionEvent&, void* user);
+
   std::vector<nutstore::Entry> entries;
   std::vector<freeink::ui::ListItem> rowItems;
   std::string folder;

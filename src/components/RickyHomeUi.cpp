@@ -428,11 +428,15 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   target.fill(fui::Rect{static_cast<int16_t>(dividerX - kDividerWidth / 2), footer.y, kDividerWidth,
                         static_cast<int16_t>(footer.height)},
               black);
+  // Give the right column extra breathing room from the divider so the two
+  // sections never look crowded against the rule.
+  const int recentInset = gap + std::max<int>(4, gap / 2);
   target.text(fui::Rect{footer.x, footer.y, static_cast<int16_t>(dividerX - footer.x - gap),
                         static_cast<int16_t>(smallHeight)},
               tr(STR_RICKY_NOW_READING), strong);
-  target.text(fui::Rect{static_cast<int16_t>(dividerX + gap), footer.y,
-                        static_cast<int16_t>(footer.right() - dividerX - gap), static_cast<int16_t>(smallHeight)},
+  target.text(fui::Rect{static_cast<int16_t>(dividerX + recentInset), footer.y,
+                        static_cast<int16_t>(footer.right() - dividerX - recentInset),
+                        static_cast<int16_t>(smallHeight)},
               tr(STR_RICKY_RECENT_READ), strong);
   const int listTop = footer.y + smallHeight + gap / 2;
   const int listHeight = footer.bottom() - listTop;
@@ -446,35 +450,38 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     screen.frame().hit(fui::Rect{footer.x, footer.y, static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(footer.height)}, OPEN_BOOK, LIBRARY, fui::InputTouch);
   } else {
-    // Artwork only: no white card, no frame around the cover — just the
-    // book's own image, cropped to fill a 3:4 portrait, with the progress bar
-    // kept directly below it. This keeps the column clean and lets the cover
-    // itself carry the visual weight.
+    // Cover on top (artwork only, no card/frame), then two text lines —
+    // the book title and its read percentage — and the progress bar below.
     const int boxW = dividerX - footer.x - gap;
     const int barHeight = 6;
-    const int barGap = gap / 2;
-    const int boxH = std::max<int>(0, listHeight - barHeight - barGap);
-    const fui::Rect box{static_cast<int16_t>(footer.x), static_cast<int16_t>(listTop), static_cast<int16_t>(boxW),
-                        static_cast<int16_t>(boxH)};
-    if (!box.empty()) {
-      // Largest 3:4 portrait that fits the box, centred horizontally.
-      const int coverH = std::min<int>(box.height, boxW * 4 / 3);
-      const int coverW = coverH * 3 / 4;
-      const fui::Rect cover{static_cast<int16_t>(box.x + (box.width - coverW) / 2),
-                            static_cast<int16_t>(box.y), static_cast<int16_t>(coverW), static_cast<int16_t>(coverH)};
+    const int inGap = std::max(2, gap / 3);
+    const int textBlockH = smallHeight * 2;
+    const int coverAreaH = std::max<int>(0, listHeight - textBlockH - barHeight - inGap * 2);
+    const int coverH = std::min<int>(coverAreaH, boxW * 4 / 3);
+    const int coverW = coverH * 3 / 4;
+    const fui::Rect cover{static_cast<int16_t>(footer.x + (boxW - coverW) / 2), static_cast<int16_t>(listTop),
+                          static_cast<int16_t>(coverW), static_cast<int16_t>(coverH)};
+    if (coverH > 0) {
       // Bind the real cover height BEFORE painting. paint() -> painter lambda
       // calls activity.setThumbnailHeight(rickyHome->coverHeight()); a freshly
       // constructed host still holds 0 here, which reset the activity height
       // to 0 and made drawBookCover() skip the artwork (empty placeholder)
-      // until a later redraw (swipe) happened to re-bind the height. Setting it
-      // first makes the cover load on the very first render and keeps the
-      // bounded PSRAM cache warm across tab switches.
+      // until a later redraw (swipe) happened to re-bind the height.
       thumbnailHeight = coverH;
       paint(cover, 0, false);  // no hairline frame — artwork only
-      // Progress bar below the cover, matching the cover's width.
-      RickyPageUi::progressBar(
-          target, fui::Rect{cover.x, static_cast<int16_t>(cover.bottom() + barGap), cover.width, barHeight}, progress);
     }
+    const int textY = listTop + coverH + inGap;
+    const auto& book = (*books)[0];
+    target.text(fui::Rect{footer.x, static_cast<int16_t>(textY), static_cast<int16_t>(boxW),
+                          static_cast<int16_t>(smallHeight)},
+                titleOf(book), strong);
+    snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS), static_cast<unsigned>(progress));
+    target.text(fui::Rect{footer.x, static_cast<int16_t>(textY + smallHeight), static_cast<int16_t>(boxW),
+                          static_cast<int16_t>(smallHeight)},
+                statsText, small);
+    RickyPageUi::progressBar(
+        target, fui::Rect{footer.x, static_cast<int16_t>(textY + textBlockH + inGap), static_cast<int16_t>(boxW),
+                          static_cast<int16_t>(barHeight)}, progress);
     screen.frame().hit(fui::Rect{footer.x, static_cast<int16_t>(listTop), static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(listHeight)}, OPEN_BOOK, 0, fui::InputTouch);
   }
@@ -497,8 +504,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     if (index <= 0 || !books || index >= static_cast<int>(books->size())) break;
     const auto& item = (*books)[index];
     const int y = listTop + i * rowHeight;
-    const fui::Rect row{static_cast<int16_t>(dividerX + gap), static_cast<int16_t>(y),
-                        static_cast<int16_t>(footer.right() - dividerX - gap), static_cast<int16_t>(rowHeight - 2)};
+    const fui::Rect row{static_cast<int16_t>(dividerX + recentInset), static_cast<int16_t>(y),
+                        static_cast<int16_t>(footer.right() - dividerX - recentInset),
+                        static_cast<int16_t>(rowHeight - 2)};
     target.text(fui::Rect{row.x, row.y, static_cast<int16_t>(row.width - smallHeight * 2),
                           static_cast<int16_t>(smallHeight)}, titleOf(item), strong);
     // A slim progress bar replaces the "read xx% / unread" caption: one quiet

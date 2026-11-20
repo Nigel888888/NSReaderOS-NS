@@ -42,6 +42,13 @@ Result list(const std::string& folder, const std::string& account, const std::st
 Result verify(const std::string& folder, const std::string& account, const std::string& password,
               std::string& message);
 
+// Ensures the configured sync folder exists at the DAV root: a PROPFIND that
+// returns 404 is answered with MKCOL (WebDAV create-collection), then verified.
+// Returns Ok when the folder is usable, otherwise the concrete failure. `message`
+// receives a short status; `created` is set true when a folder was made.
+Result ensureFolder(const std::string& folder, const std::string& account, const std::string& password,
+                    std::string& message, bool* created = nullptr);
+
 }  // namespace nutstore
 
 #endif
