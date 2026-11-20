@@ -213,17 +213,17 @@ EpdFontFamily cjk12FontFamily(&cjk12Font);
 #include <builtinFonts/banner_nice_16.h>
 #include <builtinFonts/banner_manque_16.h>
 #include <builtinFonts/banner_sounso_16.h>
-namespace {
-struct BannerFace {
-  int id;
-  const EpdFontData* data;
-};
-constexpr BannerFace kBannerFaces[] = {
-    {BANNER_NICE_16_FONT_ID, &banner_nice_16},
-    {BANNER_MANQUE_16_FONT_ID, &banner_manque_16},
-    {BANNER_SOUNSO_16_FONT_ID, &banner_sounso_16},
-};
-}  // namespace
+// These EpdFont objects MUST outlive every renderer use. EpdFontFamily keeps a
+// raw pointer to its EpdFont; registering one constructed inside the registration
+// loop leaves a dangling pointer once the loop body ends, which crashes the next
+// time a decorative face is drawn (e.g. selecting a banner font from settings and
+// returning Home). Keep them at file scope like smallFont/ui10RegularFont above.
+EpdFont bannerNiceFont(&banner_nice_16);
+EpdFontFamily bannerNiceFontFamily(&bannerNiceFont);
+EpdFont bannerManqueFont(&banner_manque_16);
+EpdFontFamily bannerManqueFontFamily(&bannerManqueFont);
+EpdFont bannerSounsoFont(&banner_sounso_16);
+EpdFontFamily bannerSounsoFontFamily(&bannerSounsoFont);
 #endif
 
 // Chinese chess piece glyphs (subset CJK font, 14 characters at 16pt).
@@ -649,12 +649,15 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.setFallbackFont(CJK_UI_12_FONT_ID, kRtlFontId);
   // Banner decorative faces are ASCII-only; route missing (e.g. Chinese) glyphs
   // to the CJK UI face so a Chinese phrase still renders instead of tofu.
+  // Register the file-scope families (NOT stack temporaries) so the pointers
+  // EpdFontFamily holds stay valid for the lifetime of the renderer.
 #if defined(RICKYOS_PRODUCT)
-  for (const auto& face : kBannerFaces) {
-    EpdFont font(face.data);
-    renderer.insertFont(face.id, EpdFontFamily(&font));
-    renderer.setFallbackFont(face.id, CJK_UI_12_FONT_ID);
-  }
+  renderer.insertFont(BANNER_NICE_16_FONT_ID, bannerNiceFontFamily);
+  renderer.setFallbackFont(BANNER_NICE_16_FONT_ID, CJK_UI_12_FONT_ID);
+  renderer.insertFont(BANNER_MANQUE_16_FONT_ID, bannerManqueFontFamily);
+  renderer.setFallbackFont(BANNER_MANQUE_16_FONT_ID, CJK_UI_12_FONT_ID);
+  renderer.insertFont(BANNER_SOUNSO_16_FONT_ID, bannerSounsoFontFamily);
+  renderer.setFallbackFont(BANNER_SOUNSO_16_FONT_ID, CJK_UI_12_FONT_ID);
 #endif
 #endif
   renderer.insertFont(CHINESE_CHESS_FONT_ID, chineseChessPieceFontFamily);
