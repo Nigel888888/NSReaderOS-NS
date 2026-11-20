@@ -1,10 +1,11 @@
 #include "HalPowerManager.h"
 
 // Read Pico SOC is computed inside the PMU and is host-read-only; the display
-// calibration offset therefore lives in persisted settings and is applied here
-// at the single battery-percentage exit point. Relative path: hardware builds
-// do not put src/ on the include path (only the simulator env does).
-#include "../../src/CrossPointSettings.h"
+// calibration offset is mirrored here by CrossPointSettings and applied at the
+// single battery-percentage exit point. This header is dependency-free so the
+// HAL translation unit does not need ArduinoJson. Relative path: hardware
+// builds do not put src/ on the include path (only the simulator env does).
+#include "../../src/BatteryCalibration.h"
 
 #include <BoardConfig.h>
 #if FREEINK_DEVICE_METALIO_EINK4
@@ -530,12 +531,8 @@ uint16_t HalPowerManager::getBatteryPercentage() const {
       return _batteryCachedPercent;
     }
     // Apply the display offset to the *fresh* reading, never to the cached
-    // value (which would compound the correction on every poll). 100 in
-    // settings means no change; 90..110 maps to -10..+10 percentage points.
-    int calibrated = static_cast<int>(percent) + static_cast<int>(SETTINGS.batteryCalibration) - 100;
-    if (calibrated < 0) calibrated = 0;
-    if (calibrated > 100) calibrated = 100;
-    _batteryCachedPercent = static_cast<uint16_t>(calibrated);
+    // value (which would compound the correction on every poll).
+    _batteryCachedPercent = BatteryCalibration::apply(percent);
     return _batteryCachedPercent;
   }
 

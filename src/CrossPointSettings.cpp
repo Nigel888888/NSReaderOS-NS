@@ -17,6 +17,7 @@
 #include <limits>
 #include <string>
 
+#include "BatteryCalibration.h"
 #include "I18nKeys.h"
 #include "ReaderFontSizes.h"
 #include "SdCardFontSystem.h"
@@ -169,6 +170,13 @@ bool isSettingAvailableForPersistence(const SettingInfo& setting) {
 
 }  // namespace
 
+// Host-side display offset, mirrored from SETTINGS.batteryCalibration so the
+// HAL layer can read it without depending on ArduinoJson. Defined here because
+// CrossPointSettings is the only writer (on load and on save).
+namespace BatteryCalibration {
+int8_t offsetPercent = 0;
+}  // namespace BatteryCalibration
+
 void CrossPointSettings::applyLanguageSelection(const uint8_t languageIndex) {
   language = languageIndex;
   contentProfile = contentProfileForLanguage(static_cast<Language>(languageIndex));
@@ -218,6 +226,10 @@ void CrossPointSettings::enforceProductLayout() {
 
 void CrossPointSettings::toJson(JsonDocument& doc) const {
   const CrossPointSettings& s = *this;
+
+  // Keep the HAL-visible display offset current whenever settings are saved
+  // (the on-device settings editor saves immediately after a value change).
+  BatteryCalibration::offsetPercent = static_cast<int8_t>(static_cast<int>(batteryCalibration) - 100);
 
   for (const auto& info : getBaseSettingsList()) {
     if (!isSettingAvailableForPersistence(info)) continue;
@@ -679,6 +691,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
     LOG_DBG("CPS", "Resaving settings to update format");
     requestResave();
   }
+
+  // Mirror the loaded calibration into the dependency-free global the HAL
+  // battery readout consumes (also covers the struct default when the key is
+  // absent from an older save file).
+  BatteryCalibration::offsetPercent = static_cast<int8_t>(static_cast<int>(batteryCalibration) - 100);
 
   LOG_DBG("CPS", "Settings loaded from file");
 
