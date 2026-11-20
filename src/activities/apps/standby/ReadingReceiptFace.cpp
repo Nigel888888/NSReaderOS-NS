@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <memory>
 #include <string>
 
@@ -49,7 +50,7 @@ void formatDuration(uint64_t ms, char* out, size_t n) {
 }
 
 // Draw a wrapped title left-aligned, UTF-8 safe, bounded to maxLines rows.
-// Returns the y just after the last line drawn.
+// Returns the number of lines actually drawn.
 int drawTitle(GfxRenderer& renderer, int fontId, int x, int top, int maxWidth, int maxLines, int lineHeight,
               const char* text) {
   auto lines = renderer.wrappedText(fontId, text, maxWidth, maxLines);
@@ -58,7 +59,7 @@ int drawTitle(GfxRenderer& renderer, int fontId, int x, int top, int maxWidth, i
     renderer.drawText(fontId, x, y, line.c_str(), true);
     y += lineHeight;
   }
-  return y;
+  return static_cast<int>(lines.size());
 }
 }  // namespace
 
@@ -140,11 +141,9 @@ void ReadingReceiptFace::render(GfxRenderer& renderer, const Rect& viewport) {
   renderer.drawLine(contentX, Y(156), contentX + contentW, Y(156), 1, true);
 
   // ---- title / author ----
-  int y = Y(202);
-  const int titleTop = y;
-  drawTitle(renderer, fontTitle, contentX, y, contentW, 2, titleLH, title.c_str());
-  int usedLines = std::max(1, (y - titleTop) / std::max(1, titleLH));
-  if (usedLines > 2) usedLines = 2;
+  const int usedLines = std::clamp(drawTitle(renderer, fontTitle, contentX, Y(202), contentW, 2, titleLH,
+                                             title.c_str()),
+                                   1, 2);
   if (!author.empty()) {
     const int authorY = (usedLines > 1) ? Y(326) : Y(274);
     renderer.drawText(fontSmall, contentX, authorY, renderer.truncatedText(fontSmall, author.c_str(), contentW).c_str(),
