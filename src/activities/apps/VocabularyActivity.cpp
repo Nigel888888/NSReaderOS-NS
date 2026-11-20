@@ -108,7 +108,14 @@ void VocabularyActivity::rebuildRowItems() {
   // vector must not reallocate while the items are being built.
   rowSubtitles.reserve(entries.size());
   rowItems.reserve(entries.size());
-  if (manageMode) selectedFlags.assign(entries.size(), false);
+  // Do NOT reset the checkboxes here. This is called after every single row
+  // tap to redraw the list; resetting selectedFlags wiped the flag that tap
+  // had just set, so a row could never stay checked ("勾选不了"). Flags are
+  // initialised once on entering manage mode (toggleManageMode) and cleared
+  // after a batch delete. Only grow/shrink to match a changed entry count.
+  if (manageMode && selectedFlags.size() != entries.size()) {
+    selectedFlags.assign(entries.size(), false);
+  }
   for (size_t i = 0; i < entries.size(); ++i) {
     const auto& entry = entries[i];
     // Row subtitle: the definition excerpt, then the book it came from.
