@@ -30,9 +30,11 @@ constexpr char kPicture[] = "/sleep.bmp";
 
 // Standby styles in the order people pick them; stored values differ (RICKY_STANDBY_FACE).
 constexpr uint8_t kStyles[] = {Settings::RICKY_STANDBY_PICTURE, Settings::RICKY_STANDBY_COVER,
-                               Settings::RICKY_STANDBY_CALENDAR, Settings::RICKY_STANDBY_KEEP_PAGE};
+                               Settings::RICKY_STANDBY_CALENDAR, Settings::RICKY_STANDBY_KEEP_PAGE,
+                               Settings::RICKY_STANDBY_LIBRARY_COLLAGE, Settings::RICKY_STANDBY_RECEIPT};
 constexpr StrId kStyleLabels[] = {StrId::STR_RICKY_STANDBY_STYLE_PICTURE, StrId::STR_RICKY_STANDBY_STYLE_COVER,
-                                  StrId::STR_RICKY_STANDBY_STYLE_CALENDAR, StrId::STR_RICKY_STANDBY_STYLE_KEEP};
+                                  StrId::STR_RICKY_STANDBY_STYLE_CALENDAR, StrId::STR_RICKY_STANDBY_STYLE_KEEP,
+                                  StrId::STR_RICKY_STANDBY_STYLE_LIBRARY_COLLAGE, StrId::STR_RICKY_STANDBY_STYLE_RECEIPT};
 static_assert(std::size(kStyles) == Settings::RICKY_STANDBY_FACE_COUNT);
 static_assert(std::size(kStyleLabels) == std::size(kStyles));
 constexpr StrId kFitLabels[] = {StrId::STR_RICKY_PICTURE_FIT_WHOLE, StrId::STR_RICKY_PICTURE_FIT_FILL};

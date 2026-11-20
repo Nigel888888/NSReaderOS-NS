@@ -494,6 +494,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     RICKY_STANDBY_CALENDAR,
     RICKY_STANDBY_COVER,
     RICKY_STANDBY_KEEP_PAGE,
+    RICKY_STANDBY_LIBRARY_COLLAGE,  // full-screen collage of real book covers
+    RICKY_STANDBY_RECEIPT,          // torn-paper "reading receipt"
     RICKY_STANDBY_FACE_COUNT
   };
   uint8_t rickyStandbyFace = RICKY_STANDBY_PICTURE;

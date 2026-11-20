@@ -33,7 +33,9 @@
 #ifdef RICKYOS_PRODUCT
 #include "CalendarClockFace.h"
 #include "KeepPageFace.h"
+#include "LibraryCollageFace.h"
 #include "RickyWallpaperDownloadActivity.h"
+#include "ReadingReceiptFace.h"
 #include "WallpaperFace.h"
 #include "activities/home/FileBrowserActivity.h"
 #include "activities/util/ImageViewerActivity.h"
@@ -73,6 +75,10 @@ constexpr FaceEntry kFaces[] = {
            return makeUniqueNoThrow<CalendarClockFace>();
          case CrossPointSettings::RICKY_STANDBY_KEEP_PAGE:
            return makeUniqueNoThrow<KeepPageFace>();
+         case CrossPointSettings::RICKY_STANDBY_LIBRARY_COLLAGE:
+           return makeUniqueNoThrow<LibraryCollageFace>();
+         case CrossPointSettings::RICKY_STANDBY_RECEIPT:
+           return makeUniqueNoThrow<ReadingReceiptFace>();
          default:
            return makeUniqueNoThrow<WallpaperFace>();  // the picture, or the cover
        }
