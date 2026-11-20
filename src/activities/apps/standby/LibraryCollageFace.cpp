@@ -74,22 +74,28 @@ CoverGray loadCoverGray(const std::string& path, const int targetH) {
   auto gray = std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[static_cast<size_t>(w) * h]);
   if (!gray) return out;
   const size_t rowBytes = static_cast<size_t>(bitmap.getRowBytes());
-  auto row = std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[rowBytes + static_cast<size_t>(bitmap.getWidth())]);
-  if (!row) return out;
-  uint8_t* source = row.get() + rowBytes;
+  // readNextRow(data, rowBuffer, ..., Gray8) writes the DECODED 8-bit gray row
+  // into `data` (srcW bytes) and only uses `rowBuffer` as scratch for the raw
+  // packed BMP row (rowBytes bytes). These must be separate buffers, and the
+  // decoded `data` is what we must sample -- reading `rowBuffer` yields the raw
+  // 2-bit/1-bit packed bytes (4 or 8 pixels per byte), which shows up as
+  // horizontal stripe garbage. Keep both alive across the row loop.
+  auto decoded = std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[static_cast<size_t>(srcW)]);
+  auto rawRow = std::unique_ptr<uint8_t[]>(new (std::nothrow) uint8_t[rowBytes]);
+  if (!decoded || !rawRow) return out;
   bitmap.rewindToData();
   // readNextRow consumes one BMP row at a time. Walk all source rows in order,
   // keeping only the sampled ones (every `scale` rows) to bound memory.
   for (int srcY = 0; srcY < srcH; ++srcY) {
-    const BmpReaderError err = bitmap.readNextRow(row.get(), source, nullptr, Bitmap::RowOutput::Gray8);
+    const BmpReaderError err = bitmap.readNextRow(decoded.get(), rawRow.get(), nullptr, Bitmap::RowOutput::Gray8);
     if (err != BmpReaderError::Ok) return out;
     if (srcY % scale != 0) continue;
     const int destRow = srcY / scale;
     if (destRow >= h) break;
     const int destY = bitmap.isTopDown() ? destRow : h - 1 - destRow;
     for (int x = 0; x < w; ++x) {
-      const int srcX = std::min(bitmap.getWidth() - 1, x * scale);
-      gray[static_cast<size_t>(destY) * w + x] = source[srcX];
+      const int srcX = std::min(srcW - 1, x * scale);
+      gray[static_cast<size_t>(destY) * w + x] = decoded[srcX];
     }
   }
   out.data = std::move(gray);
