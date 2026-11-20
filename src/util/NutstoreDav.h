@@ -29,7 +29,7 @@ std::string folderUrl(const std::string& folder);
 std::string childUrl(const std::string& folderUrl, const std::string& childHref);
 
 // RESULT codes: Ok / TransportFailure / AuthFailure / ParseFailure / TooLarge.
-enum class Result { Ok, TransportFailure, AuthFailure, ParseFailure, TooLarge };
+enum class Result { Ok, TransportFailure, AuthFailure, ParseFailure, TooLarge, MissingFolder };
 
 // Runs a bounded PROPFIND (Depth: 1) against the configured folder with HTTP
 // Basic auth, parses the 207 Multi-Status XML, and returns direct children.

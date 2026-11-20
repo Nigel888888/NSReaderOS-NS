@@ -114,35 +114,22 @@ void LibraryListActivity::onEnter() {
       },
       this);
   app.on(
-      ACTION_SHELF_OPTIONS,
-      [](const fui::ActionEvent&, void* user) {
+      ACTION_SHELF_VIEW,
+      [](const fui::ActionEvent& event, void* user) {
         auto& self = *static_cast<LibraryListActivity*>(user);
         RenderLock lock(self);
         self.app.clearTapFlash();
-        static constexpr StrId options[] = {StrId::STR_RICKY_SORT_RECENT_DESC, StrId::STR_RICKY_SORT_RECENT_ASC,
-                                            StrId::STR_RICKY_SORT_TITLE_ASC,   StrId::STR_RICKY_SORT_TITLE_DESC,
-                                            StrId::STR_RICKY_SORT_AUTHOR_ASC,  StrId::STR_RICKY_SORT_AUTHOR_DESC,
-                                            StrId::STR_LIBRARY_REBUILD};
-        const int selected =
-            self.activeTabIndex * 2 + (isDescending(self.sortOrder) == (self.activeTabIndex == RECENT_TAB) ? 0 : 1);
-        self.optionPopup.show(StrId::STR_RICKY_LIBRARY_TOOLS, options, std::size(options), selected,
-                              [&self](int choice) {
-                                if (choice == 6) {
-                                  self.promptRebuildIndex();
-                                  return;
-                                }
-                                if (choice < 0 || choice >= 6 || self.degraded) return;
-                                const int tab = choice / 2;
-                                const bool descending = tab == RECENT_TAB ? choice % 2 == 0 : choice % 2 != 0;
-                                if (descending)
-                                  self.descendingTabs |= static_cast<uint8_t>(1u << tab);
-                                else
-                                  self.descendingTabs &= static_cast<uint8_t>(~(1u << tab));
-                                self.selectTab(tab, false);
-                              });
+        const uint8_t mode = event.value == 1 ? 1 : 0;  // 0 = grid, 1 = list
+        if (mode == self.shelfViewMode) return;
+        self.shelfViewMode = mode;
+        // Sorting stays reachable from the list's own tab strip; switching view
+        // only changes how the same filtered/ordered books are presented.
+        self.activeNav().reset();
         self.requestUpdate();
       },
       this);
+  // Sorting / rebuild remain available through the long-press row menu and the
+  // Recent-book options; the right-hand tools are now dedicated view switches.
   app.on(
       ACTION_SHELF_PAGE,
       [](const fui::ActionEvent& event, void* user) {
@@ -497,12 +484,10 @@ void LibraryListActivity::promptDeleteBookByPath(const std::string& path, const 
 }
 
 void LibraryListActivity::openSearch() {
-#ifdef RICKYOS_PRODUCT
-  // No Chinese input method yet, so a search keyboard could not type most titles:
-  // every way into Search (the Previous key on the tab strip included) stays shut.
-  return;
-#endif
   app.clearTapFlash();
+  // The QWERTY keyboard types Latin letters (and pinyin initials); that covers
+  // English titles and romanised filenames. CJK glyphs can only arrive via a
+  // prefilled initialText, but the search itself is fully functional.
   // No key filtering here on purpose. Greying out the letters that lead nowhere
   // was built, tested on device and removed: a letter you can see but cannot
   // reach reads as a broken keyboard, and the eye keeps returning to it.
@@ -1196,7 +1181,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
                 {static_cast<int16_t>(cx + r + 5), static_cast<int16_t>(cy + r + 5)}, 2, black);
   }
   screen.frame().hit(searchRect, ACTION_SEARCH, 0, fui::InputTouch);
-  // Grid icon (current view): three tiles, underlined as selected.
+  // Grid icon: three tiles. Underlined when the cover grid is the active view.
   auto gridRect = fui::Rect{static_cast<int16_t>(toolBox.x + cellW), toolBox.y, static_cast<int16_t>(cellW),
                             static_cast<int16_t>(toolBoxH)};
   {
@@ -1205,11 +1190,12 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     for (int i = 0; i < 3; ++i)
       target.fill(fui::Rect{static_cast<int16_t>(gx + i * (tile + 2)), static_cast<int16_t>(gy),
                             static_cast<int16_t>(tile), static_cast<int16_t>(tile)}, black);
-    target.fill(fui::Rect{static_cast<int16_t>(gridRect.x + cellW / 2 - 10),
-                          static_cast<int16_t>(toolBox.y + toolBoxH - 12), 20, 3}, black);
+    if (shelfViewMode == 0)
+      target.fill(fui::Rect{static_cast<int16_t>(gridRect.x + cellW / 2 - 10),
+                            static_cast<int16_t>(toolBox.y + toolBoxH - 12), 20, 3}, black);
   }
-  screen.frame().hit(gridRect, ACTION_SHELF_OPTIONS, 0, fui::InputTouch);
-  // List icon: three rules; opens the same tools menu (sort / rebuild).
+  screen.frame().hit(gridRect, ACTION_SHELF_VIEW, 0, fui::InputTouch);
+  // List icon: three rules. Underlined when the text list is the active view.
   auto listRect = fui::Rect{static_cast<int16_t>(toolBox.x + cellW * 2), toolBox.y, static_cast<int16_t>(cellW),
                             static_cast<int16_t>(toolBoxH)};
   {
@@ -1218,13 +1204,23 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     for (int i = 0; i < 3; ++i)
       target.fill(fui::Rect{static_cast<int16_t>(lx), static_cast<int16_t>(listRect.y + toolBoxH / 2 - 8 + i * 7),
                             static_cast<int16_t>(lw), 2}, black);
+    if (shelfViewMode == 1)
+      target.fill(fui::Rect{static_cast<int16_t>(listRect.x + cellW / 2 - 10),
+                            static_cast<int16_t>(toolBox.y + toolBoxH - 12), 20, 3}, black);
   }
-  screen.frame().hit(listRect, ACTION_SHELF_OPTIONS, 0, fui::InputTouch);
+  screen.frame().hit(listRect, ACTION_SHELF_VIEW, 1, fui::InputTouch);
   char position[48];
   if (count == 0) {
     screen.centeredText(
         filterFailed ? tr(STR_LIBRARY_SEARCH_UNAVAILABLE)
                      : (query.empty() && readingFilter == 0 ? tr(STR_LIBRARY_EMPTY) : tr(STR_LIBRARY_NO_RESULTS)));
+    return;
+  }
+  // List view: reuse the plain two-line list renderer against the same
+  // filtered / ordered window. The heading band above is already consumed, so
+  // the list fills the remaining body and scrolls through the shared nav.
+  if (shelfViewMode == 1) {
+    buildRickyShelfList(screen);
     return;
   }
   const bool multiplePages = count > SHELF_CAPACITY;
@@ -1408,6 +1404,14 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   target.text(fui::Rect{static_cast<int16_t>(prevBox.right()), pager.y,
                         static_cast<int16_t>(nextBox.x - prevBox.right()), pager.height},
               position, style);
+}
+
+void LibraryListActivity::buildRickyShelfList(UiScreen& screen) {
+  // Reuse the windowed two-line list renderer. It reads the same filtered /
+  // ordered window (bookRowCount / rowFor) and drives the same ListNav as the
+  // grid, so search, sort direction and the reading filter stay consistent
+  // when switching between the two presentations.
+  buildRows(screen);
 }
 #endif
 

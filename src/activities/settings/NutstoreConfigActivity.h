@@ -1,6 +1,7 @@
 #pragma once
 #ifdef RICKYOS_PRODUCT
 #include <array>
+#include <string>
 
 #include "activities/UiListActivity.h"
 
@@ -21,6 +22,7 @@ class NutstoreConfigActivity final : public UiListActivity {
 
  private:
   std::array<freeink::ui::ListItem, ROWS> rows{};
+  std::string nutstoreStatus;
   bool waitForConfirmRelease = false;
 
   void editFolder();

@@ -208,9 +208,14 @@ class LibraryListActivity final : public UiTabListActivity {
   // Folio shelf: three columns by two rows per page.
   static constexpr int SHELF_CAPACITY = 6;
   static constexpr freeink::ui::ActionId ACTION_READING_FILTER = ACTION_BACK + 1;
-  static constexpr freeink::ui::ActionId ACTION_SHELF_OPTIONS = ACTION_READING_FILTER + 1;
-  static constexpr freeink::ui::ActionId ACTION_SHELF_PAGE = ACTION_SHELF_OPTIONS + 1;
+  // The two right-hand tools switch the shelf between cover grid and text
+  // list. event.value: 0 = grid, 1 = list.
+  static constexpr freeink::ui::ActionId ACTION_SHELF_VIEW = ACTION_READING_FILTER + 1;
+  static constexpr freeink::ui::ActionId ACTION_SHELF_PAGE = ACTION_SHELF_VIEW + 1;
   uint8_t readingFilter = 0;
+  // 0 = Folio cover grid (default), 1 = compact text list. Switched from the
+  // right-hand grid/list tools; process-lifetime only, no settings churn.
+  uint8_t shelfViewMode = 0;
   int shelfStart = -1;
   int shelfHeight = 0;
   int shelfCount = 0;
@@ -219,6 +224,8 @@ class LibraryListActivity final : public UiTabListActivity {
   std::array<freeink::ui::CoverGridItem, SHELF_CAPACITY> shelfItems{};
   freeink::ui::CoverGridProps shelfGrid{};
   void buildRickyShelf(UiScreen& screen);
+  // Compact text-list presentation of the same shelf, toggled by the list tool.
+  void buildRickyShelfList(UiScreen& screen);
   bool entryPath(int entry, std::string& path);
 #endif
 };

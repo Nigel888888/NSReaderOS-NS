@@ -245,6 +245,13 @@ Result runList(const std::string& folder, const std::string& account, const std:
     message = "unauthorized";
     return Result::AuthFailure;
   }
+  if (status == 404) {
+    // Nutstore returns 404 when the configured sync folder does not exist at
+    // the DAV root. This is the most common setup mistake and deserves its own
+    // result so the UI can tell the user what to fix.
+    message = "sync folder not found";
+    return Result::MissingFolder;
+  }
   if (status != 207 && (status < 200 || status >= 300)) {
     message = "http " + std::to_string(status);
     return Result::TransportFailure;

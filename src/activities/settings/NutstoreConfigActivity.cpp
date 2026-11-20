@@ -4,6 +4,7 @@
 #include <I18n.h>
 
 #include <algorithm>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -15,6 +16,31 @@
 #include "util/NutstoreDav.h"
 
 namespace fui = freeink::ui;
+namespace {
+
+std::string describeNutstoreResult(const nutstore::Result result, const std::string& detail) {
+  switch (result) {
+    case nutstore::Result::Ok:
+      return tr(STR_RICKY_NUTSTORE_OK);
+    case nutstore::Result::MissingFolder:
+      return tr(STR_RICKY_NUTSTORE_ERR_FOLDER);
+    case nutstore::Result::ParseFailure:
+      return tr(STR_RICKY_NUTSTORE_ERR_PARSE);
+    case nutstore::Result::TooLarge:
+      return tr(STR_RICKY_NUTSTORE_ERR_SIZE);
+    case nutstore::Result::TransportFailure: {
+      char buffer[160];
+      snprintf(buffer, sizeof(buffer), tr(STR_RICKY_NUTSTORE_ERR_HTTP),
+               detail.empty() ? "unknown" : detail.c_str());
+      return buffer;
+    }
+    case nutstore::Result::AuthFailure:
+      break;
+  }
+  return tr(STR_RICKY_NUTSTORE_FAIL);
+}
+
+}  // namespace
 
 const char* NutstoreConfigActivity::headerTitle() const { return tr(STR_RICKY_NUTSTORE_TITLE); }
 
@@ -34,6 +60,7 @@ void NutstoreConfigActivity::buildScreen(UiScreen& screen) {
   rows[2].label = tr(STR_RICKY_NUTSTORE_PASSWORD);
   rows[2].subtitle = SETTINGS.rickyNutstorePassword[0] ? "••••••••" : tr(STR_RICKY_NUTSTORE_NOT_SET);
   rows[3].label = tr(STR_RICKY_NUTSTORE_CONNECT);
+  rows[3].subtitle = nutstoreStatus.empty() ? nullptr : nutstoreStatus.c_str();
   rows[4].label = tr(STR_RICKY_NUTSTORE_CLEAR);
   rows[5].label = tr(STR_RICKY_NUTSTORE_GUIDE_1);
   rows[6].label = tr(STR_RICKY_NUTSTORE_GUIDE_3);
@@ -121,7 +148,7 @@ void NutstoreConfigActivity::activateIndex(const int index) {
     case 3: {
       // Test connection: run a synchronous, bounded PROPFIND under a popup.
       if (!SETTINGS.rickyNutstoreAccount[0] || !SETTINGS.rickyNutstorePassword[0]) {
-        rows[3].subtitle = tr(STR_RICKY_NUTSTORE_FAIL);
+        nutstoreStatus = tr(STR_RICKY_NUTSTORE_NOT_SET);
         requestUpdate();
         break;
       }
@@ -129,7 +156,7 @@ void NutstoreConfigActivity::activateIndex(const int index) {
       std::string message;
       const nutstore::Result r = nutstore::verify(SETTINGS.rickyNutstoreFolder, SETTINGS.rickyNutstoreAccount,
                                                   SETTINGS.rickyNutstorePassword, message);
-      rows[3].subtitle = (r == nutstore::Result::Ok) ? tr(STR_RICKY_NUTSTORE_OK) : tr(STR_RICKY_NUTSTORE_FAIL);
+      nutstoreStatus = describeNutstoreResult(r, message);
       requestUpdate();
       if (r == nutstore::Result::Ok) {
         startActivityForResultWith<NutstoreBrowserActivity>([](const ActivityResult&) {});
@@ -141,7 +168,7 @@ void NutstoreConfigActivity::activateIndex(const int index) {
       SETTINGS.rickyNutstoreAccount[0] = '\0';
       SETTINGS.rickyNutstorePassword[0] = '\0';
       SETTINGS.saveToFile();
-      rows[3].subtitle = nullptr;
+      nutstoreStatus.clear();
       requestUpdate();
       break;
     }

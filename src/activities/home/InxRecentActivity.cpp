@@ -33,14 +33,10 @@ constexpr int kProgressHeight = 6;
 const char* titleOf(const RecentBook& book) { return book.title.empty() ? book.path.c_str() : book.title.c_str(); }
 
 bool drawRecentCover(const GfxRenderer& renderer, const Bitmap& bitmap, const Rect& bounds) {
-#ifdef RICKYOS_PRODUCT
-  const auto fit = RickyHomeLayout::fitBitmap(bitmap.getWidth(), bitmap.getHeight(), bounds.width, bounds.height);
-  if (fit.width <= 0 || fit.height <= 0) return false;
-  return renderer.drawBitmap(bitmap, bounds.x + (bounds.width - fit.width) / 2,
-                             bounds.y + (bounds.height - fit.height) / 2, fit.width, fit.height);
-#else
+  // Crop-to-fill so the cover fills its frame edge to edge with no letterbox
+  // margins — the "now reading" card shows artwork only, no fitted gutters.
+  if (bitmap.getWidth() <= 0 || bitmap.getHeight() <= 0) return false;
   return renderer.drawBitmapCropToFill(bitmap, bounds.x, bounds.y, bounds.width, bounds.height);
-#endif
 }
 
 void drawMiniProgress(const GfxRenderer& renderer, const Rect rect, const uint8_t percent) {
@@ -145,7 +141,9 @@ void InxRecentActivity::onEnter() {
   }
   selected = 0;
   recentStart = 1;
-  thumbnailHeight = 0;
+  // Keep the last cover height and PSRAM thumbnails across tab switches. The
+  // draw path re-binds the height before use; clearing it here forced every
+  // return to this page to re-decode every cover.
   targetCoverStates.fill(CoverCacheState::Unchecked);
   fallbackCoverStates.fill(CoverCacheState::Unchecked);
 #ifdef RICKYOS_PRODUCT
@@ -167,9 +165,6 @@ void InxRecentActivity::onEnter() {
     }
   }
 #endif
-#if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
-  clearCoverCaches();
-#endif
   requestUpdate();
 }
 
@@ -182,10 +177,10 @@ void InxRecentActivity::onExit() {
   bookStats.fill(nullptr);
   targetCoverStates.fill(CoverCacheState::Unchecked);
   fallbackCoverStates.fill(CoverCacheState::Unchecked);
-#if defined(BOARD_HAS_PSRAM) && !defined(SIMULATOR) && !defined(CROSSPOINT_EMULATED)
-  clearCoverCaches();
-#endif
-  thumbnailHeight = 0;
+  // Deliberately retain thumbnailHeight and the bounded PSRAM cover cache:
+  // leaving this tab and coming back should reuse decoded covers, not rebuild
+  // them. setThumbnailHeight() still drops the cache when the size really
+  // changes.
   Activity::onExit();
 }
 

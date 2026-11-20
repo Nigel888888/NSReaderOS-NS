@@ -181,7 +181,8 @@ enum UIIcon {
   Calculator,
   Woodfish,
   Usb,
-  Blocks
+  Blocks,
+  Nutstore
 };
 
 // Default theme implementation (Classic Theme)

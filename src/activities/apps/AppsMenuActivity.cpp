@@ -35,7 +35,7 @@ struct AppEntry {
 
 constexpr AppEntry kAppEntries[] = {
     {AppId::FileTransfer, StrId::STR_FILE_TRANSFER, UIIcon::Transfer, &ActivityManager::goToFileTransfer},
-    {AppId::Nutstore, StrId::STR_RICKY_NUTSTORE_TITLE, UIIcon::Transfer, &ActivityManager::goToWebDav},
+    {AppId::Nutstore, StrId::STR_RICKY_NUTSTORE_TITLE, UIIcon::Nutstore, &ActivityManager::goToWebDav},
     {AppId::OpdsBrowser, StrId::STR_OPDS_BROWSER, UIIcon::Opds, &ActivityManager::goToBrowser},
 #ifdef ENABLE_CHINESE_VERSION
     {AppId::WeRead, StrId::STR_WEREAD_TITLE, UIIcon::WeRead, &ActivityManager::goToWeRead},
@@ -138,6 +138,8 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
   switch (icon) {
     case UIIcon::Transfer:
       return ricky_app_transfer_56;
+    case UIIcon::Nutstore:
+      return ricky_app_nutstore_56;
     case UIIcon::Opds:
       return ricky_app_opds_56;
     case UIIcon::WeRead:

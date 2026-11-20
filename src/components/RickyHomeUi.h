@@ -26,7 +26,7 @@ class RickyHomeUi final : public UiAppHost {
  private:
   static void screenFn(UiScreen& screen, void* user);
   static void onAction(const freeink::ui::ActionEvent& event, void* user);
-  bool paint(freeink::ui::Rect rect, int index);
+  bool paint(freeink::ui::Rect rect, int index, bool frame = true);
   void draw(UiScreen& screen);
   void drawPortrait(UiScreen& screen);
   GfxRenderer& renderer;

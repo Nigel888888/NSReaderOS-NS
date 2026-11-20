@@ -31,6 +31,28 @@ bool isTextDocument(const std::string& name) {
   return ext == "md" || ext == "txt";
 }
 
+std::string nutstoreErrorText(const nutstore::Result result, const std::string& detail) {
+  switch (result) {
+    case nutstore::Result::AuthFailure:
+      return tr(STR_RICKY_NUTSTORE_FAIL);
+    case nutstore::Result::MissingFolder:
+      return tr(STR_RICKY_NUTSTORE_ERR_FOLDER);
+    case nutstore::Result::ParseFailure:
+      return tr(STR_RICKY_NUTSTORE_ERR_PARSE);
+    case nutstore::Result::TooLarge:
+      return tr(STR_RICKY_NUTSTORE_ERR_SIZE);
+    case nutstore::Result::TransportFailure: {
+      char buffer[160];
+      snprintf(buffer, sizeof(buffer), tr(STR_RICKY_NUTSTORE_ERR_HTTP),
+               detail.empty() ? "unknown" : detail.c_str());
+      return buffer;
+    }
+    case nutstore::Result::Ok:
+      break;
+  }
+  return tr(STR_RICKY_NUTSTORE_FAIL);
+}
+
 std::string humanSize(uint64_t bytes) {
   char buf[32];
   if (bytes >= 1024 * 1024)
@@ -71,12 +93,12 @@ void NutstoreBrowserActivity::fetchEntries() {
   std::string message;
   const nutstore::Result r = nutstore::list(folder, SETTINGS.rickyNutstoreAccount, SETTINGS.rickyNutstorePassword, all,
                                             message, currentPath);
-  if (r == nutstore::Result::AuthFailure) {
-    fail(StrId::STR_RICKY_NUTSTORE_FAIL);
-    return;
-  }
   if (r != nutstore::Result::Ok) {
-    fail(StrId::STR_FETCH_FEED_FAILED);
+    LOG_ERR("NUTS", "list failed: result=%d detail=%s folder=%s path=%s", static_cast<int>(r), message.c_str(),
+            SETTINGS.rickyNutstoreFolder, currentPath.c_str());
+    state = State::ERROR;
+    errorMessage = nutstoreErrorText(r, message);
+    requestUpdate();
     return;
   }
 
