@@ -84,7 +84,7 @@ void NutstoreBrowserActivity::onEnter() {
 void NutstoreBrowserActivity::onAccountEvent(const freeink::ui::ActionEvent&, void* user) {
   auto* self = static_cast<NutstoreBrowserActivity*>(user);
   self->app.clearTapFlash();
-  self->app.replaceActivityWith<NutstoreConfigActivity>();
+  activityManager.replaceActivityWith<NutstoreConfigActivity>();
 }
 
 std::string NutstoreBrowserActivity::baseUrl() const {
