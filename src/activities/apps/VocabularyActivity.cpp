@@ -56,7 +56,14 @@ constexpr int BAND_TO_SECTION_GAP = 16;
 }  // namespace
 
 VocabularyActivity::VocabularyActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-    : UiListActivity("Vocabulary", renderer, mappedInput, /*wantsTouchLongPress=*/true) {}
+    // Touch long-press is OFF on purpose: wasScreenLongPress() calls
+    // suppressTouchContact(), which sets touchSuppressed and makes wasSwipe()
+    // return false for the rest of that contact. On the slow e-ink loop a
+    // left-swipe dwells past TOUCH_LONG_PRESS_MS before crossing the tap slop,
+    // so long-press fired mid-swipe and silently killed the swipe delete.
+    // Quotes has this flag off too and its swipe delete works. Deletion here
+    // is via left-swipe; the long-press path is intentionally disabled.
+    : UiListActivity("Vocabulary", renderer, mappedInput, /*wantsTouchLongPress=*/false) {}
 
 void VocabularyActivity::onEnter() {
   UiListActivity::onEnter();
