@@ -159,6 +159,10 @@ class SdCardFontSystem {
   // UI-size TTF fallbacks (share ttfSources_); parallel to their renderer font ids.
   std::vector<std::unique_ptr<TtfEpdFont>> ttfUi_;
   std::vector<int> ttfUiIds_;
+  // System font size (SETTINGS.uiFontScale) last applied to ttfUi_. When the
+  // user changes that setting we must rebuild the UI faces even though the
+  // reader family and point size did not change.
+  uint8_t ttfUiScaleApplied_ = 0;
 #endif  // CROSSPOINT_VECTOR_FONTS
 };
 

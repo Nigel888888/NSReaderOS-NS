@@ -60,6 +60,8 @@ class VocabularyActivity final : public UiListActivity {
   void toggleManageMode();
   // Deletes every checked word and persists the notebook.
   void deleteSelectedWords();
+  // Left-swipe on a row opens the delete confirmation for that word.
+  bool handleSwipeDelete();
 
   // The counter band above the list: the two cards and the review button.
   void drawStatsBand(const Rect& band);
@@ -103,4 +105,7 @@ class VocabularyActivity final : public UiListActivity {
   Rect manageButton{0, 0, 0, 0};
   Rect deleteBar{0, 0, 0, 0};
   Rect selectAllButton{0, 0, 0, 0};
+  // Screen rect the list occupied on the last build, used to map a left-swipe's
+  // start y to a row index.
+  Rect listRect{0, 0, 0, 0};
 };

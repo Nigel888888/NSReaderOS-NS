@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 #include "MappedInputManager.h"
 #include "VocabularyReviewActivity.h"
@@ -33,8 +34,6 @@ constexpr int STATS_CARD_RADIUS = 6;
 constexpr int STATS_ICON_SIZE = 24;
 constexpr int STATS_ICON_PAD = 10;
 // Corner radius of the counter cards.
-// Baseline offset of the single "label + number" text row inside the card.
-constexpr int STATS_CARD_TEXT_TOP = 20;
 // The review button under the counters. Enlarged for the high-DPI Read Pico
 // panel: the old 44/40 px bars were hard to see and to hit.
 constexpr int REVIEW_BUTTON_HEIGHT = 64;
@@ -44,12 +43,15 @@ constexpr int EXPORT_BUTTON_HEIGHT = 60;
 constexpr int EXPORT_BUTTON_GAP = 10;
 // How long the export result stays on the button.
 constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
-// The font the counters are drawn in.
-constexpr int STATS_FONT_ID = NOTOSANS_18_FONT_ID;
+// The font the counters are drawn in. One step smaller so the label + number
+// sit comfortably inside the card and read as a compact statistic.
+constexpr int STATS_FONT_ID = NOTOSANS_16_FONT_ID;
 // Section label above the list ("我的生词"), with the total written right
 // after the text (not right-aligned) and generous space above/below.
 constexpr int SECTION_LABEL_HEIGHT = 30;
 constexpr int SECTION_LABEL_GAP = 24;
+// Extra breathing room between the button band and the section label row.
+constexpr int BAND_TO_SECTION_GAP = 16;
 
 }  // namespace
 
@@ -191,9 +193,35 @@ void VocabularyActivity::onRowLongPress(const int index) {
   showDeleteConfirmation();
 }
 
+// Left-swipe any row to open the delete confirmation for that word. The swipe
+// is horizontal, so it never collides with the up/down scroll gesture or the
+// left-edge back gesture (which is right-swipe anchored at the edge).
+bool VocabularyActivity::handleSwipeDelete() {
+  if (confirmPopup.isActive() || manageMode || entries.empty()) return false;
+  int sx = 0, sy = 0, ex = 0, ey = 0;
+  if (!mappedInput.decodeSwipe(sx, sy, ex, ey)) return false;
+  const int dx = ex - sx, dy = ey - sy;
+  if (dx >= 0 || std::abs(dx) < std::abs(dy)) return false;  // leftward, horizontal-dominant
+  // Map the finger's start y to the row it began on.
+  if (listRect.height <= 0 || sy < listRect.y || sy >= listRect.y + listRect.height) return false;
+  auto& n = activeNav();
+  const int visible = std::max(1, n.visibleRows);
+  const int rowStep = listRect.height / visible;
+  if (rowStep <= 0) return false;
+  const int index = n.top + (sy - listRect.y) / rowStep;
+  if (index < 0 || index >= listCount()) return false;
+  app.clearTapFlash();
+  n.selected = index;
+  showDeleteConfirmation();
+  return true;
+}
+
 bool VocabularyActivity::handleCustomInput() {
   // Delete confirmation popup.
   if (confirmPopup.handleInput(mappedInput, [this] { requestUpdate(); })) {
+    return true;
+  }
+  if (handleSwipeDelete()) {
     return true;
   }
   if (confirmingDelete) {
@@ -418,7 +446,9 @@ void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, cons
   renderer.fillRoundedRect(rect.x, rect.y, rect.width, rect.height, STATS_CARD_RADIUS, Color::Black);
 
   int textX = rect.x + STATS_ICON_PAD;
-  const int baseline = rect.y + STATS_CARD_TEXT_TOP;
+  // Vertically centre the single "label + number" row inside the card.
+  const int lineHeight = renderer.getLineHeight(STATS_FONT_ID);
+  const int baseline = rect.y + (rect.height - lineHeight) / 2;
   // White icon on the black fill.
   if (icon) {
     renderer.drawIconInverted(icon, textX, rect.y + (rect.height - STATS_ICON_SIZE) / 2, STATS_ICON_SIZE);
@@ -463,27 +493,26 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
   const fui::Rect band = screen.takeTop(static_cast<int16_t>(bandHeight));
   drawStatsBand(Rect{band.x, band.y, band.width, band.height});
 
-  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
+  // Extra space below the button band so the section row below sits lower and
+  // the two groups visually separate.
+  screen.spacer(static_cast<int16_t>(metrics.verticalSpacing + BAND_TO_SECTION_GAP));
 
   if (entries.empty()) {
     screen.centeredText(tr(STR_VOCABULARY_EMPTY), screen.theme().bodyText);
     return;
   }
 
-  // Section caption with the total right after the text. Two small buttons on
-  // the row's right edge cycle sort order and toggle multi-select management.
+  // Section caption with the total right after the text. A single small button
+  // on the right edge cycles sort order; the old "manage" button is gone now
+  // that deletion is a swipe gesture.
   const fui::Rect labelBand = screen.takeTop(static_cast<int16_t>(SECTION_LABEL_HEIGHT));
   drawSectionLabel(Rect{labelBand.x, labelBand.y, labelBand.width, labelBand.height}, tr(STR_VOC_SECTION_WORDS),
                    static_cast<int>(entries.size()));
   const char* sortText = sortOrder == 0 ? tr(STR_VOCAB_SORT_NEWEST) : tr(STR_VOCAB_SORT_OLDEST);
   const int sortW = renderer.getTextWidth(SMALL_FONT_ID, sortText) + 16;
-  const int manageW = renderer.getTextWidth(SMALL_FONT_ID, manageMode ? tr(STR_VOCABULARY_DONE)
-                                                                     : tr(STR_VOCABULARY_MANAGE)) + 16;
-  sortButton = Rect{labelBand.x + labelBand.width - manageW - sortW - 8, labelBand.y, sortW, labelBand.height};
-  manageButton = Rect{labelBand.x + labelBand.width - manageW, labelBand.y, manageW, labelBand.height};
+  sortButton = Rect{labelBand.x + labelBand.width - sortW, labelBand.y, sortW, labelBand.height};
   GUI.drawActionButton(renderer, sortButton, sortText, false);
-  GUI.drawActionButton(renderer, manageButton, manageMode ? tr(STR_VOCABULARY_DONE) : tr(STR_VOCABULARY_MANAGE),
-                       manageMode);
+  manageButton = Rect{0, 0, 0, 0};
   screen.spacer(static_cast<int16_t>(SECTION_LABEL_GAP));
 
   if (manageMode) {
@@ -500,8 +529,8 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
   } else {
     deleteBar = Rect{0, 0, 0, 0};
     selectAllButton = Rect{0, 0, 0, 0};
-    // The old "long-press a word to delete it" hint is intentionally gone:
-    // deletion now happens in the explicit management mode above.
+    // Deletion is now a left-swipe on the row (reveal a delete button); the
+    // old long-press / management-mode hints are intentionally gone.
   }
 
   fui::ListProps props;
@@ -512,5 +541,9 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   props.valueInset = 8;  // air between the trailing chevron and the row edge
   syncListViewport(screen, props);
+  // Remember the exact area the list is about to occupy, so a left-swipe's
+  // start y maps to the row the finger began on.
+  const fui::Rect body = screen.body();
+  listRect = Rect{body.x, body.y, body.width, body.height};
   screen.list(props);
 }

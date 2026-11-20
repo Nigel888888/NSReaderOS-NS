@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 #include "MappedInputManager.h"
 #include "QuoteViewerActivity.h"
@@ -188,6 +189,10 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   props.subtitleText = screen.theme().smallText;
   props.subtitleText.align = fui::TextAlign::Right;
   syncTabListViewport(screen, props);
+  const fui::Rect body = screen.body();
+  listRect = Rect{body.x, body.y, body.width, body.height};
+  swipeRowHeight = props.rowHeight;
+  swipeRowGap = props.rowGap > 0 ? props.rowGap : 0;
   screen.list(props);
 }
 
@@ -243,8 +248,45 @@ void QuotesActivity::openQuote(int index) {
                                                   viewerIndex);
 }
 
+void QuotesActivity::deleteQuoteAt(const int index) {
+  if (index < 0 || index >= static_cast<int>(rows.size())) return;
+  const Row& row = rows[index];
+  if (row.kind != RowKind::Quote || row.index < 0 || row.index >= static_cast<int>(quotes.size())) return;
+  const std::string key = quotes[row.index].key;
+  if (!QuotesFile::remove(key)) return;
+  app.clearTapFlash();
+  reload();
+  auto& n = activeNav();
+  n.selected = std::clamp(index, 0, std::max(0, static_cast<int>(rows.size()) - 1));
+  requestUpdate();
+}
+
+bool QuotesActivity::handleSwipeDelete() {
+  if (dialog.isActive() || rows.empty()) return false;
+  int sx = 0, sy = 0, ex = 0, ey = 0;
+  if (!mappedInput.decodeSwipe(sx, sy, ex, ey)) return false;
+  const int dx = ex - sx, dy = ey - sy;
+  if (dx >= 0 || std::abs(dx) < std::abs(dy)) return false;  // leftward, horizontal-dominant
+  if (listRect.height <= 0 || swipeRowHeight <= 0 || sy < listRect.y || sy >= listRect.y + listRect.height) return false;
+  auto& n = activeNav();
+  const int rowStep = swipeRowHeight + swipeRowGap;
+  if (rowStep <= 0) return false;
+  const int index = n.top + (sy - listRect.y) / rowStep;
+  if (index < 0 || index >= static_cast<int>(rows.size()) || rows[index].kind != RowKind::Quote) return false;
+  const char* options[] = {tr(STR_CANCEL), tr(STR_QUOTES_DELETE)};
+  dialog.show(tr(STR_QUOTES_DELETE_CONFIRM), options, 2, 0, [this, index](int choice) {
+    if (choice == 1) deleteQuoteAt(index);
+    requestUpdate();
+  });
+  requestUpdate();
+  return true;
+}
+
 bool QuotesActivity::handleCustomInput() {
   if (dialog.handleInput(mappedInput, [this] { requestUpdate(); })) {
+    return true;
+  }
+  if (handleSwipeDelete()) {
     return true;
   }
   return false;

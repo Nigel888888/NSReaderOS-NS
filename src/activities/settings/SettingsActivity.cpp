@@ -1056,11 +1056,14 @@ void SettingsActivity::toggleCurrentSetting() {
     }
     setting.valueSetter((cur + 1) % totalValues);
   } else if (setting.type == SettingType::VALUE && setting.valuePtr != nullptr) {
-    const int8_t currentValue = SETTINGS.*(setting.valuePtr);
-    if (currentValue + setting.valueRange.step > setting.valueRange.max) {
+    // valuePtr is uint8_t: reading into int8_t made ranges above 127 (e.g. the
+    // 100..160 system font scale) wrap negative and climb past `max` forever.
+    const int currentValue = SETTINGS.*(setting.valuePtr);
+    const int step = setting.valueRange.step;
+    if (currentValue + step > setting.valueRange.max) {
       SETTINGS.*(setting.valuePtr) = setting.valueRange.min;
     } else {
-      SETTINGS.*(setting.valuePtr) = currentValue + setting.valueRange.step;
+      SETTINGS.*(setting.valuePtr) = static_cast<uint8_t>(currentValue + step);
     }
   } else if (setting.type == SettingType::ACTION) {
     // Every child page returns here through ActivityManager's Pop; make sure the

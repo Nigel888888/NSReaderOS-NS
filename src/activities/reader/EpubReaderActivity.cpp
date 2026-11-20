@@ -1010,7 +1010,7 @@ void EpubReaderActivity::loop() {
   // directly (CrossNext-style), without a trip through the menu. It fires
   // while the finger is still down and consumes the contact, so the release
   // cannot also turn a page or open the menu.
-  if (!endOfBookMenuOpen && mappedInput.hasTouch()) {
+  if (!endOfBookMenuOpen && SETTINGS.touchReaderControls && mappedInput.hasTouch()) {
     int lpX = 0;
     int lpY = 0;
     if (mappedInput.wasScreenLongPress(lpX, lpY)) {

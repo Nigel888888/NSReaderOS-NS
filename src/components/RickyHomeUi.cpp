@@ -294,7 +294,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const fui::Rect panel{static_cast<int16_t>(panelX), static_cast<int16_t>(banner.y + bannerInset),
                         static_cast<int16_t>(banner.right() - bannerInset - panelX),
                         static_cast<int16_t>(banner.height - bannerInset * 2)};
-  target.fill(panel, fui::Paint::solid(fui::Color::White), 4);
+  // No filled panel behind the phrase: it sits directly on the banner artwork
+  // (or on the plain banner background), with no visible box.
   // Phrase typography comes from the persisted banner settings. TextStyle.font
   // is a FONT SLOT (0..3), not a real GfxRenderer font id: writing a raw id here
   // silently falls back to FONT_BODY, which is why the old picker changed
@@ -305,11 +306,13 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, bannerFontId);
   auto phraseStyle = heading;
   phraseStyle.font = fui::GfxRendererTarget::FONT_LABEL;
-  phraseStyle.align = fui::TextAlign::Center;
+  // Right-aligned: the phrase hugs the right edge of the banner panel. Use the
+  // SDK's right-aligned wrapper (justifiedWrappedText forces Left + stretching).
+  phraseStyle.align = fui::TextAlign::Right;
   phraseStyle.maxLines = 4;
   {
     RickyPageUi::Bold quote(renderer, 2);
-    RickyPageUi::justifiedWrappedText(target, renderer, bannerFontId, panel, RickyProfile::homePhrase(), phraseStyle);
+    RickyPageUi::wrappedText(target, panel, RickyProfile::homePhrase(), phraseStyle);
   }
   gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
   target.fill(fui::Rect{banner.x, static_cast<int16_t>(banner.bottom() - 1), banner.width, 1}, black);

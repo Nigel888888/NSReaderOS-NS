@@ -47,6 +47,10 @@ class QuotesActivity final : public UiTabListActivity {
   void reload();
   // Opens the full-screen paged viewer on the quote at `index`.
   void openQuote(int index);
+  // Left-swipe a quote row to delete it after confirmation.
+  bool handleSwipeDelete();
+  // Deletes the quote at visible row `index` and persists the notebook.
+  void deleteQuoteAt(int index);
 
   enum class RowKind : uint8_t { Quote, Book };
 
@@ -69,4 +73,8 @@ class QuotesActivity final : public UiTabListActivity {
   int bookFilter_ = -1;
   std::string filteredBook;
   OptionPopup dialog{true};
+  // List area on the last build, for mapping a left-swipe start y to a row.
+  Rect listRect{0, 0, 0, 0};
+  int swipeRowHeight = 0;
+  int swipeRowGap = 0;
 };

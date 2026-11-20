@@ -171,6 +171,11 @@ inline bool isTouchMenuTap(const GfxRenderer& renderer, const MappedInputManager
 // which only gates page-turn touch zones in detectTouchPageTurn().
 inline bool isTouchMenuGesture(const GfxRenderer& renderer, const MappedInputManager& input) {
   if (!input.hasTouch()) return false;
+  // "Touch reader controls = Off" means the touchscreen must be fully inert:
+  // no page turns, no menu, no word selection. Historically only page turns
+  // honoured this flag while the edge-swipe/tap menu still fired, so turning
+  // touch off appeared broken. Gate every menu gesture on it too.
+  if (!SETTINGS.touchReaderControls) return false;
   if (input.wasMenuGesture()) return true;
   // Bottom-edge up-swipe variant: only selectable on home-key boards, where
   // Home is the capacitive key and the bottom edge is otherwise unused.

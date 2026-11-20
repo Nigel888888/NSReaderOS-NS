@@ -1368,7 +1368,8 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   n.drawnCount = count;
   n.onListRendered(start, visible, paging.selectedIndex >= start && paging.selectedIndex < start + visible);
 
-  // Folio pager: one rounded box, a chevron at each end, "n / N" centred.
+  // Folio pager: one rounded box with "n / N" centred. The left/right chevrons
+  // are gone at the user's request; paging stays available via swipe/buttons.
   const int pageNow = start / SHELF_CAPACITY + 1;
   const int pageTotal = std::max(1, (count + SHELF_CAPACITY - 1) / SHELF_CAPACITY);
   auto pager = pagerRect;
@@ -1378,33 +1379,10 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     pager.x = static_cast<int16_t>(screen.body().x + (screen.body().width - pager.width) / 2);
   }
   target.stroke(pager, black, 1, 10);
-  const int arrowW = std::min<int>(pager.width / 4, pager.height);
-  auto prevBox = fui::Rect{pager.x, pager.y, static_cast<int16_t>(arrowW), pager.height};
-  auto nextBox = fui::Rect{static_cast<int16_t>(pager.right() - arrowW), pager.y, static_cast<int16_t>(arrowW),
-                           pager.height};
-  const auto drawChevron = [&](fui::Rect box, bool left) {
-    const int mx = box.x + box.width / 2, my = box.y + box.height / 2, arm = std::min<int>(8, box.width / 3);
-    const int tipX = left ? mx - arm / 2 : mx + arm / 2;
-    const int backX = left ? mx + arm / 2 : mx - arm / 2;
-    target.line({static_cast<int16_t>(tipX), static_cast<int16_t>(my - arm)},
-                {static_cast<int16_t>(backX), static_cast<int16_t>(my)}, 2, black);
-    target.line({static_cast<int16_t>(backX), static_cast<int16_t>(my)},
-                {static_cast<int16_t>(tipX), static_cast<int16_t>(my + arm)}, 2, black);
-  };
-  if (multiplePages && pageNow > 1) {
-    drawChevron(prevBox, true);
-    screen.frame().hit(prevBox, ACTION_SHELF_PAGE, -1, fui::InputTouch);
-  }
-  if (multiplePages && pageNow < pageTotal) {
-    drawChevron(nextBox, false);
-    screen.frame().hit(nextBox, ACTION_SHELF_PAGE, 1, fui::InputTouch);
-  }
   snprintf(position, sizeof(position), "%d / %d", pageNow, pageTotal);
   auto style = theme.smallText;
   style.align = fui::TextAlign::Center;
-  target.text(fui::Rect{static_cast<int16_t>(prevBox.right()), pager.y,
-                        static_cast<int16_t>(nextBox.x - prevBox.right()), pager.height},
-              position, style);
+  target.text(pager, position, style);
 }
 
 void LibraryListActivity::buildRickyShelfList(UiScreen& screen) {

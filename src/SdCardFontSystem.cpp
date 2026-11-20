@@ -521,6 +521,15 @@ void SdCardFontSystem::addTtfSources(TtfEpdFont& font) {
 
 void SdCardFontSystem::setupTtfUiFallbacks(GfxRenderer& renderer) {
   if (ttfFamily_.empty()) return;
+  // Idempotent: a system-font-size change re-enters here. Drop the previous UI
+  // faces/bindings first so we neither leak TtfEpdFonts nor leave stale ids in
+  // the renderer's preferred/fallback maps.
+  for (const int id : ttfUiIds_) {
+    renderer.unregisterTtfFont(id);
+    renderer.removeFont(id);
+  }
+  ttfUiIds_.clear();
+  ttfUi_.clear();
   // Small caches: UI strings (titles/rows) are short. Each UI family is 4-style
   // but LAZY, so only the regular face is ever built for UI text — the bold/
   // italic faces cost nothing. All faces share the reader's sources (streamed
@@ -534,41 +543,66 @@ void SdCardFontSystem::setupTtfUiFallbacks(GfxRenderer& renderer) {
   ttfUi_.reserve(std::size(kUiFontSizes));
   ttfUiIds_.reserve(std::size(kUiFontSizes));
 #endif
-  for (const auto& ui : kUiFontSizes) {
+  // System font size: scale each UI face's point size by the persisted
+  // percentage (100..160). 100 keeps the shipped sizes unchanged. Vector faces
+  // can rasterise any point size, so unlike the .cpfont path there is no
+  // "exact size missing" fallback here.
+  const int scalePercent = std::clamp<int>(SETTINGS.uiFontScale, CrossPointSettings::UI_FONT_SCALE_MIN,
+                                           CrossPointSettings::UI_FONT_SCALE_MAX);
+  ttfUiScaleApplied_ = SETTINGS.uiFontScale;
+  for (size_t i = 0; i < std::size(kUiFontSizes); ++i) {
+    const auto& ui = kUiFontSizes[i];
+#if FREEINK_DEVICE_READPICO
+    const int base = kReadPicoUiPointSizes[i];
+#else
+    const int base = ui.pointSize;
+#endif
+    const uint8_t pointSize = static_cast<uint8_t>(std::clamp<int>((base * scalePercent + 50) / 100, 8, 28));
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
-    const int id = computeTtfFontId((ttfFamily_ + "\x01ui").c_str(), ui.pointSize);
-    // UI and footer share 12/14pt faces; register and own each size only once.
+    const int id = computeTtfFontId((ttfFamily_ + "\x01ui").c_str(), pointSize);
+    // UI and footer share some sizes; register and own each size only once.
     if (renderer.getFontMap().count(id) != 0) {
+#if FREEINK_DEVICE_READPICO
+      // Read Pico renders its whole UI in the selected family: bind the scaled
+      // face as PRIMARY so the size actually shows (fallback-only mapping keeps
+      // the built-in face at its original size whenever it covers the glyphs).
+      renderer.setPreferredFont(ui.fontId, id);
+      renderer.setFallbackFont(ui.fontId, ui.fontId, ui.builtinFallbackId);
+#else
       renderer.setFallbackFont(ui.fontId, ui.builtinFallbackId, id);
+#endif
       continue;
     }
 #endif
     if (heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM) == 0) {
       const size_t internalFree = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
       if (internalFree < kUiFallbackMinInternalHeap) {
-        LOG_DBG("SDFS", "Skipping TTF UI fallback @%upt (%u KB internal free)", ui.pointSize,
+        LOG_DBG("SDFS", "Skipping TTF UI fallback @%upt (%u KB internal free)", pointSize,
                 static_cast<unsigned>(internalFree / 1024));
         continue;
       }
     }
     auto f = makeUniqueNoThrow<TtfEpdFont>();
     if (!f) {
-      LOG_ERR("SDFS", "OOM: TtfEpdFont for UI fallback @%upt", ui.pointSize);
+      LOG_ERR("SDFS", "OOM: TtfEpdFont for UI fallback @%upt", pointSize);
       continue;  // built-in bitmap UI fonts keep covering this size
     }
     addTtfSources(*f);
-    const bool ok = f->load(ui.pointSize, /*twoBit=*/true, /*glyphCacheBytes=*/16 * 1024, /*maxGlyphs=*/384);
+    const bool ok = f->load(pointSize, /*twoBit=*/true, /*glyphCacheBytes=*/16 * 1024, /*maxGlyphs=*/384);
     if (!ok) continue;
-    LOG_DBG("SDFS", "TTF UI fallback @%upt loaded (heap free %u)", ui.pointSize, (unsigned)ESP.getFreeHeap());
+    LOG_DBG("SDFS", "TTF UI fallback @%upt loaded (heap free %u)", pointSize, (unsigned)ESP.getFreeHeap());
     // Distinct id from the reader-size font: a UI size can equal the reader size
     // (e.g. both 12pt), which would collide on computeTtfFontId and be dropped
     // as a duplicate. Salt the UI family name to separate the id spaces.
 #ifndef CROSSMUX_UI_PROFILE_HIGH_DPI
-    const int id = computeTtfFontId((ttfFamily_ + "\x01ui").c_str(), ui.pointSize);
+    const int id = computeTtfFontId((ttfFamily_ + "\x01ui").c_str(), pointSize);
 #endif
     renderer.insertFont(id, f->family());
     renderer.registerTtfFont(id, f.get());
-#ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
+#if defined(FREEINK_DEVICE_READPICO) && defined(CROSSMUX_UI_PROFILE_HIGH_DPI)
+    renderer.setPreferredFont(ui.fontId, id);
+    renderer.setFallbackFont(ui.fontId, ui.fontId, ui.builtinFallbackId);
+#elif defined(CROSSMUX_UI_PROFILE_HIGH_DPI)
     renderer.setFallbackFont(ui.fontId, ui.builtinFallbackId, id);
 #else
     renderer.setFallbackFont(ui.fontId, id);
@@ -585,8 +619,12 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
       snapToNearestPointSize(VECTOR_READER_POINT_SIZES, std::size(VECTOR_READER_POINT_SIZES), SETTINGS.fontPointSize));
   const uint8_t size = SETTINGS.fontPointSize;
 
-  // Already loaded, same family + size, and disk unchanged → nothing to do.
-  if (!registryWasDirty && ttf_ && ttfFamily_ == family.name && ttfPointSize_ == size) return;
+  // Already loaded, same family + size, and disk unchanged → nothing to do,
+  // except when the system font size changed: rebuild only the scaled UI faces.
+  if (!registryWasDirty && ttf_ && ttfFamily_ == family.name && ttfPointSize_ == size) {
+    if (ttfUiScaleApplied_ != SETTINGS.uiFontScale) setupTtfUiFallbacks(renderer);
+    return;
+  }
 
   // Reader-face glyph-cache budget (used by both the resize fast path and the
   // full load below): the default 32 KB holds ~90 CJK glyphs, but a CJK page
@@ -613,7 +651,10 @@ void SdCardFontSystem::loadTtfFamily(const SdCardFontFamilyInfo& family, GfxRend
   // instead of reopening all four and rebuilding every UI fallback.
   // 上面已按面板能力决定 fourBit；这里直接用它驱动加载。
   // / fourBit is decided above, next to the cache budget it also sizes.
-  if (!registryWasDirty && ttf_ && ttfFamily_ == family.name) {
+  // A system-font-size change also lands here (reader size unchanged); it must
+  // rebuild the scaled UI faces, so only take this reader-only fast path when
+  // the applied scale is still current.
+  if (!registryWasDirty && ttf_ && ttfFamily_ == family.name && ttfUiScaleApplied_ == SETTINGS.uiFontScale) {
     renderer.unregisterTtfFont(ttfFontId_);
     renderer.removeFont(ttfFontId_);
     if (ttf_->load(size, /*twoBit=*/true, cacheBytes, maxGlyphs, fourBit)) {
