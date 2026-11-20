@@ -494,7 +494,8 @@ void SettingsActivity::rebuildSettingsLists() {
   // The product uses only its owned, accepted stable channel. Other targets
   // retain the upstream proxy and release-channel UI.
 #ifdef RICKYOS_PRODUCT
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
+  // RickyOS firmware update entry hidden at the user's request; SD-card update remains.
+  // systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_SCREEN_REPAIR, SettingAction::RickyScreenRepair));
 #else
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));

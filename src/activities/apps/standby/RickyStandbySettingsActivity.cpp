@@ -273,10 +273,16 @@ void RickyStandbySettingsActivity::buildScreen(UiScreen& screen) {
                           static_cast<int16_t>(row.width / 2), static_cast<int16_t>(bodyHeight)},
                 I18N.get(kRowLabels[rows_[i]]), label);
     if (const char* current = rowValue(rows_[i])) {
+      // The two new styles (book collage / receipt) read much smaller than the
+      // row label because values use smallText. Match the label's bodyText so
+      // every style name renders at the same size.
+      const bool styleValue = rows_[i] == Style;
+      const auto& valueStyle = styleValue ? label : value;
+      const int valueHeight = styleValue ? bodyHeight : smallHeight;
       target.text(
-          fui::Rect{static_cast<int16_t>(row.x + row.width / 2), static_cast<int16_t>(middle - smallHeight / 2),
-                    static_cast<int16_t>(chevronX - gap - row.x - row.width / 2), static_cast<int16_t>(smallHeight)},
-          current, value);
+          fui::Rect{static_cast<int16_t>(row.x + row.width / 2), static_cast<int16_t>(middle - valueHeight / 2),
+                    static_cast<int16_t>(chevronX - gap - row.x - row.width / 2), static_cast<int16_t>(valueHeight)},
+          current, valueStyle);
     }
     RickyPageUi::chevron(target, fui::Rect{static_cast<int16_t>(chevronX), row.y, 24, row.height});
   }
