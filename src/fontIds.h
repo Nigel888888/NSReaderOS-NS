@@ -15,6 +15,12 @@
 #define CHINESE_CHESS_FONT_ID (1005290636)
 #define CONTROL_18_FONT_ID (29318789)
 
+// Home-banner decorative Latin faces (RickyOS product only). ASCII subset at
+// 16pt; Chinese glyphs fall back to the registered CJK UI face at render time.
+#define BANNER_NICE_16_FONT_ID (0x42415202)
+#define BANNER_MANQUE_16_FONT_ID (0x42415205)
+#define BANNER_SOUNSO_16_FONT_ID (0x42415208)
+
 // Font ID 0 is reserved as the "not found" sentinel.
 // Guard against any hash accidentally producing 0.
 static_assert(NOTOSERIF_12_FONT_ID != 0, "Font ID collision with sentinel");

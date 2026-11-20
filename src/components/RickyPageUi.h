@@ -1,6 +1,8 @@
 #pragma once
 #ifdef RICKYOS_PRODUCT
 #include <FreeInkUIIcon.h>
+#include <GfxRenderer.h>
+#include <Utf8.h>
 
 #include <algorithm>
 #include <cctype>
@@ -35,6 +37,62 @@ inline void wrappedText(fui::DrawTarget& target, fui::Rect rect, const char* tex
     target.text(bounds, line, run);
   });
 }
+// Count the inter-glyph gaps that justification can stretch. GfxRenderer's
+// trackingBetween() never stretches across a space, so mirror that rule here
+// to keep the measured and drawn widths in agreement.
+inline int justifiableGaps(const char* text) {
+  const auto isSpace = [](uint32_t cp) { return cp == ' ' || cp == 0xA0 || cp == 0x3000; };
+  int gaps = 0;
+  uint32_t prev = 0;
+  while (uint32_t cp = utf8NextCodepoint(reinterpret_cast<const uint8_t**>(&text))) {
+    if (prev && !isSpace(prev) && !isSpace(cp)) ++gaps;
+    prev = cp;
+  }
+  return gaps;
+}
+
+// Like wrappedText(), but stretches each non-final line to both edges of rect
+// (justification). Uses GfxRenderer's per-glyph tracking so no SDK change is
+// needed. The two-pass layout identifies the last line, which stays unstretched.
+inline void justifiedWrappedText(fui::DrawTarget& target, const GfxRenderer& renderer, int gfxFontId,
+                                 fui::Rect rect, const char* text, fui::TextStyle style) {
+  const int lineHeight = target.lineHeight(style.font);
+  if (!text || !*text || rect.empty() || lineHeight <= 0 || rect.height < lineHeight) return;
+  if (renderer.getFontMap().find(gfxFontId) == renderer.getFontMap().end()) {
+    wrappedText(target, rect, text, style);  // unknown font: plain wrap fallback
+    return;
+  }
+  style.maxLines = std::clamp<int>(style.maxLines, 1, rect.height / lineHeight);
+  style.align = fui::TextAlign::Left;  // position runs at rect.x; we stretch to the right edge
+  const auto epdStyle = style.bold ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR;
+  const auto baseDir = BidiUtils::BidiBaseDir::AUTO;
+
+  int lineCount = 0;
+  fui::layoutText(target, rect, text, style, [&](const char*, fui::Rect) { ++lineCount; });
+
+  int index = 0;
+  fui::layoutText(target, rect, text, style, [&](const char* line, fui::Rect bounds) {
+    const bool lastLine = (index++ == lineCount - 1);
+    int8_t tracking = 0;
+    if (!lastLine && bounds.width < rect.width) {
+      const int gaps = justifiableGaps(line);
+      if (gaps > 0) {
+        int t = std::clamp<int>((rect.width - bounds.width) / gaps, -128, 127);
+        // Guard against rounding/measurement drift overflowing the right edge.
+        while (t > 0 &&
+               renderer.getTextAdvanceX(gfxFontId, line, epdStyle, static_cast<int8_t>(t), baseDir,
+                                        GfxRenderer::TextMeasureMode::Rendered) > rect.width) {
+          --t;
+        }
+        tracking = static_cast<int8_t>(t);
+      }
+    }
+    const fui::Color ink = style.inverted ? fui::Color::White : style.color;
+    const bool black = ink == fui::Color::Black;
+    renderer.drawText(gfxFontId, bounds.x, bounds.y, line, black, epdStyle, baseDir, tracking);
+  });
+}
+
 inline void arrow(fui::DrawTarget& target, fui::Rect r) {
   const auto black = fui::Paint::solid(fui::Color::Black);
   const int16_t mid = r.y + r.height / 2;

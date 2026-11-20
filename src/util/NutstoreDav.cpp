@@ -226,9 +226,15 @@ Result runList(const std::string& folder, const std::string& account, const std:
     message = "missing credentials";
     return Result::AuthFailure;
   }
-  std::string url = folderUrl(folder);
-  // subpath is an already percent-encoded relative folder path with a trailing '/'.
-  if (!subpath.empty()) url += subpath;
+  std::string url = folderUrl(folder);  // ends with '/'
+  // subpath is an already percent-encoded relative folder path with a trailing
+  // '/'. entry.href carries a leading '/', so strip it before appending or we
+  // send a double slash (".../Apps//child/") which Nutstore rejects with 400.
+  if (!subpath.empty()) {
+    std::string sp = subpath;
+    while (!sp.empty() && sp.front() == '/') sp.erase(sp.begin());
+    url += sp;
+  }
   const std::string creds = account + ":" + password;
   const String encoded = base64::encode(reinterpret_cast<const uint8_t*>(creds.data()), creds.size());
   const std::string auth = std::string("Basic ") + encoded.c_str();
@@ -265,6 +271,7 @@ Result runList(const std::string& folder, const std::string& account, const std:
   if (!subpath.empty()) {
     std::string sp = subpath;
     while (!sp.empty() && sp.back() == '/') sp.pop_back();
+    while (!sp.empty() && sp.front() == '/') sp.erase(sp.begin());
     if (!sp.empty()) base += "/" + sp;
   }
   std::vector<Entry> parsed;

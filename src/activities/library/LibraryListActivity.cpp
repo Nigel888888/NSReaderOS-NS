@@ -1316,7 +1316,8 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
       Bitmap bitmap(file);
       if (bitmap.parseHeaders() == BmpReaderError::Ok &&
           GUI.drawCoverThumbFill(self.renderer, bitmap, Rect{rect.x, rect.y, rect.width, rect.height})) {
-        target.stroke(rect, fui::Paint::solid(fui::Color::Black), 1);
+        // No border around the cropped cover: the artwork itself is the frame.
+        // Selection still gets its own indicator via CoverGridSelectionIndicator.
         return true;
       }
     }

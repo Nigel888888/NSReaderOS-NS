@@ -1000,11 +1000,21 @@ int CrossPointSettings::rickyBannerFontId(const uint8_t family, const uint8_t si
   // Sans uses the CJK UI faces (complete glyph coverage). Serif uses the
   // Noto Serif reader faces, which fall back to CJK UI for Chinese glyphs.
   // Both families ship at 12/14/16 pt; a missing combination clamps to 14.
+  // The three decorative families are ASCII-only and ship at a single 16pt
+  // face (size axis has no effect for them); their missing (e.g. Chinese)
+  // glyphs fall back to the CJK UI face.
   static constexpr int kSans[RICKY_BANNER_SIZE_COUNT] = {CJK_UI_12_FONT_ID, CJK_UI_14_FONT_ID, CJK_UI_16_FONT_ID};
   static constexpr int kSerif[RICKY_BANNER_SIZE_COUNT] = {NOTOSERIF_12_FONT_ID, NOTOSERIF_14_FONT_ID,
                                                           NOTOSERIF_16_FONT_ID};
   const uint8_t s = size < RICKY_BANNER_SIZE_COUNT ? size : 1;
-  return family == 1 ? kSerif[s] : kSans[s];
+  switch (family) {
+    case 1: return kSerif[s];
+    case 2: return BANNER_NICE_16_FONT_ID;
+    case 3: return BANNER_MANQUE_16_FONT_ID;
+    case 4: return BANNER_SOUNSO_16_FONT_ID;
+    case 0:
+    default: return kSans[s];
+  }
 }
 #endif
 

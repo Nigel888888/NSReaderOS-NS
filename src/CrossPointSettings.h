@@ -538,12 +538,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   char rickyHomePhrase[97] = "";  // Empty uses the localized default; at most 96 UTF-8 bytes.
   // Home banner: an imported 1-bit BMP drawn behind the large home phrase.
   char rickyHomeBannerPath[96] = "";  // Empty draws the quiet placeholder banner.
-  // Banner phrase typography. Two independent axes: family (0=Sans, 1=Serif)
-  // and size (0=12pt, 1=14pt, 2=16pt). Stored here so the banner editor and
-  // the home screen agree without re-binding font slots.
+  // Banner phrase typography. Two independent axes: family (0=Sans, 1=Serif,
+  // 2=A Nice Day, 3=Manque Bold, 4=Sounso Sagacity) and size (0/1/2). Stored
+  // here so the banner editor and the home screen agree without re-binding
+  // font slots. The three decorative families are ASCII-only Latin faces;
+  // Chinese glyphs render through the registered CJK fallback.
   uint8_t rickyBannerFont = 0;      // family index
   uint8_t rickyBannerFontSize = 1;  // size index
-  static constexpr uint8_t RICKY_BANNER_FONT_COUNT = 2;
+  static constexpr uint8_t RICKY_BANNER_FONT_COUNT = 5;
   static constexpr uint8_t RICKY_BANNER_SIZE_COUNT = 3;
   // Composes the persisted family + size into a real renderer font id.
   static int rickyBannerFontId(uint8_t family, uint8_t size);

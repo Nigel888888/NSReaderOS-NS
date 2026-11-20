@@ -54,8 +54,9 @@ void RickyHomePhraseActivity::buildScreen(UiScreen& screen) {
   phrase.maxLines = 4;
   {
     RickyPageUi::Bold bold(renderer, 2);
-    RickyPageUi::wrappedText(
-        uiTarget, fui::Rect{panel.x, panel.y, panel.width, static_cast<int16_t>(panel.height)},
+    RickyPageUi::justifiedWrappedText(
+        uiTarget, renderer, bannerFontId,
+        fui::Rect{panel.x, panel.y, panel.width, static_cast<int16_t>(panel.height)},
         RickyProfile::homePhrase(), phrase);
   }
   gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
@@ -69,11 +70,16 @@ void RickyHomePhraseActivity::buildScreen(UiScreen& screen) {
                          tr(STR_RICKY_PROFILE_FAILED), hint);
   static const char* const kSizeLabels[] = {tr(STR_RICKY_BANNER_SIZE_12), tr(STR_RICKY_BANNER_SIZE_14),
                                             tr(STR_RICKY_BANNER_SIZE_16)};
+  static const char* const kFontLabels[CrossPointSettings::RICKY_BANNER_FONT_COUNT] = {
+      tr(STR_RICKY_BANNER_SANS), tr(STR_RICKY_BANNER_SERIF), tr(STR_RICKY_BANNER_FONT_A_NICE_DAY),
+      tr(STR_RICKY_BANNER_FONT_MANQUE), tr(STR_RICKY_BANNER_FONT_SOUNSO)};
   rows[0].label = tr(STR_RICKY_PHRASE_EDIT);
   rows[1].label = tr(STR_RICKY_BANNER_CHOOSE);
   rows[2].label = tr(STR_RICKY_BANNER_CLEAR);
   rows[3].label = tr(STR_RICKY_BANNER_FONT);
-  rows[3].subtitle = SETTINGS.rickyBannerFont == 0 ? tr(STR_RICKY_BANNER_SANS) : tr(STR_RICKY_BANNER_SERIF);
+  rows[3].subtitle = kFontLabels[SETTINGS.rickyBannerFont < CrossPointSettings::RICKY_BANNER_FONT_COUNT
+                                     ? SETTINGS.rickyBannerFont
+                                     : 0];
   rows[4].label = tr(STR_RICKY_BANNER_SIZE);
   rows[4].subtitle = kSizeLabels[SETTINGS.rickyBannerFontSize < 3 ? SETTINGS.rickyBannerFontSize : 1];
   rows[5].label = tr(STR_RICKY_PHRASE_RESET);

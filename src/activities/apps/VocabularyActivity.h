@@ -52,6 +52,15 @@ class VocabularyActivity final : public UiListActivity {
   // Re-reads the notebook and the counters from disk.
   void reload();
 
+  // Sorts `entries` by the saved timestamp per the current sort order.
+  void sortEntries();
+  // Toggles newest-first / oldest-first and rebuilds the rows.
+  void toggleSort();
+  // Enters/leaves multi-select management mode.
+  void toggleManageMode();
+  // Deletes every checked word and persists the notebook.
+  void deleteSelectedWords();
+
   // The counter band above the list: the two cards and the review button.
   void drawStatsBand(const Rect& band);
   void drawCounterCard(const Rect& rect, int value, const char* label, const uint8_t* icon);
@@ -82,4 +91,16 @@ class VocabularyActivity final : public UiListActivity {
   unsigned long exportMessageUntil = 0;
   bool confirmingDelete = false;
   OptionPopup confirmPopup{true};
+
+  // Multi-select management mode: each row carries a checkbox, tapping a row
+  // checks it instead of opening the card, and a bottom bar deletes all checked
+  // words at once.
+  bool manageMode = false;
+  std::vector<bool> selectedFlags;
+  // 0 = newest first, 1 = oldest first.
+  uint8_t sortOrder = 0;
+  Rect sortButton{0, 0, 0, 0};
+  Rect manageButton{0, 0, 0, 0};
+  Rect deleteBar{0, 0, 0, 0};
+  Rect selectAllButton{0, 0, 0, 0};
 };

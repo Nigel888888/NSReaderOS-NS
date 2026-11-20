@@ -309,7 +309,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   phraseStyle.maxLines = 4;
   {
     RickyPageUi::Bold quote(renderer, 2);
-    RickyPageUi::wrappedText(target, panel, RickyProfile::homePhrase(), phraseStyle);
+    RickyPageUi::justifiedWrappedText(target, renderer, bannerFontId, panel, RickyProfile::homePhrase(), phraseStyle);
   }
   gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
   target.fill(fui::Rect{banner.x, static_cast<int16_t>(banner.bottom() - 1), banner.width, 1}, black);

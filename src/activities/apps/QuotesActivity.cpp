@@ -152,18 +152,20 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
 
   buildTabBar(screen);
 
-  // CrossNext-style section band under the tabs: a small uppercase caption on
-  // the left (or the drilled-in book title) and the visible quote count right,
-  // closed by a hairline rule.
+  // Section band under the tabs: the "highlighted sentences" caption is gone
+  // (this is the 好句集 screen); when drilled into a book the title still shows
+  // so the reader knows which source they are browsing. Count sits on the right.
   renderer.clearClipRect();
   const fui::Rect band = screen.takeTop(static_cast<int16_t>(COUNTER_HEIGHT));
   const bool drilled = tab_ == AllTab && bookFilter_ >= 0;
-  const char* caption = drilled ? filteredBook.c_str() : tr(STR_QUOTES_SECTION);
-  const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-  renderer.drawText(UI_10_FONT_ID, band.x, baseline, caption, true, EpdFontFamily::BOLD);
+  if (drilled) {
+    const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
+    renderer.drawText(UI_10_FONT_ID, band.x, baseline, filteredBook.c_str(), true, EpdFontFamily::BOLD);
+  }
   char count[24];
   std::snprintf(count, sizeof(count), "%d", static_cast<int>(rows.size()));
   const int countWidth = renderer.getTextWidth(UI_10_FONT_ID, count);
+  const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
   renderer.drawText(UI_10_FONT_ID, band.x + band.width - countWidth, baseline, count);
   renderer.drawLine(band.x, band.y + band.height - 1, band.x + band.width, band.y + band.height - 1);
 
@@ -178,6 +180,13 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   props.count = static_cast<uint16_t>(rowItems.size());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch | fui::InputLongPress;
+  // Taller rows with more breathing room between saved sentences. The book
+  // title is the subtitle, drawn on the line below the sentence and aligned
+  // right, so each row reads "sentence / ——— source" cleanly.
+  props.rowHeight = static_cast<int16_t>(std::max<int>(72, renderer.getLineHeight(UI_12_FONT_ID) * 3));
+  props.rowGap = static_cast<int16_t>(std::max<int>(8, metrics.verticalSpacing));
+  props.subtitleText = screen.theme().smallText;
+  props.subtitleText.align = fui::TextAlign::Right;
   syncTabListViewport(screen, props);
   screen.list(props);
 }

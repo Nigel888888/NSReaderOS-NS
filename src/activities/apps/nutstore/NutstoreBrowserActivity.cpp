@@ -88,8 +88,14 @@ void NutstoreBrowserActivity::onAccountEvent(const freeink::ui::ActionEvent&, vo
 }
 
 std::string NutstoreBrowserActivity::baseUrl() const {
-  std::string url = nutstore::folderUrl(folder);
-  if (!currentPath.empty()) url += currentPath;
+  std::string url = nutstore::folderUrl(folder);  // ends with '/'
+  if (!currentPath.empty()) {
+    // currentPath (from entry.href) starts with '/'; strip it to avoid a
+    // double slash that Nutstore answers with HTTP 400.
+    std::string sp = currentPath;
+    while (!sp.empty() && sp.front() == '/') sp.erase(sp.begin());
+    url += sp;
+  }
   return url;
 }
 

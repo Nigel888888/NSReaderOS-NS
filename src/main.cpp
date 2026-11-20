@@ -207,6 +207,25 @@ EpdFontFamily cjk10FontFamily(&cjk10Font);
 EpdFont cjk12Font(&cjk12Data);
 EpdFontFamily cjk12FontFamily(&cjk12Font);
 
+#if defined(RICKYOS_PRODUCT) && defined(CROSSMUX_UI_PROFILE_HIGH_DPI)
+// Home-banner decorative Latin faces. Only built into the product image; their
+// ASCII-only glyph sets fall back to the CJK UI face for Chinese phrase text.
+#include <builtinFonts/banner_nice_16.h>
+#include <builtinFonts/banner_manque_16.h>
+#include <builtinFonts/banner_sounso_16.h>
+namespace {
+struct BannerFace {
+  int id;
+  const EpdFontData* data;
+};
+constexpr BannerFace kBannerFaces[] = {
+    {BANNER_NICE_16_FONT_ID, &banner_nice_16},
+    {BANNER_MANQUE_16_FONT_ID, &banner_manque_16},
+    {BANNER_SOUNSO_16_FONT_ID, &banner_sounso_16},
+};
+}  // namespace
+#endif
+
 // Chinese chess piece glyphs (subset CJK font, 14 characters at 16pt).
 EpdFont chineseChessPieceFont(&chinese_chess_16);
 EpdFontFamily chineseChessPieceFontFamily(&chineseChessPieceFont);
@@ -628,6 +647,15 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.setFallbackFont(CJK_UI_14_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(CJK_UI_16_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(CJK_UI_12_FONT_ID, kRtlFontId);
+  // Banner decorative faces are ASCII-only; route missing (e.g. Chinese) glyphs
+  // to the CJK UI face so a Chinese phrase still renders instead of tofu.
+#if defined(RICKYOS_PRODUCT)
+  for (const auto& face : kBannerFaces) {
+    EpdFont font(face.data);
+    renderer.insertFont(face.id, EpdFontFamily(&font));
+    renderer.setFallbackFont(face.id, CJK_UI_12_FONT_ID);
+  }
+#endif
 #endif
   renderer.insertFont(CHINESE_CHESS_FONT_ID, chineseChessPieceFontFamily);
 

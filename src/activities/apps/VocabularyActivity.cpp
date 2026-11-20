@@ -25,17 +25,16 @@ namespace {
 // Hold time on Confirm that opens the delete confirmation.
 constexpr unsigned long ENTER_ACTIONS_MODE_MS = 700;
 
-// The CrossNext-style dashboard above the list: two bordered counter cards,
-// each with an icon, a small uppercase label and a large bold number.
-constexpr int STATS_CARD_HEIGHT = 108;
+// The dashboard above the list: two compact solid cards. Each puts the label
+// and its number on one row (label first, count after) in white on black.
+constexpr int STATS_CARD_HEIGHT = 64;
 constexpr int STATS_CARD_GAP = 12;
 constexpr int STATS_CARD_RADIUS = 6;
 constexpr int STATS_ICON_SIZE = 24;
 constexpr int STATS_ICON_PAD = 10;
 // Corner radius of the counter cards.
-// Where the big number sits inside the card, and how much room the small
-// label keeps at the bottom.
-constexpr int STATS_CARD_NUMBER_TOP = 42;
+// Baseline offset of the single "label + number" text row inside the card.
+constexpr int STATS_CARD_TEXT_TOP = 20;
 // The review button under the counters. Enlarged for the high-DPI Read Pico
 // panel: the old 44/40 px bars were hard to see and to hit.
 constexpr int REVIEW_BUTTON_HEIGHT = 64;
@@ -47,10 +46,10 @@ constexpr int EXPORT_BUTTON_GAP = 10;
 constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
 // The font the counters are drawn in.
 constexpr int STATS_FONT_ID = NOTOSANS_18_FONT_ID;
-// Small uppercase section label above the list ("YOUR VOCABULARY"), with the
-// word count right-aligned -- the CrossNext list-screen header pattern.
+// Section label above the list ("我的生词"), with the total written right
+// after the text (not right-aligned) and generous space above/below.
 constexpr int SECTION_LABEL_HEIGHT = 30;
-constexpr int SECTION_LABEL_GAP = 12;
+constexpr int SECTION_LABEL_GAP = 24;
 
 }  // namespace
 
@@ -65,11 +64,29 @@ void VocabularyActivity::onEnter() {
 // Reads the notebook and the counters back from disk.
 void VocabularyActivity::reload() {
   VocabularyFile::load(entries);
+  sortEntries();
   rebuildRowItems();
   dueCount =
       VocabularyFile::countDue(entries, VocabularyFile::currentDayNumber(), VocabularyFile::currentMinuteOfDay());
   // The button carries the count, so its label is rebuilt with it.
   reviewLabel = std::string(tr(STR_VOCABULARY_START_REVIEW)) + " (" + std::to_string(dueCount) + ")";
+}
+
+// Sorts by the timestamp saved with each word. Equal timestamps keep their
+// on-disk order. 0 = newest first, 1 = oldest first.
+void VocabularyActivity::sortEntries() {
+  const bool newestFirst = (sortOrder == 0);
+  std::stable_sort(entries.begin(), entries.end(), [newestFirst](const VocabularyFile::Entry& a,
+                                                                 const VocabularyFile::Entry& b) {
+    return newestFirst ? a.timestamp > b.timestamp : a.timestamp < b.timestamp;
+  });
+}
+
+void VocabularyActivity::toggleSort() {
+  sortOrder = static_cast<uint8_t>(sortOrder == 0 ? 1 : 0);
+  sortEntries();
+  rebuildRowItems();
+  requestUpdate();
 }
 
 // Derives rowSubtitles/rowItems from `entries`. Called whenever `entries`
@@ -82,7 +99,9 @@ void VocabularyActivity::rebuildRowItems() {
   // vector must not reallocate while the items are being built.
   rowSubtitles.reserve(entries.size());
   rowItems.reserve(entries.size());
-  for (const auto& entry : entries) {
+  if (manageMode) selectedFlags.assign(entries.size(), false);
+  for (size_t i = 0; i < entries.size(); ++i) {
+    const auto& entry = entries[i];
     // Row subtitle: the definition excerpt, then the book it came from.
     std::string subtitle = entry.summary;
     if (!entry.book.empty()) {
@@ -96,9 +115,15 @@ void VocabularyActivity::rebuildRowItems() {
     fui::ListItem item;
     item.label = entry.headword.c_str();
     item.subtitle = rowSubtitles.back().c_str();
-    item.icon = listIconFor(UIIcon::Bookmark, 32);  // subtitle rows carry the larger icon
-    // CrossNext marks every navigable row with a right-hand chevron.
-    item.value = ">";
+    if (manageMode) {
+      // A checkbox per word; tapping the row toggles selection instead of
+      // opening the card.
+      item.icon = GUI.checkboxIcon(i < selectedFlags.size() && selectedFlags[i]);
+      item.value = nullptr;
+    } else {
+      item.icon = listIconFor(UIIcon::Bookmark, 32);  // subtitle rows carry the larger icon
+      item.value = ">";
+    }
     item.actionValue = static_cast<int16_t>(rowItems.size());
     rowItems.push_back(item);
   }
@@ -117,6 +142,15 @@ void VocabularyActivity::activateIndex(const int index) {
   // unrelated row on the next render.
   app.clearTapFlash();
   nav.selected = index;
+
+  if (manageMode) {
+    if (index >= 0 && index < static_cast<int>(selectedFlags.size())) {
+      selectedFlags[index] = !selectedFlags[index];
+      rebuildRowItems();
+      requestUpdate();
+    }
+    return;
+  }
 
   const auto& entry = entries.at(index);
   // The row only holds an excerpt; the full definition stays on disk.
@@ -146,6 +180,14 @@ void VocabularyActivity::onRowLongPress(const int index) {
   }
   app.clearTapFlash();
   nav.selected = index;
+  if (manageMode) {
+    if (index >= 0 && index < static_cast<int>(selectedFlags.size())) {
+      selectedFlags[index] = !selectedFlags[index];
+      rebuildRowItems();
+      requestUpdate();
+    }
+    return;
+  }
   showDeleteConfirmation();
 }
 
@@ -179,6 +221,29 @@ bool VocabularyActivity::handleCustomInput() {
       exportToAnki();
       return true;
     }
+    const auto hit = [tx, ty](const Rect& r) {
+      return r.width > 0 && r.height > 0 && tx >= r.x && tx < r.x + r.width && ty >= r.y && ty < r.y + r.height;
+    };
+    if (hit(sortButton)) {
+      toggleSort();
+      return true;
+    }
+    if (hit(manageButton)) {
+      toggleManageMode();
+      return true;
+    }
+    if (manageMode && hit(selectAllButton)) {
+      const bool allSelected = !selectedFlags.empty() &&
+                               std::all_of(selectedFlags.begin(), selectedFlags.end(), [](bool v) { return v; });
+      std::fill(selectedFlags.begin(), selectedFlags.end(), !allSelected);
+      rebuildRowItems();
+      requestUpdate();
+      return true;
+    }
+    if (manageMode && hit(deleteBar)) {
+      deleteSelectedWords();
+      return true;
+    }
   }
   return false;
 }
@@ -202,7 +267,7 @@ void VocabularyActivity::exportToAnki() {
 }
 
 bool VocabularyActivity::handleButtons() {
-  if (mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, ENTER_ACTIONS_MODE_MS)) {
+  if (!manageMode && mappedInput.wasLongPressed(MappedInputManager::Button::Confirm, ENTER_ACTIONS_MODE_MS)) {
     showDeleteConfirmation();
     return true;
   }
@@ -248,6 +313,46 @@ void VocabularyActivity::deleteSelected() {
   dueCount =
       VocabularyFile::countDue(entries, VocabularyFile::currentDayNumber(), VocabularyFile::currentMinuteOfDay());
   reviewLabel = std::string(tr(STR_VOCABULARY_START_REVIEW)) + " (" + std::to_string(dueCount) + ")";
+  requestUpdate(true);
+}
+
+void VocabularyActivity::toggleManageMode() {
+  app.clearTapFlash();
+  manageMode = !manageMode;
+  if (manageMode) {
+    selectedFlags.assign(entries.size(), false);
+  }
+  rebuildRowItems();
+  requestUpdate();
+}
+
+void VocabularyActivity::deleteSelectedWords() {
+  if (!manageMode) return;
+  int removed = 0;
+  // Erase from the back so earlier indices stay valid. `entries` is sorted,
+  // so build the descending list of checked indices first.
+  std::vector<int> toRemove;
+  for (size_t i = 0; i < selectedFlags.size() && i < entries.size(); ++i) {
+    if (selectedFlags[i]) toRemove.push_back(static_cast<int>(i));
+  }
+  if (toRemove.empty()) return;
+  for (auto it = toRemove.rbegin(); it != toRemove.rend(); ++it) {
+    const std::string headword = entries.at(*it).headword;
+    if (VocabularyFile::remove(headword)) {
+      entries.erase(entries.begin() + *it);
+      ++removed;
+    } else {
+      LOG_ERR("VOC", "Failed to remove vocabulary entry '%s'", headword.c_str());
+    }
+  }
+  manageMode = false;
+  selectedFlags.clear();
+  sortEntries();
+  rebuildRowItems();
+  dueCount =
+      VocabularyFile::countDue(entries, VocabularyFile::currentDayNumber(), VocabularyFile::currentMinuteOfDay());
+  reviewLabel = std::string(tr(STR_VOCABULARY_START_REVIEW)) + " (" + std::to_string(dueCount) + ")";
+  nav.follow(listCount());
   requestUpdate(true);
 }
 
@@ -301,8 +406,8 @@ void VocabularyActivity::drawStatsBand(const Rect& band) {
   GUI.drawActionButton(renderer, exportRect, exportText, false);
 }
 
-// One counter card: an icon at the left, a small uppercase label at the top
-// right, and the count set large and bold underneath -- the CrossNext layout.
+// One compact counter card: solid black background, white icon, and the label
+// followed by its count on a single row -- label first, number after.
 void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, const char* label, const uint8_t* icon) {
   if (rect.width <= 0 || rect.height <= 0 || !label) {
     return;
@@ -310,33 +415,33 @@ void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, cons
   renderer.clearClipRect();
   renderer.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 2, STATS_CARD_RADIUS, true);
 
-  // Icon, optically centred vertically in the card.
+  int textX = rect.x + STATS_ICON_PAD;
+  const int baseline = rect.y + STATS_CARD_TEXT_TOP;
+  // White icon on the black fill.
   if (icon) {
-    renderer.drawIcon(icon, rect.x + STATS_ICON_PAD, rect.y + (rect.height - STATS_ICON_SIZE) / 2, STATS_ICON_SIZE);
+    renderer.drawIconInverted(icon, textX, rect.y + (rect.height - STATS_ICON_SIZE) / 2, STATS_ICON_SIZE);
+    textX += STATS_ICON_SIZE + STATS_ICON_PAD / 2;
   }
-  // Small label, top-right.
-  const int labelWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
-  renderer.drawText(UI_10_FONT_ID, rect.x + rect.width - STATS_ICON_PAD - labelWidth, rect.y + 10, label);
-
-  // The count: large and bold, under the label.
+  // Label first, in white.
+  renderer.drawText(STATS_FONT_ID, textX, baseline, label, /*black=*/false, EpdFontFamily::BOLD);
+  textX += renderer.getTextWidth(STATS_FONT_ID, label, EpdFontFamily::BOLD) + STATS_ICON_PAD / 2;
+  // Count right after the label, also white.
   char number[16];
   std::snprintf(number, sizeof(number), "%d", value);
-  const int numberWidth = renderer.getTextWidth(STATS_FONT_ID, number, EpdFontFamily::BOLD);
-  renderer.drawText(STATS_FONT_ID, rect.x + (rect.width - numberWidth) / 2, rect.y + STATS_CARD_NUMBER_TOP, number,
-                    true, EpdFontFamily::BOLD);
+  renderer.drawText(STATS_FONT_ID, textX, baseline, number, /*black=*/false, EpdFontFamily::BOLD);
 }
 
-// CrossNext-style section label: a small uppercase caption on the left and a
-// right-aligned count, underlined by a hairline rule.
+// Section label: the caption with the total written immediately after it in
+// brackets (not right-aligned), underlined by a hairline rule.
 void VocabularyActivity::drawSectionLabel(const Rect& band, const char* label, const int count) {
   renderer.clearClipRect();
   if (band.width <= 0 || band.height <= 0) return;
   const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
   renderer.drawText(UI_10_FONT_ID, band.x, baseline, label, true, EpdFontFamily::BOLD);
-  char number[24];
-  std::snprintf(number, sizeof(number), "%d", count);
-  const int countWidth = renderer.getTextWidth(UI_10_FONT_ID, number);
-  renderer.drawText(UI_10_FONT_ID, band.x + band.width - countWidth, baseline, number);
+  const int labelWidth = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
+  char number[32];
+  std::snprintf(number, sizeof(number), "  (%d)", count);
+  renderer.drawText(UI_10_FONT_ID, band.x + labelWidth, baseline, number);
   renderer.drawLine(band.x, band.y + band.height - 1, band.x + band.width, band.y + band.height - 1);
 }
 
@@ -363,19 +468,38 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
-  // Uppercase section caption above the list, mirroring CrossNext's
-  // "YOUR VOCABULARY  n" band.
+  // Section caption with the total right after the text. Two small buttons on
+  // the row's right edge cycle sort order and toggle multi-select management.
   const fui::Rect labelBand = screen.takeTop(static_cast<int16_t>(SECTION_LABEL_HEIGHT));
   drawSectionLabel(Rect{labelBand.x, labelBand.y, labelBand.width, labelBand.height}, tr(STR_VOC_SECTION_WORDS),
                    static_cast<int>(entries.size()));
+  const char* sortText = sortOrder == 0 ? tr(STR_VOCAB_SORT_NEWEST) : tr(STR_VOCAB_SORT_OLDEST);
+  const int sortW = renderer.getTextWidth(SMALL_FONT_ID, sortText) + 16;
+  const int manageW = renderer.getTextWidth(SMALL_FONT_ID, manageMode ? tr(STR_VOCABULARY_DONE)
+                                                                     : tr(STR_VOCABULARY_MANAGE)) + 16;
+  sortButton = Rect{labelBand.x + labelBand.width - manageW - sortW - 8, labelBand.y, sortW, labelBand.height};
+  manageButton = Rect{labelBand.x + labelBand.width - manageW, labelBand.y, manageW, labelBand.height};
+  GUI.drawActionButton(renderer, sortButton, sortText, false);
+  GUI.drawActionButton(renderer, manageButton, manageMode ? tr(STR_VOCABULARY_DONE) : tr(STR_VOCABULARY_MANAGE),
+                       manageMode);
   screen.spacer(static_cast<int16_t>(SECTION_LABEL_GAP));
 
-  // On a touch board the long press is the only way to delete, so say so.
-  if (mappedInput.hasTouch()) {
-    const int helpLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
-    const fui::Rect helpBand = screen.takeBottom(static_cast<int16_t>(helpLineHeight + metrics.verticalSpacing));
-    GUI.drawHelpText(renderer, Rect{helpBand.x, helpBand.y + metrics.verticalSpacing, helpBand.width, helpLineHeight},
-                     tr(STR_VOCABULARY_LONG_PRESS_DELETE));
+  if (manageMode) {
+    // Management bar pinned to the bottom: select-all + delete-selected.
+    const int barHeight = renderer.getLineHeight(SMALL_FONT_ID) + metrics.verticalSpacing * 2;
+    const fui::Rect helpBand = screen.takeBottom(static_cast<int16_t>(barHeight));
+    deleteBar = Rect{helpBand.x, helpBand.y, helpBand.width, helpBand.height};
+    const int half = helpBand.width / 2 - 4;
+    selectAllButton = Rect{helpBand.x, helpBand.y, half, helpBand.height};
+    const Rect delRect{helpBand.x + helpBand.width / 2 + 4, helpBand.y, half, helpBand.height};
+    GUI.drawActionButton(renderer, selectAllButton, tr(STR_VOCABULARY_SELECT_ALL), false);
+    GUI.drawActionButton(renderer, delRect, tr(STR_VOCABULARY_DELETE_SELECTED), true);
+    deleteBar = delRect;  // tap target is the delete button only
+  } else {
+    deleteBar = Rect{0, 0, 0, 0};
+    selectAllButton = Rect{0, 0, 0, 0};
+    // The old "long-press a word to delete it" hint is intentionally gone:
+    // deletion now happens in the explicit management mode above.
   }
 
   fui::ListProps props;
