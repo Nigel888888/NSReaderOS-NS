@@ -96,6 +96,12 @@ class MappedInputManager {
   RowTouch colTouch(int& col, int left, int colStep, int colCount, int yStart, int yEnd, int colWidth = 0) const;
 
   SwipeDir wasSwipe() const;
+  // Fetch the pending swipe (if any) and map both endpoints to logical screen
+  // coords. Public so activities (e.g. swipe-to-delete rows) can hit-test the
+  // gesture's start point against their own row geometry. Non-consuming: the
+  // underlying InputManager::wasSwipe() is a peek, so the scroll/back gesture
+  // checks later in the input loop still see the same swipe.
+  bool decodeSwipe(int& sx, int& sy, int& ex, int& ey) const;
   // Back = left-to-right swipe anchored at the left edge. Public so swipe-mode
   // page turns (reader) can exclude it from a plain SwipeDir::Right.
   bool wasBackGesture() const;
@@ -158,8 +164,6 @@ class MappedInputManager {
   bool wasTopEdgeDownSwipe() const;
   bool wasBottomEdgeUpSwipe() const;
   bool wasHeaderTapBack() const;
-  // Fetch the pending swipe (if any) and map both endpoints to logical screen coords
-  bool decodeSwipe(int& sx, int& sy, int& ex, int& ey) const;
   bool listItemFromPoint(int x, int y, int& index, int itemCount, int selectedIndex, int listTop, int listHeight,
                          bool hasSubtitle) const;
 #if FREEINK_CAP_TOUCH
