@@ -202,11 +202,16 @@ bool VocabularyActivity::handleSwipeDelete() {
   if (!mappedInput.decodeSwipe(sx, sy, ex, ey)) return false;
   const int dx = ex - sx, dy = ey - sy;
   if (dx >= 0 || std::abs(dx) < std::abs(dy)) return false;  // leftward, horizontal-dominant
-  // Map the finger's start y to the row it began on.
-  if (listRect.height <= 0 || sy < listRect.y || sy >= listRect.y + listRect.height) return false;
+  // Map the finger's start y to the row it began on using the exact fixed row
+  // geometry recorded at build time (same as Quotes). The old estimate
+  // (listRect.height / visibleRows) drifted off the real rows and silently
+  // missed, which is why a left-swipe appeared to do nothing.
+  if (listRect.height <= 0 || swipeRowHeight <= 0 || sy < listRect.y ||
+      sy >= listRect.y + listRect.height) {
+    return false;
+  }
   auto& n = activeNav();
-  const int visible = std::max(1, n.visibleRows);
-  const int rowStep = listRect.height / visible;
+  const int rowStep = swipeRowHeight + swipeRowGap;
   if (rowStep <= 0) return false;
   const int index = n.top + (sy - listRect.y) / rowStep;
   if (index < 0 || index >= listCount()) return false;
@@ -540,10 +545,20 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
   // Tap opens the word; long-press deletes it.
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   props.valueInset = 8;  // air between the trailing chevron and the row edge
+  // Give every row a fixed height, exactly like the Quotes screen. Without it
+  // the framework grows rows to fit wrapped subtitles, so rows are unequal and
+  // a swipe's start y cannot be mapped to a row by an even-height estimate —
+  // the left-swipe delete then silently misses. A fixed height keeps rows
+  // uniform, so start-y -> row index is exact. It is a minimum: the headword +
+  // one subtitle line still fit comfortably.
+  props.rowHeight = static_cast<int16_t>(std::max<int>(72, renderer.getLineHeight(UI_12_FONT_ID) * 3));
+  props.rowGap = static_cast<int16_t>(std::max<int>(8, metrics.verticalSpacing));
   syncListViewport(screen, props);
-  // Remember the exact area the list is about to occupy, so a left-swipe's
-  // start y maps to the row the finger began on.
+  // Remember the exact area and row geometry the list is about to occupy, so a
+  // left-swipe's start y maps to the row the finger began on.
   const fui::Rect body = screen.body();
   listRect = Rect{body.x, body.y, body.width, body.height};
+  swipeRowHeight = props.rowHeight;
+  swipeRowGap = props.rowGap > 0 ? props.rowGap : 0;
   screen.list(props);
 }

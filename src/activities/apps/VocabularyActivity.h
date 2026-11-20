@@ -108,4 +108,9 @@ class VocabularyActivity final : public UiListActivity {
   // Screen rect the list occupied on the last build, used to map a left-swipe's
   // start y to a row index.
   Rect listRect{0, 0, 0, 0};
+  // Exact row geometry from the last build. The list is given a fixed rowHeight
+  // so a swipe's start y maps to a row precisely (same scheme as Quotes); these
+  // mirror the values handed to ListProps.
+  int swipeRowHeight = 0;
+  int swipeRowGap = 0;
 };
