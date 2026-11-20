@@ -413,7 +413,9 @@ void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, cons
     return;
   }
   renderer.clearClipRect();
-  renderer.drawRoundedRect(rect.x, rect.y, rect.width, rect.height, 2, STATS_CARD_RADIUS, true);
+  // Solid black card: drawRoundedRect only strokes an outline (white inside),
+  // which left white boxes with white text that looked empty. Fill it instead.
+  renderer.fillRoundedRect(rect.x, rect.y, rect.width, rect.height, STATS_CARD_RADIUS, Color::Black);
 
   int textX = rect.x + STATS_ICON_PAD;
   const int baseline = rect.y + STATS_CARD_TEXT_TOP;
