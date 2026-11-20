@@ -514,17 +514,23 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
-  // Section caption with the total right after the text. A single small button
-  // on the right edge cycles sort order; the old "manage" button is gone now
-  // that deletion is a swipe gesture.
+  // Section caption with the total right after the text. Two small buttons on
+  // the right edge: the sort toggle and the manage-mode toggle. Manage mode is
+  // the reliable tap-based delete path (checkbox each row -> Select all /
+  // Delete selected in the bottom bar). Its entry button had been zeroed out in
+  // an earlier pass, which made the whole checkbox flow unreachable.
   const fui::Rect labelBand = screen.takeTop(static_cast<int16_t>(SECTION_LABEL_HEIGHT));
   drawSectionLabel(Rect{labelBand.x, labelBand.y, labelBand.width, labelBand.height}, tr(STR_VOC_SECTION_WORDS),
                    static_cast<int>(entries.size()));
   const char* sortText = sortOrder == 0 ? tr(STR_VOCAB_SORT_NEWEST) : tr(STR_VOCAB_SORT_OLDEST);
   const int sortW = renderer.getTextWidth(SMALL_FONT_ID, sortText) + 16;
   sortButton = Rect{labelBand.x + labelBand.width - sortW, labelBand.y, sortW, labelBand.height};
+  const char* manageText = manageMode ? tr(STR_VOCABULARY_DONE) : tr(STR_VOCABULARY_MANAGE);
+  const int manageW = renderer.getTextWidth(SMALL_FONT_ID, manageText) + 16;
+  constexpr int BUTTON_GAP = 8;
+  manageButton = Rect{sortButton.x - BUTTON_GAP - manageW, labelBand.y, manageW, labelBand.height};
   GUI.drawActionButton(renderer, sortButton, sortText, false);
-  manageButton = Rect{0, 0, 0, 0};
+  GUI.drawActionButton(renderer, manageButton, manageText, manageMode);
   screen.spacer(static_cast<int16_t>(SECTION_LABEL_GAP));
 
   if (manageMode) {
