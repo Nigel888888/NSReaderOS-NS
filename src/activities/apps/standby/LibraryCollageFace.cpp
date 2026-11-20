@@ -17,6 +17,7 @@
 #include "CrossPointSettings.h"
 #include "ReadingStatsStore.h"
 #include "RecentBooksStore.h"
+#include "StandbyCoverPath.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -139,27 +140,26 @@ inline void ditherPixel(GfxRenderer& renderer, int x, int y, unsigned gray) {
 void LibraryCollageFace::onEnter() {
   books_.clear();
   totalCount_ = 0;
-  // Gather real covers from the reading-stats shelf (dedup by cover path),
-  // most-recently-read first, capped at 15 like kiikoread.
+  // Gather real covers from the reading-stats shelf, most-recently-read first,
+  // capped at 15 like kiikoread. Use the multi-gray cover.bmp (2-bit/4-gray),
+  // never the 1-bit noise-dithered thumb, which turns to gray mush when sampled.
   const auto& stats = READING_STATS.getBooks();
   for (auto it = stats.rbegin(); it != stats.rend() && books_.size() < 15; ++it) {
-    if (it->coverBmpPath.empty()) continue;
-    const std::string resolved = UITheme::getCoverThumbPath(it->coverBmpPath, 334);
-    if (!Storage.exists(resolved.c_str())) continue;
+    if (it->coverBmpPath.empty() && it->path.empty()) continue;
+    const std::string resolved = standbyCover::coverBmpForBook(it->path, it->coverBmpPath);
+    if (resolved.empty() || !Storage.exists(resolved.c_str())) continue;
     CollageBook b;
     b.title = it->title;
     b.author = it->author;
     b.coverPath = resolved;
-    b.srcW = 0;  // probed at draw time from the BMP header
-    b.srcH = 0;
     books_.push_back(std::move(b));
   }
   // Reading stats may be empty while the recent list still has covers.
   if (books_.empty()) {
     for (const auto& rb : RECENT_BOOKS.getBooks()) {
-      if (rb.coverBmpPath.empty()) continue;
-      const std::string resolved = UITheme::getCoverThumbPath(rb.coverBmpPath, 334);
-      if (!Storage.exists(resolved.c_str())) continue;
+      if (rb.coverBmpPath.empty() && rb.path.empty()) continue;
+      const std::string resolved = standbyCover::coverBmpForBook(rb.path, rb.coverBmpPath);
+      if (resolved.empty() || !Storage.exists(resolved.c_str())) continue;
       CollageBook b;
       b.title = rb.title;
       b.author = rb.author;

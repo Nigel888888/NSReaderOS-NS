@@ -18,6 +18,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "ReadingStatsStore.h"
+#include "StandbyCoverPath.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
@@ -154,16 +155,18 @@ void ReadingReceiptFace::render(GfxRenderer& renderer, const Rect& viewport) {
   {
     const int boxX = X(216), boxY = Y(378), boxW = W(252), boxH = H(344);
     bool drawn = false;
-    if (!stats || !stats->coverBmpPath.empty()) {
-      const std::string coverPath = stats ? UITheme::getCoverThumbPath(stats->coverBmpPath, 344) : std::string();
-      if (!coverPath.empty()) {
-        HalFile file;
-        if (Storage.openFileForRead("RECEIPT", coverPath, file)) {
-          Bitmap bitmap(file, true);
-          if (bitmap.parseHeaders() == BmpReaderError::Ok) {
-            renderer.drawBitmap(bitmap, boxX, boxY, boxW, boxH);
-            drawn = true;
-          }
+    // Use the real multi-gray cover and crop to fill the box: drawBitmap() is
+    // "contain" (leaves white borders when the aspect ratio differs), while
+    // drawBitmapCropToFill() covers the whole box like the original receipt.
+    const std::string coverPath = stats ? standbyCover::coverBmpForBook(stats->path, stats->coverBmpPath)
+                                        : std::string();
+    if (!coverPath.empty()) {
+      HalFile file;
+      if (Storage.openFileForRead("RECEIPT", coverPath, file)) {
+        Bitmap bitmap(file, true);
+        if (bitmap.parseHeaders() == BmpReaderError::Ok) {
+          renderer.drawBitmapCropToFill(bitmap, boxX, boxY, boxW, boxH);
+          drawn = true;
         }
       }
     }
