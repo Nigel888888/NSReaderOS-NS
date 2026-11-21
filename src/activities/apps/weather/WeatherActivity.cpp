@@ -5,34 +5,23 @@
 #include <I18n.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
+#include "activities/network/WifiSelectionActivity.h"
+#include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/PluginHttp.h"
 
 namespace {
 
-constexpr const char* kCityPath = "/weather_city.txt";
+constexpr const char* kLocationPath = "/weather_location.json";
 constexpr const char* kCachePath = "/weather_cache.json";
 constexpr size_t kMaxForecastResponse = 16 * 1024;
-constexpr unsigned long kMessageDurationMs = 2600;
-
-struct City {
-  const char* name;
-  double latitude;
-  double longitude;
-};
-
-// Small preset list keeps the first release offline-friendly and avoids a
-// second geocoding request on every city change. Coordinates are Open-Meteo's.
-constexpr City kCities[] = {
-    {"Beijing", 39.9042, 116.4074}, {"Shanghai", 31.2304, 121.4737}, {"Guangzhou", 23.1291, 113.2644},
-    {"Shenzhen", 22.5431, 114.0579}, {"Changsha", 28.2282, 112.9388}, {"Xiangtan", 27.8290, 112.9403},
-    {"Chengdu", 30.5728, 104.0668}, {"Hangzhou", 30.2741, 120.1551},
-};
-constexpr int kCityCount = static_cast<int>(sizeof(kCities) / sizeof(kCities[0]));
+constexpr size_t kMaxGeocodeResponse = 12 * 1024;
+constexpr unsigned long kMessageDurationMs = 3200;
 
 struct WeatherLayout {
   Rect header;
@@ -137,19 +126,44 @@ void drawButton(const GfxRenderer& renderer, const Rect button, const char* labe
 void WeatherActivity::onEnter() {
   Activity::onEnter();
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  loadCityIndex();
+  loadLocation();
   loadCache();
   selected_ = 0;
   message_ = nullptr;
   messageUntil_ = 0;
+  pending_ = PendingAction::None;
+  pendingCityName_.clear();
+  resumeAfterWifi_ = false;
+  awaitingCityName_ = false;
   requestUpdate();
 }
 
-void WeatherActivity::loadCityIndex() {
-  std::string text;
-  if (!Storage.readFileToString("WEATHER", kCityPath, 16, text)) return;
-  const int value = std::atoi(text.c_str());
-  if (value >= 0 && value < kCityCount) cityIndex_ = value;
+void WeatherActivity::loadLocation() {
+  location_.name = WeatherDefaults::kCityName;
+  location_.latitude = WeatherDefaults::kLatitude;
+  location_.longitude = WeatherDefaults::kLongitude;
+  std::string json;
+  if (!Storage.readFileToString("WEATHER", kLocationPath, 1024, json)) return;
+  JsonDocument doc;
+  if (deserializeJson(doc, json.c_str())) return;
+  const char* name = doc["name"] | "";
+  const double lat = doc["lat"] | WeatherDefaults::kLatitude;
+  const double lon = doc["lon"] | WeatherDefaults::kLongitude;
+  if (name[0] && lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0) {
+    location_.name = name;
+    location_.latitude = lat;
+    location_.longitude = lon;
+  }
+}
+
+void WeatherActivity::saveLocation() const {
+  JsonDocument doc;
+  doc["name"] = location_.name;
+  doc["lat"] = location_.latitude;
+  doc["lon"] = location_.longitude;
+  String out;
+  serializeJson(doc, out);
+  Storage.writeFile(kLocationPath, out);
 }
 
 void WeatherActivity::loadCache() {
@@ -158,7 +172,7 @@ void WeatherActivity::loadCache() {
   JsonDocument doc;
   if (deserializeJson(doc, json.c_str())) return;
   cache_.valid = true;
-  cache_.cityIndex = static_cast<uint8_t>(doc["cityIndex"] | 0);
+  cache_.city = doc["city"] | "";
   cache_.temperature = static_cast<float>(doc["temperature"] | 0.0);
   cache_.weatherCode = static_cast<int>(doc["code"] | -1);
   cache_.windSpeed = static_cast<float>(doc["wind"] | 0.0);
@@ -168,7 +182,7 @@ void WeatherActivity::loadCache() {
 
 void WeatherActivity::saveCache() const {
   JsonDocument doc;
-  doc["cityIndex"] = cache_.cityIndex;
+  doc["city"] = cache_.city;
   doc["temperature"] = cache_.temperature;
   doc["code"] = cache_.weatherCode;
   doc["wind"] = cache_.windSpeed;
@@ -178,37 +192,108 @@ void WeatherActivity::saveCache() const {
   Storage.writeFile(kCachePath, out);
 }
 
-bool WeatherActivity::cacheMatchesCity() const {
-  return cache_.valid && cache_.cityIndex == static_cast<uint8_t>(cityIndex_);
-}
-
 void WeatherActivity::showMessage(const char* text) {
   message_ = text;
   messageUntil_ = millis() + kMessageDurationMs;
   requestUpdate();
 }
 
-void WeatherActivity::cycleCity() {
-  cityIndex_ = (cityIndex_ + 1) % kCityCount;
-  Storage.writeFile(kCityPath, String(cityIndex_));
-  showMessage(tr(STR_WEATHER_CITY_CHANGED));
+bool WeatherActivity::wifiConnected() const {
+  return WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0);
 }
 
-void WeatherActivity::updateWeather() {
-  if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
-    showMessage(tr(STR_WEATHER_NO_WIFI));
+void WeatherActivity::ensureWifiThen(PendingAction action) {
+  pending_ = action;
+  if (wifiConnected()) {
+    // Defer to loop() so network I/O always runs on the main task, never in
+    // an activity result handler (which may execute on the render task).
+    resumeAfterWifi_ = true;
     return;
   }
+  // No live connection: open the Wi-Fi screen (auto-connect to saved
+  // networks first) and resume the pending action when it returns.
+  showMessage(tr(STR_WEATHER_NO_WIFI));
+  auto wifi = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, true);
+  if (!wifi) {
+    pending_ = PendingAction::None;
+    showMessage(tr(STR_WEATHER_UPDATE_FAILED));
+    return;
+  }
+  startActivityForResult(std::move(wifi), [this](const ActivityResult& result) {
+    const auto* wifiResult = std::get_if<WifiResult>(&result.data);
+    const bool connected = !result.isCancelled && wifiResult && wifiResult->connected;
+    resumeAfterWifi_ = connected;
+    if (!connected) pending_ = PendingAction::None;
+  });
+}
+
+void WeatherActivity::promptCityName() {
+  awaitingCityName_ = true;
+  startActivityForResultWith<KeyboardEntryActivity>(
+      [this](const ActivityResult& result) {
+        awaitingCityName_ = false;
+        if (result.isCancelled) return;
+        const auto* entry = std::get_if<KeyboardResult>(&result.data);
+        if (!entry || entry->text.empty()) return;
+        pendingCityName_ = entry->text;
+        // Narrow ASCII names are accepted directly; CJK names go through
+        // Open-Meteo geocoding (which handles both). Defer to runPending().
+        ensureWifiThen(PendingAction::GeocodeAndUpdate);
+      },
+      tr(STR_WEATHER_CITY_PROMPT), location_.name, 48);
+}
+
+bool WeatherActivity::geocodeCity(const std::string& name, Location& out) {
+  const std::string encoded = pluginhttp::urlEncodeQuery(name);
+  char url[384];
+  snprintf(url, sizeof(url),
+           "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json",
+           encoded.c_str());
+
+  String body;
+  const int status = pluginhttp::request(nullptr, url, "GET", "", {}, body, kMaxGeocodeResponse);
+  if (status != 200) return false;
+
+  JsonDocument doc;
+  if (deserializeJson(doc, body.c_str())) return false;
+  JsonArray results = doc["results"].as<JsonArray>();
+  if (results.isNull() || results.size() == 0) return false;
+  JsonObject first = results[0].as<JsonObject>();
+  if (first.isNull()) return false;
+  const char* found = first["name"] | "";
+  const double lat = first["latitude"] | NAN;
+  const double lon = first["longitude"] | NAN;
+  if (!found[0] || std::isnan(lat) || std::isnan(lon)) return false;
+  out.name = found;
+  out.latitude = lat;
+  out.longitude = lon;
+  return true;
+}
+
+void WeatherActivity::runPending() {
+  const PendingAction action = pending_;
+  pending_ = PendingAction::None;
+  if (action == PendingAction::None) return;
 
   GUI.drawPopup(renderer, tr(STR_WEATHER_UPDATING));
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 
-  const City& city = kCities[cityIndex_];
+  if (action == PendingAction::GeocodeAndUpdate) {
+    Location located;
+    if (!geocodeCity(pendingCityName_, located)) {
+      showMessage(tr(STR_WEATHER_CITY_NOT_FOUND));
+      return;
+    }
+    location_ = located;
+    saveLocation();
+    pendingCityName_.clear();
+  }
+
   char url[256];
   snprintf(url, sizeof(url),
            "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
            "&current=temperature_2m,weather_code,wind_speed_10m&timezone=auto",
-           city.latitude, city.longitude);
+           location_.latitude, location_.longitude);
 
   String body;
   const int status = pluginhttp::request(nullptr, url, "GET", "", {}, body, kMaxForecastResponse);
@@ -229,17 +314,27 @@ void WeatherActivity::updateWeather() {
   }
 
   cache_.valid = true;
-  cache_.cityIndex = static_cast<uint8_t>(cityIndex_);
+  cache_.city = location_.name;
   cache_.temperature = static_cast<float>(current["temperature_2m"] | 0.0);
   cache_.weatherCode = static_cast<int>(current["weather_code"] | -1);
   cache_.windSpeed = static_cast<float>(current["wind_speed_10m"] | 0.0);
   const char* observed = current["time"] | "";
   snprintf(cache_.observed, sizeof(cache_.observed), "%s", observed);
   saveCache();
-  showMessage(tr(STR_WEATHER_UPDATED));
+  showMessage(action == PendingAction::GeocodeAndUpdate ? tr(STR_WEATHER_CITY_UPDATED)
+                                                        : tr(STR_WEATHER_UPDATED));
+}
+
+void WeatherActivity::updateWeather() {
+  ensureWifiThen(PendingAction::Update);
 }
 
 void WeatherActivity::loop() {
+  if (resumeAfterWifi_) {
+    resumeAfterWifi_ = false;
+    if (wifiConnected()) runPending();
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     activityManager.goToApps();
     return;
@@ -250,13 +345,14 @@ void WeatherActivity::loop() {
   if (mappedInput.wasScreenTapped(touchX, touchY)) {
     const int touched = buttonFromPoint(layout, touchX, touchY);
     if (touched >= 0) {
-      RenderLock lock(*this);
-      selected_ = touched;
-      lock.unlock();
+      {
+        RenderLock lock(*this);
+        selected_ = touched;
+      }
       if (touched == 0) {
         updateWeather();
       } else {
-        cycleCity();
+        promptCityName();
       }
       return;
     }
@@ -271,14 +367,13 @@ void WeatherActivity::loop() {
     if (selected_ == 0) {
       updateWeather();
     } else {
-      cycleCity();
+      promptCityName();
     }
     return;
   }
   if (next != selected_) {
     RenderLock lock(*this);
     selected_ = next;
-    lock.unlock();
     requestUpdate();
   }
 }
@@ -299,12 +394,12 @@ void WeatherActivity::render(RenderLock&&) {
   const int lineGap = std::max(8, metrics.verticalSpacing / 2);
   int y = card.y + pad;
 
-  const char* cityName = kCities[cityIndex_].name;
+  const char* cityName = location_.name.c_str();
   int textWidth = renderer.getTextWidth(NOTOSANS_18_FONT_ID, cityName, EpdFontFamily::BOLD);
   renderer.drawText(NOTOSANS_18_FONT_ID, card.x + (card.width - textWidth) / 2, y, cityName, true, EpdFontFamily::BOLD);
   y += renderer.getLineHeight(NOTOSANS_18_FONT_ID) + lineGap;
 
-  if (cacheMatchesCity()) {
+  if (cache_.valid && cache_.city == location_.name) {
     char buffer[96];
     snprintf(buffer, sizeof(buffer), tr(STR_WEATHER_TEMP_FORMAT), cache_.temperature);
     textWidth = renderer.getTextWidth(NOTOSANS_18_FONT_ID, buffer, EpdFontFamily::BOLD);

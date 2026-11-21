@@ -1125,19 +1125,16 @@ void SettingsActivity::toggleCurrentSetting() {
           LOG_ERR("SETTINGS", "OOM: WifiSelectionActivity");
           return;
         }
-        startActivityForResult(std::move(activity), [](const ActivityResult&) {
+        startActivityForResult(std::move(activity), [](const ActivityResult& result) {
           SETTINGS.saveToFile();
-          // Every other WiFi consumer hands the radio to a session it owns;
-          // these rows only save credentials, so nothing here would ever
-          // release the driver's heap. The scan alone brings it up, so tear
-          // down whether or not the user joined a network.
-          if (WiFi.getMode() == WIFI_MODE_NULL) return;
-          WiFi.disconnect(false);
-          delay(30);
-          // Unlike the onExit() teardowns, this runs from the loop task with
-          // no lock held; the restart popup paints straight to the panel.
-          RenderLock lock;
-          silentRestartToSettings();
+          // Keep any association the user just established. On-demand network
+          // consumers (weather, OPDS, sync) rely on staying connected after
+          // this screen returns, so do NOT tear the radio down here. The old
+          // unconditional WiFi.disconnect(false) + silentRestartToSettings()
+          // dropped a freshly-joined network and soft-rebooted the device,
+          // which read as "cannot connect" plus a crash flash. The scan is
+          // already released in WifiSelectionActivity::onExit().
+          (void)result;
         });
 
         break;
