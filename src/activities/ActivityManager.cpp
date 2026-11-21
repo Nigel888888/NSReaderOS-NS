@@ -33,6 +33,7 @@
 #include "apps/QuotesActivity.h"
 #include "apps/VocabularyActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
+#include "apps/weather/WeatherActivity.h"
 #include "components/SubpageLayout.h"
 #ifdef ENABLE_CHINESE_VERSION
 #include "apps/weread/WeReadActivity.h"
@@ -800,6 +801,8 @@ void ActivityManager::goToCalculator() { replaceActivityWith<CalculatorActivity>
 void ActivityManager::goToVocabulary() { replaceActivityWith<VocabularyActivity>(); }
 
 void ActivityManager::goToQuotes() { replaceActivityWith<QuotesActivity>(); }
+
+void ActivityManager::goToWeather() { replaceActivityWith<WeatherActivity>(); }
 
 #ifndef RICKYOS_PRODUCT
 void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }

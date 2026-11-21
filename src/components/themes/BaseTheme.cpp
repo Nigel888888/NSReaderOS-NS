@@ -620,7 +620,8 @@ void BaseTheme::drawList(const GfxRenderer& renderer, Rect rect, int itemCount, 
 // looks like it overhangs the content columns.
 int BaseTheme::headerStatusInset(bool upstreamStyle) { return uiThemeMetrics(upstreamStyle).headerSidePadding + 4; }
 
-void BaseTheme::applyHeaderStatus(const GfxRenderer& renderer, freeink::ui::HeaderProps& props, bool upstreamStyle) {
+void BaseTheme::applyHeaderStatus(const GfxRenderer& renderer, freeink::ui::HeaderProps& props, bool upstreamStyle,
+                                  const bool showClock) {
   const ThemeMetrics& metrics = uiThemeMetrics(upstreamStyle);
   auto& status = props.status;
 
@@ -675,7 +676,7 @@ void BaseTheme::applyHeaderStatus(const GfxRenderer& renderer, freeink::ui::Head
   // (SETTINGS.clockShowInHeader). Themes whose title layout has no room for
   // the clock's left reserve opt out via headerShowsClock.
   static char clockText[10];
-  if (metrics.headerShowsClock && SETTINGS.clockShowInHeader &&
+  if (showClock && metrics.headerShowsClock && SETTINGS.clockShowInHeader &&
       TimeUtils::formatCurrentTime(clockText, sizeof(clockText), SETTINGS.clockFormat == 1)) {
     status.clockText = clockText;
   }
@@ -687,7 +688,7 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
 }
 
 void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
-                                    const bool backButton, const bool upstreamStyle) {
+                                    const bool backButton, const bool upstreamStyle, const bool showClock) {
   // Every activity header renders through the FreeInkUI header + battery
   // indicator components, styled by the active theme's tokens (padding,
   // centering, underline). Non-interactive frame: no hit rects registered.
@@ -715,7 +716,7 @@ void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, cons
   props.rightLabel = subtitle;  // firmware headers right-align the secondary text
   // Battery + clock chrome and their title reserves live in the FreeInkUI
   // header component; this only fills the values from settings and metrics.
-  applyHeaderStatus(renderer, props, upstreamStyle);
+  applyHeaderStatus(renderer, props, upstreamStyle, showClock);
   if (rect.height < uiThemeMetrics(upstreamStyle).headerHeight) {
     // Short bands (home) are not split into strip + content row: the title
     // centers on the band, clear of the band's bottom edge.

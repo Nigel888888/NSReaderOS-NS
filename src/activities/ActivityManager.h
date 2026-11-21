@@ -168,6 +168,7 @@ class ActivityManager {
   void goToCalculator();
   void goToVocabulary();
   void goToQuotes();
+  void goToWeather();
 #ifndef RICKYOS_PRODUCT
   void goToAirPage();
 #endif

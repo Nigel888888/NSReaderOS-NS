@@ -182,7 +182,8 @@ enum UIIcon {
   Woodfish,
   Usb,
   Blocks,
-  Nutstore
+  Nutstore,
+  Weather
 };
 
 // Default theme implementation (Classic Theme)
@@ -366,7 +367,7 @@ class BaseTheme {
   virtual void drawHeader(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle = nullptr,
                           bool backButton = true) const;
   static void drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
-                                  bool backButton, bool upstreamStyle);
+                                  bool backButton, bool upstreamStyle, bool showClock = true);
   // Fill the battery/clock status chrome (settings + theme metrics) into
   // header props, so FUI-native screens drawing their own interactive header
   // carry the same band as drawHeader. Status text is styled with the
@@ -374,7 +375,7 @@ class BaseTheme {
   // drawHeader). The label strings point at internal static buffers refreshed
   // per call (headers draw on the single render task).
   static void applyHeaderStatus(const GfxRenderer& renderer, freeink::ui::HeaderProps& props,
-                                bool upstreamStyle = false);
+                                bool upstreamStyle = false, bool showClock = true);
   // Edge inset drawHeader uses for the clock/battery status line (detached
   // layouts hug the corner with a legacy 12px inset instead of the padding).
   static int headerStatusInset(bool upstreamStyle = false);

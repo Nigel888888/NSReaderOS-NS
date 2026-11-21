@@ -45,7 +45,7 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   // reading row (orientation, clean-refresh interval) only over a book, so no
   // control is shown where it has nothing to change. Touch toggles the reader's
   // touch controls; the panel's own gestures keep working while it is off.
-  enum class Tile : uint8_t { Touch, Refresh, Standby, Transfer, Orientation, Clean };
+  enum class Tile : uint8_t { Touch, Refresh, Standby, Transfer, Orientation, Clean, SyncProgress };
   struct RoundAction {
     Tile tile;
     const freeink::Icon* icon;
@@ -61,6 +61,12 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   int rickyPanelHeight() const;
   void buildRickyPanel(UiScreen& screen);
   void roundActionRow(UiScreen& screen, const RoundAction* actions, int count);
+  // The panel is pushed above the reader, so a reading tile cannot launch
+  // a child Activity itself. The tile leaves a one-shot request; EpubReader
+  // consumes it on return and runs the existing sync flow.
+  static void requestSyncProgress();
+  static bool consumeSyncProgressRequest();
+  static bool syncProgressRequested;
 #endif
 
   // fui::SliderRowProps and fui::TileGridProps embed a 324-byte fui::StyleSet,

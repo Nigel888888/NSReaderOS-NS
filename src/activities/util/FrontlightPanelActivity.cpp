@@ -27,6 +27,10 @@
 #include "util/TimeUtils.h"
 #endif
 
+#ifdef RICKYOS_PRODUCT
+bool FrontlightPanelActivity::syncProgressRequested = false;
+#endif
+
 namespace fui = freeink::ui;
 
 namespace {
@@ -464,6 +468,14 @@ constexpr int kActionColumns = 4;
 constexpr int kRefreshPages[] = {1, 5, 10, 15, 30, 0};
 }  // namespace
 
+void FrontlightPanelActivity::requestSyncProgress() { syncProgressRequested = true; }
+
+bool FrontlightPanelActivity::consumeSyncProgressRequest() {
+  const bool requested = syncProgressRequested;
+  syncProgressRequested = false;
+  return requested;
+}
+
 void FrontlightPanelActivity::runRickyTile(const Tile tile) {
   switch (tile) {
     case Tile::Touch:
@@ -499,6 +511,12 @@ void FrontlightPanelActivity::runRickyTile(const Tile tile) {
       break;
     case Tile::Clean:
       cycleCleanRefresh();
+      break;
+    case Tile::SyncProgress:
+      // Let the reader underneath start the real sync Activity; the panel
+      // itself has no book context/KOReader credentials to work with.
+      requestSyncProgress();
+      close();
       break;
   }
 }
@@ -581,9 +599,11 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
   const auto band = screen.takeTop(
       std::max<int16_t>(static_cast<int16_t>(metrics.batteryHeight), target.lineHeight(theme.titleText.font)),
       theme.spaceXs);
+  // The panel draws its own large clock just below; keep the header's battery
+  // chrome but suppress its small clock so the two never overlap.
   GUI.drawHeaderWithStyle(
       renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.homeTopPadding - metrics.topPadding},
-      nullptr, nullptr, true, true);
+      nullptr, nullptr, true, true, false);
   std::tm local{};
   const bool haveTime = halClock.localTime(local);
   if (!haveTime || !TimeUtils::formatCurrentTime(timeText, sizeof(timeText), SETTINGS.clockFormat == 1)) {
@@ -644,6 +664,7 @@ void FrontlightPanelActivity::buildRickyPanel(UiScreen& screen) {
       {Tile::Orientation, portrait ? &icon_ricky_portrait_40 : &icon_ricky_landscape_40,
        I18N.get(kOrientNames[orientation]), false},
       {Tile::Clean, &icon_ricky_clean_40, refreshText, false},
+      {Tile::SyncProgress, &icon_ricky_network_40, tr(STR_SYNC_PROGRESS), false},
   };
   roundActionRow(screen, reading, static_cast<int>(std::size(reading)));
 }

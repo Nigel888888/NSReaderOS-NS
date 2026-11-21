@@ -54,6 +54,9 @@
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
+#ifdef RICKYOS_PRODUCT
+#include "util/FrontlightPanelActivity.h"
+#endif
 #include "components/FontPreloadView.h"
 #include "util/BookCacheUtils.h"
 #include "util/BookmarkFile.h"
@@ -778,6 +781,18 @@ void EpubReaderActivity::loop() {
     loadFailurePopup.handleInput(mappedInput, [this] { requestUpdate(); });
     return;
   }
+#ifdef RICKYOS_PRODUCT
+  if (FrontlightPanelActivity::consumeSyncProgressRequest()) {
+#ifdef ENABLE_CHINESE_VERSION
+    if (wereadBookId_[0]) {
+      launchWeReadSync();
+      return;
+    }
+#endif
+    launchKOReaderSync();
+    return;
+  }
+#endif
   if (!epub) {
     finish();
     return;
