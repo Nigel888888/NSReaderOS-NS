@@ -181,7 +181,7 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   // transient result message for a few seconds after a tap.
   const Rect exportRect{band.x, band.y + COUNTER_HEIGHT + EXPORT_BUTTON_GAP, band.width, EXPORT_BUTTON_HEIGHT};
   exportButton = exportRect;
-  const char* exportText = tr(STR_QUOTES_EXPORT_CLIPPINGS);
+  const char* exportText = tab_ == BooksTab ? tr(STR_QUOTES_EXPORT_BY_BOOK) : tr(STR_QUOTES_EXPORT_CLIPPINGS);
   if (!exportMessage.empty() && static_cast<long>(millis() - exportMessageUntil) >= 0) {
     exportMessage.clear();
   }
@@ -304,11 +304,16 @@ bool QuotesActivity::handleSwipeDelete() {
 
 void QuotesActivity::exportToClippings() {
   app.clearTapFlash();
+  // In the BOOKS tab the button exports one clippings file per book; every
+  // other tab writes the whole notebook into a single file.
+  const bool byBook = (tab_ == BooksTab);
   constexpr const char* kPath = "/My Clippings.txt";
-  const int count = QuotesFile::exportClippings(kPath);
+  constexpr const char* kDir = "/Clippings";
+  const int count = byBook ? QuotesFile::exportClippingsByBook(kDir) : QuotesFile::exportClippings(kPath);
   if (count > 0) {
     char msg[64];
-    std::snprintf(msg, sizeof(msg), tr(STR_QUOTES_EXPORT_DONE), count);
+    const char* doneFmt = byBook ? tr(STR_QUOTES_EXPORT_BOOKS_DONE) : tr(STR_QUOTES_EXPORT_DONE);
+    std::snprintf(msg, sizeof(msg), doneFmt, count);
     exportMessage = msg;
   } else if (count == 0) {
     exportMessage = tr(STR_QUOTES_EXPORT_EMPTY);

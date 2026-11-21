@@ -51,6 +51,12 @@ class QuotesFile {
   // or -1 on any I/O failure. Written atomically via a .tmp file.
   static int exportClippings(const std::string& path);
 
+  // Exports the notebook split into one Kindle clippings file per source book,
+  // written into `dir` (normally /Clippings on the SD card). Each file is named
+  // "<book title>.txt" (sanitized for FAT32) and holds only that book's quotes.
+  // Returns the number of books/files written, 0 when empty, -1 on I/O failure.
+  static int exportClippingsByBook(const std::string& dir);
+
   // Stable id of a book + sentence pair (also used as the file key).
   static std::string makeKey(const std::string& sentence, const std::string& book);
 };

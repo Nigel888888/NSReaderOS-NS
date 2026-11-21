@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <ctime>
 
+#include "util/StringUtils.h"
 #include "util/TimeUtils.h"
 
 namespace {
@@ -220,15 +221,15 @@ std::string kindleDateTime(const uint32_t epochSeconds) {
 
 }  // namespace
 
-int QuotesFile::exportClippings(const std::string& path) {
-  std::vector<Quote> quotes;
-  if (!load(quotes)) {
-    return -1;  // unreadable index
-  }
-  if (quotes.empty()) {
-    return 0;  // nothing collected yet
-  }
+namespace {
 
+// Writes one Kindle clippings file atomically via a .tmp sibling. `quotes`
+// are the highlights for this file; `titleOverride` is non-empty when every
+// entry shares one book title (the per-book export) and should be printed on
+// each divider block instead of the per-quote book field.
+// Returns highlights written, 0 when none had text, -1 on I/O failure.
+int writeClippingsFile(const std::string& path, const std::vector<QuotesFile::Quote>& quotes,
+                       const std::string& titleOverride) {
   const std::string temp = path + ".tmp";
   HalFile out;
   if (!Storage.openFileForWrite("QUOTES", temp.c_str(), out)) {
@@ -239,17 +240,17 @@ int QuotesFile::exportClippings(const std::string& path) {
   bool ok = true;
   int written = 0;
   const std::string divider = "==========\n";
-  for (const Quote& q : quotes) {
+  for (const QuotesFile::Quote& q : quotes) {
     if (q.sentence.empty()) {
       continue;
     }
+    // No author field in our model -> omit the " (Author)" suffix.
+    std::string title = titleOverride.empty() ? q.book : titleOverride;
+    if (title.empty()) {
+      title = "Unknown Book";
+    }
+    title = flattenForClippings(title);
 
-    // Header line: title only. Our data model has no author field, so we
-    // omit the " (Author)" suffix rather than write a misleading placeholder.
-    const std::string title = q.book.empty() ? std::string("Unknown Book") : flattenForClippings(q.book);
-
-    // Metadata line: page is optional (0 when captured from the dictionary),
-    // and the "Added on" date is only written when the timestamp is valid.
     std::string meta = "- Your Highlight";
     if (q.page > 0) {
       char pageBuf[32];
@@ -268,7 +269,7 @@ int QuotesFile::exportClippings(const std::string& path) {
     }
     ++written;
   }
-  if (ok && out.write(divider.data(), divider.size()) != divider.size()) {
+  if (ok && written > 0 && out.write(divider.data(), divider.size()) != divider.size()) {
     ok = false;
   }
   out.flush();
@@ -278,7 +279,6 @@ int QuotesFile::exportClippings(const std::string& path) {
     Storage.remove(temp.c_str());
     return ok ? 0 : -1;
   }
-  // Publish atomically: a half-written clippings file is never left at `path`.
   if (Storage.exists(path.c_str()) && !Storage.remove(path.c_str())) {
     Storage.remove(temp.c_str());
     LOG_ERR("QUOTES", "Clippings export: cannot replace %s", path.c_str());
@@ -291,4 +291,78 @@ int QuotesFile::exportClippings(const std::string& path) {
   }
   LOG_DBG("QUOTES", "Clippings export wrote %d highlights to %s", written, path.c_str());
   return written;
+}
+
+}  // namespace
+
+int QuotesFile::exportClippings(const std::string& path) {
+  std::vector<Quote> quotes;
+  if (!load(quotes)) {
+    return -1;  // unreadable index
+  }
+  if (quotes.empty()) {
+    return 0;  // nothing collected yet
+  }
+  return writeClippingsFile(path, quotes, /*titleOverride=*/std::string());
+}
+
+int QuotesFile::exportClippingsByBook(const std::string& dir) {
+  std::vector<Quote> quotes;
+  if (!load(quotes)) {
+    return -1;
+  }
+  if (quotes.empty()) {
+    return 0;
+  }
+
+  if (!Storage.exists(dir.c_str()) && !Storage.mkdir(dir.c_str())) {
+    LOG_ERR("QUOTES", "Clippings export: cannot create dir %s", dir.c_str());
+    return -1;
+  }
+
+  // Group by source title, preserving first-seen order for stable filenames.
+  std::vector<std::string> books;
+  std::vector<std::vector<Quote>> groups;
+  for (const Quote& q : quotes) {
+    const std::string book = q.book.empty() ? std::string("Unknown Book") : q.book;
+    size_t found = books.size();
+    for (size_t i = 0; i < books.size(); ++i) {
+      if (books[i] == book) {
+        found = i;
+        break;
+      }
+    }
+    if (found == books.size()) {
+      books.push_back(book);
+      groups.emplace_back();
+    }
+    groups[found].push_back(q);
+  }
+
+  // De-duplicate sanitized filenames (two titles can sanitize to the same
+  // name) by appending a numeric suffix before the extension.
+  std::vector<std::string> used;
+  int filesWritten = 0;
+  for (size_t i = 0; i < books.size(); ++i) {
+    const std::string stem = StringUtils::sanitizeFilename(books[i], 80);
+    std::string base = stem;
+    int suffix = 2;
+    while (std::find(used.begin(), used.end(), base) != used.end()) {
+      char n[24];
+      std::snprintf(n, sizeof(n), "%s_%d", stem.c_str(), suffix++);
+      base = n;
+    }
+    used.push_back(base);
+
+    const std::string path = dir + "/" + base + ".txt";
+    const int result = writeClippingsFile(path, groups[i], /*titleOverride=*/books[i]);
+    if (result < 0) {
+      return -1;  // a real I/O failure aborts the batch
+    }
+    if (result > 0) {
+      ++filesWritten;
+    }
+  }
+  LOG_DBG("QUOTES", "Clippings export wrote %d book files to %s", filesWritten, dir.c_str());
+  return filesWritten;
 }
