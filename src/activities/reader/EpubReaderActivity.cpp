@@ -55,7 +55,7 @@
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/settings/TextSettingsActivity.h"
 #ifdef RICKYOS_PRODUCT
-#include "util/FrontlightPanelActivity.h"
+#include "activities/util/FrontlightPanelActivity.h"
 #endif
 #include "components/FontPreloadView.h"
 #include "util/BookCacheUtils.h"
