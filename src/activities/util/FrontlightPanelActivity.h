@@ -61,12 +61,9 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   int rickyPanelHeight() const;
   void buildRickyPanel(UiScreen& screen);
   void roundActionRow(UiScreen& screen, const RoundAction* actions, int count);
-  // The panel is pushed above the reader, so a reading tile cannot launch
-  // a child Activity itself. The tile leaves a one-shot request; EpubReader
-  // consumes it on return and runs the existing sync flow.
-  static void requestSyncProgress();
-  static bool consumeSyncProgressRequest();
+#ifdef RICKYOS_PRODUCT
   static bool syncProgressRequested;
+#endif
 #endif
 
   // fui::SliderRowProps and fui::TileGridProps embed a 324-byte fui::StyleSet,
@@ -108,6 +105,15 @@ class FrontlightPanelActivity final : public Activity, private UiAppHost {
   // not use this — it closes the panel and promotes the repaint underneath
   // instead (GfxRenderer::promoteNextRefresh).
   bool cleanRefreshPending = false;
+
+#ifdef RICKYOS_PRODUCT
+ public:
+  // The panel is pushed above the reader, so a reading tile cannot launch a
+  // child Activity itself. The tile leaves a one-shot request; EpubReader
+  // consumes it on return and runs the existing sync flow.
+  static void requestSyncProgress();
+  static bool consumeSyncProgressRequest();
+#endif
 
  public:
   explicit FrontlightPanelActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, bool overReader = false);
