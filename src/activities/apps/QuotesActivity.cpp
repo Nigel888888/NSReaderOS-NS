@@ -23,6 +23,13 @@ namespace fui = freeink::ui;
 namespace {
 constexpr int ROW_ICON_SIZE = 32;
 constexpr int COUNTER_HEIGHT = 34;
+// Export-to-Clippings button under the counter band. High-DPI friendly size,
+// matching the secondary button treatment in VocabularyActivity.
+constexpr int EXPORT_BUTTON_HEIGHT = 60;
+constexpr int EXPORT_BUTTON_GAP = 10;
+constexpr int EXPORT_BAND_EXTRA = EXPORT_BUTTON_GAP + EXPORT_BUTTON_HEIGHT;
+// How long the export result stays on the button.
+constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
 }  // namespace
 
 QuotesActivity::QuotesActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -157,7 +164,7 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   // (this is the 好句集 screen); when drilled into a book the title still shows
   // so the reader knows which source they are browsing. Count sits on the right.
   renderer.clearClipRect();
-  const fui::Rect band = screen.takeTop(static_cast<int16_t>(COUNTER_HEIGHT));
+  const fui::Rect band = screen.takeTop(static_cast<int16_t>(COUNTER_HEIGHT + EXPORT_BAND_EXTRA));
   const bool drilled = tab_ == AllTab && bookFilter_ >= 0;
   if (drilled) {
     const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
@@ -168,7 +175,20 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   const int countWidth = renderer.getTextWidth(UI_10_FONT_ID, count);
   const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
   renderer.drawText(UI_10_FONT_ID, band.x + band.width - countWidth, baseline, count);
-  renderer.drawLine(band.x, band.y + band.height - 1, band.x + band.width, band.y + band.height - 1);
+  renderer.drawLine(band.x, band.y + COUNTER_HEIGHT - 1, band.x + band.width, band.y + COUNTER_HEIGHT - 1);
+
+  // Export button: outlined secondary action. Its label is replaced by the
+  // transient result message for a few seconds after a tap.
+  const Rect exportRect{band.x, band.y + COUNTER_HEIGHT + EXPORT_BUTTON_GAP, band.width, EXPORT_BUTTON_HEIGHT};
+  exportButton = exportRect;
+  const char* exportText = tr(STR_QUOTES_EXPORT_CLIPPINGS);
+  if (!exportMessage.empty() && static_cast<long>(millis() - exportMessageUntil) >= 0) {
+    exportMessage.clear();
+  }
+  if (!exportMessage.empty()) {
+    exportText = exportMessage.c_str();
+  }
+  GUI.drawActionButton(renderer, exportRect, exportText, false);
 
   if (rows.empty()) {
     const char* msg = tab_ == FavoritesTab ? tr(STR_QUOTES_EMPTY_FAV) : tr(STR_QUOTES_EMPTY);
@@ -282,8 +302,33 @@ bool QuotesActivity::handleSwipeDelete() {
   return true;
 }
 
+void QuotesActivity::exportToClippings() {
+  app.clearTapFlash();
+  constexpr const char* kPath = "/My Clippings.txt";
+  const int count = QuotesFile::exportClippings(kPath);
+  if (count > 0) {
+    char msg[64];
+    std::snprintf(msg, sizeof(msg), tr(STR_QUOTES_EXPORT_DONE), count);
+    exportMessage = msg;
+  } else if (count == 0) {
+    exportMessage = tr(STR_QUOTES_EXPORT_EMPTY);
+  } else {
+    exportMessage = tr(STR_QUOTES_EXPORT_FAIL);
+  }
+  exportMessageUntil = millis() + EXPORT_MESSAGE_MS;
+  requestUpdate();
+}
+
 bool QuotesActivity::handleCustomInput() {
   if (dialog.handleInput(mappedInput, [this] { requestUpdate(); })) {
+    return true;
+  }
+  int tx = 0;
+  int ty = 0;
+  if (mappedInput.wasScreenTapped(tx, ty) && exportButton.width > 0 && exportButton.height > 0 &&
+      tx >= exportButton.x && tx < exportButton.x + exportButton.width && ty >= exportButton.y &&
+      ty < exportButton.y + exportButton.height) {
+    exportToClippings();
     return true;
   }
   if (handleSwipeDelete()) {

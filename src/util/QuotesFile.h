@@ -45,6 +45,12 @@ class QuotesFile {
   // Removes one quote. False when the key was not present or I/O failed.
   static bool remove(const std::string& key);
 
+  // Exports the whole notebook as a Kindle "My Clippings.txt" file at `path`
+  // (normally /My Clippings.txt on the SD card root, easy to copy over USB).
+  // Returns the number of highlights written, 0 when the notebook is empty,
+  // or -1 on any I/O failure. Written atomically via a .tmp file.
+  static int exportClippings(const std::string& path);
+
   // Stable id of a book + sentence pair (also used as the file key).
   static std::string makeKey(const std::string& sentence, const std::string& book);
 };

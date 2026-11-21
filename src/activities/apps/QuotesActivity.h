@@ -51,6 +51,9 @@ class QuotesActivity final : public UiTabListActivity {
   bool handleSwipeDelete();
   // Deletes the quote at visible row `index` and persists the notebook.
   void deleteQuoteAt(int index);
+  // Exports every quote to a Kindle "My Clippings.txt" file on the SD card
+  // and reports the outcome on the export button for a few seconds.
+  void exportToClippings();
 
   enum class RowKind : uint8_t { Quote, Book };
 
@@ -77,4 +80,8 @@ class QuotesActivity final : public UiTabListActivity {
   Rect listRect{0, 0, 0, 0};
   int swipeRowHeight = 0;
   int swipeRowGap = 0;
+  // Export button in the band under the tabs, and its transient result label.
+  Rect exportButton{0, 0, 0, 0};
+  std::string exportMessage;
+  unsigned long exportMessageUntil = 0;
 };

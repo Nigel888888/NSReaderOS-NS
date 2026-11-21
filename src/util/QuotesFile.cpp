@@ -7,6 +7,9 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
+
+#include "util/TimeUtils.h"
 
 namespace {
 
@@ -172,4 +175,120 @@ bool QuotesFile::remove(const std::string& key) {
   }
   items.remove(index);
   return PersistableStoreBase::writeDocToFile(QUOTES_FILE_PATH, doc);
+}
+
+namespace {
+
+// English weekday/month names: clippings are consumed by Kindle/Readwise
+// tooling, whose parsers expect the fixed English "Added on" line regardless
+// of the device UI locale.
+const char* const kWeekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+const char* const kMonths[] = {"January", "February", "March", "April", "May", "June",
+                               "July", "August", "September", "October", "November", "December"};
+
+// Collapse any line break / carriage return to a space so one highlight is
+// always one physical line in the exported block.
+std::string flattenForClippings(const std::string& text) {
+  std::string out = text;
+  for (char& c : out) {
+    if (c == '\r' || c == '\n') {
+      c = ' ';
+    }
+  }
+  return out;
+}
+
+// "Monday, January 1, 2024 10:00:00 AM" -- the exact form Kindle writes and
+// Readwise parses. Returns an empty string when the timestamp is unusable.
+std::string kindleDateTime(const uint32_t epochSeconds) {
+  std::tm local{};
+  if (epochSeconds == 0 || !TimeUtils::getLocalDateTime(epochSeconds, local)) {
+    return std::string();
+  }
+  int hour12 = local.tm_hour % 12;
+  if (hour12 == 0) {
+    hour12 = 12;
+  }
+  const char* ampm = local.tm_hour < 12 ? "AM" : "PM";
+  char buf[96];
+  const int wday = (local.tm_wday >= 0 && local.tm_wday < 7) ? local.tm_wday : 0;
+  std::snprintf(buf, sizeof(buf), "%s, %s %d, %d %d:%02d:%02d %s", kWeekdays[wday],
+                kMonths[(local.tm_mon >= 0 && local.tm_mon < 12) ? local.tm_mon : 0], local.tm_mday,
+                local.tm_year + 1900, hour12, local.tm_min, local.tm_sec, ampm);
+  return std::string(buf);
+}
+
+}  // namespace
+
+int QuotesFile::exportClippings(const std::string& path) {
+  std::vector<Quote> quotes;
+  if (!load(quotes)) {
+    return -1;  // unreadable index
+  }
+  if (quotes.empty()) {
+    return 0;  // nothing collected yet
+  }
+
+  const std::string temp = path + ".tmp";
+  HalFile out;
+  if (!Storage.openFileForWrite("QUOTES", temp.c_str(), out)) {
+    LOG_ERR("QUOTES", "Clippings export: cannot open %s", temp.c_str());
+    return -1;
+  }
+
+  bool ok = true;
+  int written = 0;
+  const std::string divider = "==========\n";
+  for (const Quote& q : quotes) {
+    if (q.sentence.empty()) {
+      continue;
+    }
+
+    // Header line: title only. Our data model has no author field, so we
+    // omit the " (Author)" suffix rather than write a misleading placeholder.
+    const std::string title = q.book.empty() ? std::string("Unknown Book") : flattenForClippings(q.book);
+
+    // Metadata line: page is optional (0 when captured from the dictionary),
+    // and the "Added on" date is only written when the timestamp is valid.
+    std::string meta = "- Your Highlight";
+    if (q.page > 0) {
+      char pageBuf[32];
+      std::snprintf(pageBuf, sizeof(pageBuf), " on page %u", static_cast<unsigned>(q.page));
+      meta += pageBuf;
+    }
+    const std::string when = kindleDateTime(q.timestamp);
+    if (!when.empty()) {
+      meta += " | Added on " + when;
+    }
+
+    const std::string block = divider + title + "\n" + meta + "\n\n" + flattenForClippings(q.sentence) + "\n";
+    if (out.write(block.data(), block.size()) != block.size()) {
+      ok = false;
+      break;
+    }
+    ++written;
+  }
+  if (ok && out.write(divider.data(), divider.size()) != divider.size()) {
+    ok = false;
+  }
+  out.flush();
+  out.close();
+
+  if (!ok || written == 0) {
+    Storage.remove(temp.c_str());
+    return ok ? 0 : -1;
+  }
+  // Publish atomically: a half-written clippings file is never left at `path`.
+  if (Storage.exists(path.c_str()) && !Storage.remove(path.c_str())) {
+    Storage.remove(temp.c_str());
+    LOG_ERR("QUOTES", "Clippings export: cannot replace %s", path.c_str());
+    return -1;
+  }
+  if (!Storage.rename(temp.c_str(), path.c_str())) {
+    Storage.remove(temp.c_str());
+    LOG_ERR("QUOTES", "Clippings export: cannot rename to %s", path.c_str());
+    return -1;
+  }
+  LOG_DBG("QUOTES", "Clippings export wrote %d highlights to %s", written, path.c_str());
+  return written;
 }
