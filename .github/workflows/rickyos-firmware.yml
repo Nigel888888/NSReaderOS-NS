@@ -249,12 +249,13 @@ jobs:
             boot-components.txt
           if-no-files-found: error
 
-  # Publish every successful main-branch build as an immutable GitHub Release.
-  # CI artifacts expire after 90 days; Release assets are retained permanently.
+  # Save every successful main-branch build as a draft GitHub Release, never
+  # publishing it automatically. CI artifacts expire after 90 days; draft
+  # Release assets are retained until the user explicitly publishes them.
   # Tag is derived from the commit so each build has its own version, and a
-  # re-run clobbers the assets of an existing release instead of failing.
+  # re-run clobbers the assets of an existing draft instead of failing.
   publish:
-    name: Publish firmware Release
+    name: Save firmware Release draft
     needs: build-rickyos-readpico
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request'
@@ -317,7 +318,7 @@ jobs:
           } > release-notes.md
           cat release-notes.md
 
-      - name: Publish immutable Release
+      - name: Save firmware as a draft Release
         env:
           GH_TOKEN: ${{ github.token }}
           SHORT_SHA: ${{ github.sha }}
@@ -333,10 +334,10 @@ jobs:
             echo "Release $tag exists; refreshing assets."
             gh release upload "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
             gh release edit "$tag" --repo "$GITHUB_REPOSITORY" \
-              --title "$title" --notes-file release-notes.md --prerelease
+              --title "$title" --notes-file release-notes.md --draft
           else
             echo "Creating Release $tag."
             gh release create "$tag" "${assets[@]}" --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" --title "$title" \
-              --notes-file release-notes.md --prerelease
+              --notes-file release-notes.md --draft
           fi
