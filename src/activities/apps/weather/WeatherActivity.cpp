@@ -28,9 +28,16 @@ constexpr const char* kCachePath = "/weather_cache.json";
 constexpr size_t kMaxForecastResponse = 8 * 1024;
 constexpr size_t kMaxGeocodeResponse = 4 * 1024;
 // Arduino's loop task is subscribed to the task watchdog. TLS connect/read can
-// block far longer than that, so every wait poll feeds it and a request is
-// aborted after this deadline rather than rebooting or pinning a black screen.
-constexpr unsigned long kNetworkRequestTimeoutMs = 10000;
+// block far longer than that, so every wait poll feeds it. SecureHttpClient
+// already applies its own 15 s per-read timeout plus one reconnect retry, which
+// is what actually bounds a stalled request. This callback's abort deadline is
+// only a last-resort backstop for a transfer stuck outside those timed reads
+// (e.g. deep inside a TLS handshake on a weak link). It MUST stay comfortably
+// above the library timeout: a shorter value aborts healthy slow requests in
+// the handshake -> status -1 -> a spurious "update failed" (regression of the
+// 10 s value). 60 s leaves the library in control while still preventing a
+// permanent hang.
+constexpr unsigned long kNetworkRequestTimeoutMs = 60000;
 constexpr unsigned long kMessageDurationMs = 3200;
 
 struct WeatherLayout {
