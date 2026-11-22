@@ -1,11 +1,10 @@
-# RickyOS
+# R-NSogood OS
 
-由 **Ricky AI Studio** 为 MindReset Read Pico（小纸 Pico）打造的阅读与生活工具固件。
+基于RickyOS 为 MindReset Read Pico（小纸 Pico）打造的阅读与生活工具固件。
 基于 [CrossMux](https://github.com/0x1abin/crossmux) 二次开发，保留上游历史、MIT
 许可证和各第三方组件的许可。本仓库是未公开发布的协作开发仓库，不是上游官方固件。
 
-当前正式版本：RickyOS `1.1.2`；开发版本：`1.1.3-dev`；设备：ESP32-S3 / 16 MB Flash，
-684 × 1216 竖屏。RickyOS 品牌界面仅由产品环境启用；其他上游环境仍保留。
+684 × 1216 竖屏。
 
 - 首页：昵称问候、继续阅读、最近书籍封面、阅读统计、自定义短句和头像（点头像进入阅读统计）。
 - 个人资料：昵称、首页短句、头像；内置 8 个与 logo 同风格的线描头像（不同年龄与性别），也可从 SD 卡导入。
