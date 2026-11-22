@@ -2,6 +2,7 @@
 
 #include <Bitmap.h>
 #include <GfxRenderer.h>
+#include <HalDisplay.h>
 #include <HalStorage.h>
 
 #include <algorithm>
@@ -127,6 +128,13 @@ AirPageImageRenderer::Result AirPageImageRenderer::render(GfxRenderer& renderer,
       }
     }
     if (!decoded) return failure();
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
+    // A pushed AirPage picture stays on the glass for a long time. The default
+    // gray16 profile (Half) is a single-pass waveform that cannot erase the ink
+    // left by the previous screen, so old pages show through. Use profile 3:
+    // a full GC16 clean, then drop the rails (same as the image viewer).
+    display.setNextGray16Profile(3);
+#endif
     return renderer.commitGrayscale16() ? Result::Success : Result::Failed;
   }
 

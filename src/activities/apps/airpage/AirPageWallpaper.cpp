@@ -101,8 +101,22 @@ bool AirPageWallpaper::install(const SelectedImage& selected) {
 
   const uint8_t previousMode = SETTINGS.sleepScreen;
   SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CUSTOM;
+#ifdef RICKYOS_PRODUCT
+  // RickyOS derives the actual power-off picture from rickySleepScreenMode(), which
+  // reads rickyPowerOffScreen/rickyStandbyFace — NOT SETTINGS.sleepScreen. Without
+  // these two fields the installed /sleep.bmp is never shown, so the auto-wallpaper
+  // feature silently does nothing. Point RickyOS at the picture standby screen.
+  const uint8_t previousStandbyFace = SETTINGS.rickyStandbyFace;
+  const uint8_t previousPowerOffScreen = SETTINGS.rickyPowerOffScreen;
+  SETTINGS.rickyStandbyFace = CrossPointSettings::RICKY_STANDBY_PICTURE;
+  SETTINGS.rickyPowerOffScreen = CrossPointSettings::RICKY_POWER_OFF_SAME;
+#endif
   if (!SETTINGS.saveToFile()) {
     SETTINGS.sleepScreen = previousMode;
+#ifdef RICKYOS_PRODUCT
+    SETTINGS.rickyStandbyFace = previousStandbyFace;
+    SETTINGS.rickyPowerOffScreen = previousPowerOffScreen;
+#endif
     (void)SETTINGS.saveToFile();
     Storage.remove(kSleepImagePath);
     if (hadPrevious) Storage.rename(kSleepImageBackupPath, kSleepImagePath);

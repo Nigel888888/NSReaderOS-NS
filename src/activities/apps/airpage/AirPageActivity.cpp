@@ -976,6 +976,15 @@ void AirPageActivity::render(RenderLock&&) {
   if (screen_ == Screen::History && (notice_ == Notice::ImageOutOfMemory || notice_ == Notice::ImageDisplayFailed)) {
     GUI.drawPopup(renderer, noticeText());
   }
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO && !defined(SIMULATOR)
+  // Navigation frames use FAST_REFRESH, whose single-pass waveform leaves a little
+  // ink behind each time; switching between QR/Settings/History stacks it into visible
+  // ghosting. Drive a full GC16 clean every eighth frame, matching the reader's settle
+  // cadence, so old pages never accumulate.
+  static uint8_t navFrames = 0;
+  navFrames = static_cast<uint8_t>((navFrames + 1) % 8);
+  if (navFrames == 0) renderer.requestNextFullRefresh();
+#endif
   renderer.displayBuffer();
   imageNeedsDisplay_ = true;
   displayedScreenWidth_ = 0;
