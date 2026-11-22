@@ -46,10 +46,10 @@ constexpr AppEntry kAppEntries[] = {
 #else
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToReadingStatsMenu},
 #endif
-    {AppId::Vocabulary, StrId::STR_VOCABULARY_TITLE, UIIcon::Bookmark, &ActivityManager::goToVocabulary},
-    {AppId::Quotes, StrId::STR_QUOTES_TITLE, UIIcon::Bookmark, &ActivityManager::goToQuotes},
+    {AppId::Vocabulary, StrId::STR_VOCABULARY_TITLE, UIIcon::Vocabulary, &ActivityManager::goToVocabulary},
+    {AppId::Quotes, StrId::STR_QUOTES_TITLE, UIIcon::Quotes, &ActivityManager::goToQuotes},
     {AppId::Weather, StrId::STR_WEATHER_TITLE, UIIcon::Weather, &ActivityManager::goToWeather},
-    {AppId::Rss, StrId::STR_RSS_TITLE, UIIcon::Opds, &ActivityManager::goToRss},
+    {AppId::Rss, StrId::STR_RSS_TITLE, UIIcon::Rss, &ActivityManager::goToRss},
 #ifndef RICKYOS_PRODUCT
     {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},
 #endif
@@ -156,6 +156,12 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
       return ricky_app_weather_56;
     case UIIcon::AirPage:
       return ricky_app_airpage_56;
+    case UIIcon::Vocabulary:
+      return ricky_app_vocabulary_56;
+    case UIIcon::Quotes:
+      return ricky_app_quotes_56;
+    case UIIcon::Rss:
+      return ricky_app_rss_56;
     default:
       return nullptr;
   }

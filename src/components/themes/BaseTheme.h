@@ -183,7 +183,10 @@ enum UIIcon {
   Usb,
   Blocks,
   Nutstore,
-  Weather
+  Weather,
+  Vocabulary,
+  Quotes,
+  Rss
 };
 
 // Default theme implementation (Classic Theme)

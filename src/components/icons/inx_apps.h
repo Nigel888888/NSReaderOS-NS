@@ -317,6 +317,11 @@ constexpr const uint8_t* get(const UIIcon icon) {
       return Standby.data();
     case UIIcon::AirPage:
       return AirPage.data();
+    case UIIcon::Vocabulary:
+    case UIIcon::Quotes:
+      return Bookmark.data();
+    case UIIcon::Rss:
+      return Opds.data();
     case UIIcon::Calculator:
       return Calculator.data();
     default:
