@@ -112,7 +112,9 @@ void AirPageActivity::onEnter() {
   uploadUrl_.reserve(64 + deviceId.size());
   uploadUrl_ = "https://";
   uploadUrl_ += CrossMuxEndpoints::AIRPAGE_SUBDOMAIN;
-  uploadUrl_ += CrossMuxEndpoints::host();
+  // RickyOS build pins AirPage to the China endpoint so the QR page always
+  // points at airpage.crossmux.cn, regardless of the UI content profile.
+  uploadUrl_ += CrossMuxEndpoints::CHINA_HOST;
   uploadUrl_ += "/?id=";
   uploadUrl_ += deviceId;
   char displayParams[48];
@@ -124,7 +126,7 @@ void AirPageActivity::onEnter() {
   downloadUrl_.reserve(64 + deviceId.size());
   downloadUrl_ = "https://";
   downloadUrl_ += CrossMuxEndpoints::AIRPAGE_SUBDOMAIN;
-  downloadUrl_ += CrossMuxEndpoints::host();
+  downloadUrl_ += CrossMuxEndpoints::CHINA_HOST;
   downloadUrl_ += "/api/device/";
   downloadUrl_ += deviceId;
   downloadUrl_ += "/latest";
@@ -132,7 +134,7 @@ void AirPageActivity::onEnter() {
   legacyDownloadUrl_.reserve(64 + deviceId.size());
   legacyDownloadUrl_ = "https://";
   legacyDownloadUrl_ += CrossMuxEndpoints::AIRPAGE_SUBDOMAIN;
-  legacyDownloadUrl_ += CrossMuxEndpoints::host();
+  legacyDownloadUrl_ += CrossMuxEndpoints::CHINA_HOST;
   legacyDownloadUrl_ += "/api/device/";
   legacyDownloadUrl_ += deviceId;
   legacyDownloadUrl_ += "/latest.bmp";

@@ -40,9 +40,7 @@ constexpr AppEntry kAppEntries[] = {
 #ifdef ENABLE_CHINESE_VERSION
     {AppId::WeRead, StrId::STR_WEREAD_TITLE, UIIcon::WeRead, &ActivityManager::goToWeRead},
 #endif
-#ifndef RICKYOS_PRODUCT
     {AppId::AirPage, StrId::STR_AIRPAGE_TITLE, UIIcon::AirPage, &ActivityManager::goToAirPage},
-#endif
 #ifdef RICKYOS_PRODUCT
     {AppId::ReadingStats, StrId::STR_READING_STATS, UIIcon::ReadingStats, &ActivityManager::goToRickyReadingStats},
 #else
@@ -155,6 +153,8 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
       return ricky_app_standby_56;
     case UIIcon::Weather:
       return ricky_app_weather_56;
+    case UIIcon::AirPage:
+      return ricky_app_airpage_56;
     default:
       return nullptr;
   }
