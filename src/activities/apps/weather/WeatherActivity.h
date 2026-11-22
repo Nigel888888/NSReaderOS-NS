@@ -1,28 +1,50 @@
 #pragma once
 
+#include <ArduinoJson.h>
+
+#include <cstdint>
+#include <memory>
 #include <string>
 
 #include "activities/Activity.h"
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 // Weather app: choose any city by name (geocoded through Open-Meteo), fetch
-// current conditions on demand, and keep the last successful result on the SD
-// card for offline viewing. No automatic refresh, matching the whiteos manual.
-// When the device is offline the app routes to the Wi-Fi screen and resumes
-// the pending action once a connection is established.
+// current conditions plus a 5-day forecast on demand, and keep the last
+// successful result on the SD card for offline viewing. No automatic refresh.
+//
+// Networking and rendering are strictly separated: the loop task runs the
+// fetch with no renderer access; a Phase state machine hands the "updating"
+// notice to render(), which runs on the render task holding RenderLock. This
+// mirrors AirPageActivity and avoids the rendering-mutex violation that
+// crashed earlier networking code. A reusable SecureHttpClient session avoids
+// repeated TLS handshakes that fragment the heap.
 class WeatherActivity final : public Activity {
  public:
-  WeatherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
-      : Activity("Weather", renderer, mappedInput) {}
+  WeatherActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
+  ~WeatherActivity() override;  // out-of-line: complete SecureHttpClient type
 
   void onEnter() override;
   void loop() override;
   void render(RenderLock&&) override;
 
  private:
+  static constexpr int kForecastDays = 5;
+
   struct Location {
     std::string name;
     double latitude = 0.0;
     double longitude = 0.0;
+  };
+
+  struct Day {
+    char date[6] = {};  // "MM-DD"
+    float high = 0.0f;
+    float low = 0.0f;
+    int code = -1;
   };
 
   struct Cache {
@@ -32,20 +54,24 @@ class WeatherActivity final : public Activity {
     int weatherCode = -1;
     float windSpeed = 0.0f;
     char observed[32] = {};
+    Day days[kForecastDays];
   };
 
+  enum class Phase : uint8_t { Idle, FetchRequested, Fetching };
   enum class PendingAction : uint8_t { None, Update, GeocodeAndUpdate };
 
   Location location_;
   Cache cache_;
+  Phase phase_ = Phase::Idle;
+  PendingAction pending_ = PendingAction::None;
   int selected_ = 0;  // 0 = Update, 1 = Change City
   const char* message_ = nullptr;
   unsigned long messageUntil_ = 0;
 
-  PendingAction pending_ = PendingAction::None;
   std::string pendingCityName_;
-  bool resumeAfterWifi_ = false;   // set by Wi-Fi result handler, consumed in loop()
-  bool awaitingCityName_ = false;  // keyboard result expected
+  bool resumeAfterWifi_ = false;  // set by Wi-Fi result handler, consumed in loop()
+
+  std::unique_ptr<freeink::SecureHttpClient> session_;  // reused across requests
 
   void loadLocation();
   void saveLocation() const;
@@ -55,10 +81,13 @@ class WeatherActivity final : public Activity {
   void showMessage(const char* text);
   bool wifiConnected() const;
   void ensureWifiThen(PendingAction action);
-  void runPending();
+  void queueFetch();
+  void doFetch();
   void promptCityName();
   bool geocodeCity(const std::string& name, Location& out);
-  void updateWeather();
+  void applyForecast(JsonObject current, JsonArray dailyTime, JsonArray dailyMax, JsonArray dailyMin,
+                     JsonArray dailyCode);
+  freeink::SecureHttpClient& httpClient();
 };
 
 // Default coordinates used until the user picks a city. Open-Meteo's values.
