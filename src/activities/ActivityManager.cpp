@@ -121,10 +121,12 @@ constexpr uint32_t kGraySettleDelayMs = 1500;
 // A text-turn settle only drives pixels it believes changed. Re-anchor the panel
 // with a real GC16 clean often enough that differential drift cannot accumulate
 // into a visible second image.
-constexpr uint8_t kGrayCleanEvery = 4;
+constexpr uint8_t kGrayCleanEvery = 8;
 // Non-reader screens normally push FAST frames; sweep a full clean into the
-// cadence so old pages cannot build up a grey floor between settles.
-constexpr int kUiFullCleanEvery = 12;
+// cadence so old pages cannot build up a grey floor between settles. Kept
+// deliberately sparse: a full GC16 is visible, and frequent ones read as a
+// blinking screen rather than a clean one.
+constexpr int kUiFullCleanEvery = 40;
 
 // The earlier "two screens superimposed" failures were traced to stale scan-line
 // queues and a driver state that only a panel restart / full clean resets; both
@@ -145,7 +147,6 @@ constexpr uint8_t kGlobalTextCurve[16] = {0, 1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13
 
 // Both variables are touched only from the render task.
 uint8_t gGraySettles = 0;
-bool gFullCleanAfterSettle = false;
 int gUiFramesSinceClean = 0;
 }  // namespace
 #endif
@@ -196,14 +197,12 @@ void ActivityManager::renderTaskLoop() {
         display.setInverted(SETTINGS.screenInverted != 0);
 #if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
         const GfxRenderer::TextWeightScope globalTextWeight(renderer, kGlobalTextCurve);
-        // After a gray settle the panel state is only approximately tracked by the
-        // differential waveform; give the very next B/W frame a full clean. Also
-        // sweep one in periodically for screens that never settle (reader pages
-        // already run their own refresh cadence).
-        if (gFullCleanAfterSettle ||
-            (!currentActivity->isReaderActivity() && ++gUiFramesSinceClean >= kUiFullCleanEvery)) {
+        // Only a sparse sweep for screens that never settle (reader pages already
+        // run their own refresh cadence). Forcing a full clean on the frame after
+        // every settle made ordinary taps flash; the periodic GC16 settles below
+        // are enough to keep the panel re-anchored.
+        if (!currentActivity->isReaderActivity() && ++gUiFramesSinceClean >= kUiFullCleanEvery) {
           renderer.requestNextFullRefresh();
-          gFullCleanAfterSettle = false;
           gUiFramesSinceClean = 0;
         }
 #endif
@@ -260,7 +259,6 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
   display.setNextGray16Profile(gGraySettles == 0 ? 2 : 1);
 #endif
   const bool committed = renderer.commitGrayscale16();
-  if (committed) gFullCleanAfterSettle = true;
   LOG_DBG("ACT", "Gray settle: %s in %lu ms", committed ? "done" : "failed", millis() - started);
 }
 #endif
