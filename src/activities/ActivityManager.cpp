@@ -27,9 +27,7 @@
 #endif
 #endif
 #include "apps/AppsMenuActivity.h"
-#ifndef RICKYOS_PRODUCT
 #include "apps/airpage/AirPageActivity.h"
-#endif
 #include "apps/QuotesActivity.h"
 #include "apps/VocabularyActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
@@ -804,9 +802,7 @@ void ActivityManager::goToQuotes() { replaceActivityWith<QuotesActivity>(); }
 
 void ActivityManager::goToWeather() { replaceActivityWith<WeatherActivity>(); }
 
-#ifndef RICKYOS_PRODUCT
 void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
-#endif
 
 void ActivityManager::goToStandby() { replaceActivityWith<StandbyActivity>(); }
 

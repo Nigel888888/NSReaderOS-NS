@@ -169,9 +169,7 @@ class ActivityManager {
   void goToVocabulary();
   void goToQuotes();
   void goToWeather();
-#ifndef RICKYOS_PRODUCT
   void goToAirPage();
-#endif
   void goToStandby();
 #ifdef RICKYOS_PRODUCT
   // Side key / inactivity: Standby over whatever is open, popping back to it on close.
