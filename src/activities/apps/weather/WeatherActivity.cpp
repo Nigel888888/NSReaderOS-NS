@@ -508,13 +508,26 @@ void WeatherActivity::render(RenderLock&&) {
     renderer.drawText(NOTOSANS_18_FONT_ID, card.x + pad, y, windLine);
     y += renderer.getLineHeight(NOTOSANS_18_FONT_ID) + lineGap;
 
-    // 5-day forecast: "MM-DD  HH°/LL°" per row.
-    y += lineGap;
+    // Divider between current conditions and the forecast block.
+    y += lineGap / 2;
+    renderer.fillRect(card.x + pad, y, card.width - pad * 2, 1, true);
+    y += lineGap / 2 + 2;
+
+    // 5-day forecast, three aligned columns: date | condition | high/low.
+    // Condition reuses weatherDescription() so both languages are covered;
+    // the temperature range is universal symbols, no translation needed.
+    const int rowFont = NOTOSANS_16_FONT_ID;
+    const int rowHeight = renderer.getLineHeight(rowFont);
+    const int dateX = card.x + pad;
+    const int condX = dateX + renderer.getTextWidth(rowFont, "00-00") + pad;
+    const int tempRight = card.x + card.width - pad;
     for (int i = 0; i < kForecastDays && cache_.days[i].date[0]; ++i) {
-      snprintf(buffer, sizeof(buffer), tr(STR_WEATHER_DAY_FORMAT), cache_.days[i].date, cache_.days[i].high,
-               cache_.days[i].low);
-      renderer.drawText(NOTOSANS_16_FONT_ID, card.x + pad, y, buffer);
-      y += renderer.getLineHeight(NOTOSANS_16_FONT_ID) + lineGap;
+      renderer.drawText(rowFont, dateX, y, cache_.days[i].date);
+      renderer.drawText(rowFont, condX, y, weatherDescription(cache_.days[i].code));
+      char range[32];
+      snprintf(range, sizeof(range), "%.0f° / %.0f°", cache_.days[i].high, cache_.days[i].low);
+      renderer.drawText(rowFont, tempRight - renderer.getTextWidth(rowFont, range), y, range);
+      y += rowHeight + lineGap;
     }
   } else {
     const char* noData = tr(STR_WEATHER_NO_DATA);
