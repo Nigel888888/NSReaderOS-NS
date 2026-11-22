@@ -595,6 +595,14 @@ void AirPageActivity::applySettingsSelection() {
         return;
       }
       autoSleepWallpaper_ = enabled;
+      // Turning the switch on should take effect immediately: install the image
+      // currently on screen as the sleep wallpaper, instead of waiting for the
+      // next push (which may never come). Reuse the same notice path as the
+      // manual "set wallpaper" action so failures are visible.
+      if (enabled && selectedImage_.path[0] != '\0') {
+        wallpaperResult_ = airpage::AirPageWallpaper::install(selectedImage_) ? WallpaperResult::Saved
+                                                                             : WallpaperResult::Failed;
+      }
       requestUpdate();
       break;
     }
