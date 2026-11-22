@@ -49,6 +49,7 @@ constexpr AppEntry kAppEntries[] = {
     {AppId::Vocabulary, StrId::STR_VOCABULARY_TITLE, UIIcon::Bookmark, &ActivityManager::goToVocabulary},
     {AppId::Quotes, StrId::STR_QUOTES_TITLE, UIIcon::Bookmark, &ActivityManager::goToQuotes},
     {AppId::Weather, StrId::STR_WEATHER_TITLE, UIIcon::Weather, &ActivityManager::goToWeather},
+    {AppId::Rss, StrId::STR_RSS_TITLE, UIIcon::Opds, &ActivityManager::goToRss},
 #ifndef RICKYOS_PRODUCT
     {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},
 #endif
