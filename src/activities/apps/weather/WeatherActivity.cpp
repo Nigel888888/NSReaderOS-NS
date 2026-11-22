@@ -22,8 +22,10 @@ namespace {
 
 constexpr const char* kLocationPath = "/weather_location.json";
 constexpr const char* kCachePath = "/weather_cache.json";
-constexpr size_t kMaxForecastResponse = 20 * 1024;
-constexpr size_t kMaxGeocodeResponse = 12 * 1024;
+// A 5-day forecast with current + daily arrays is well under 6 KB in practice;
+// keeping the caps tight limits the peak String reserve on the first fetch.
+constexpr size_t kMaxForecastResponse = 8 * 1024;
+constexpr size_t kMaxGeocodeResponse = 4 * 1024;
 constexpr unsigned long kMessageDurationMs = 3200;
 
 struct WeatherLayout {
@@ -140,9 +142,9 @@ WeatherActivity::WeatherActivity(GfxRenderer& renderer, MappedInputManager& mapp
 
 WeatherActivity::~WeatherActivity() = default;
 
-freeink::SecureHttpClient& WeatherActivity::httpClient() {
+freeink::SecureHttpClient* WeatherActivity::httpClient() {
   if (!session_) session_ = makeUniqueNoThrow<freeink::SecureHttpClient>();
-  return *session_;
+  return session_.get();  // may be nullptr on OOM; callers must check
 }
 
 void WeatherActivity::onEnter() {
@@ -295,9 +297,10 @@ bool WeatherActivity::geocodeCity(const std::string& name, Location& out) {
            "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=en&format=json",
            encoded.c_str());
 
+  auto* client = httpClient();
+  if (!client) return false;  // OOM: never dereference a null session
   String body;
-  const int status =
-      pluginhttp::request(&httpClient(), url, "GET", "", {}, body, kMaxGeocodeResponse);
+  const int status = pluginhttp::request(client, url, "GET", "", {}, body, kMaxGeocodeResponse);
   if (status != 200) return false;
 
   JsonDocument doc;
@@ -364,8 +367,13 @@ void WeatherActivity::doFetch() {
            "&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=%d&timezone=auto",
            location_.latitude, location_.longitude, kForecastDays);
 
+  auto* client = httpClient();
+  if (!client) {
+    showMessage(tr(STR_WEATHER_UPDATE_FAILED));
+    return;
+  }
   String body;
-  const int status = pluginhttp::request(&httpClient(), url, "GET", "", {}, body, kMaxForecastResponse);
+  const int status = pluginhttp::request(client, url, "GET", "", {}, body, kMaxForecastResponse);
   if (status != 200) {
     showMessage(tr(STR_WEATHER_UPDATE_FAILED));
     return;

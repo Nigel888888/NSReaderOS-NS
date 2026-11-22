@@ -87,7 +87,8 @@ class WeatherActivity final : public Activity {
   bool geocodeCity(const std::string& name, Location& out);
   void applyForecast(JsonObject current, JsonArray dailyTime, JsonArray dailyMax, JsonArray dailyMin,
                      JsonArray dailyCode);
-  freeink::SecureHttpClient& httpClient();
+  // Returns nullptr on OOM; callers must check before passing to request().
+  freeink::SecureHttpClient* httpClient();
 };
 
 // Default coordinates used until the user picks a city. Open-Meteo's values.
