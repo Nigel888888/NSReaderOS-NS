@@ -35,6 +35,7 @@
 #include "util/BookCoverLoader.h"
 #ifdef RICKYOS_PRODUCT
 #include "activities/home/RickyStorageActivity.h"
+#include "util/RickyStorageLayout.h"
 #endif
 #endif
 
@@ -203,11 +204,14 @@ void LibraryListActivity::onEnter() {
   // its persistence write never overlaps the long-lived index reader.
   if (RECENT_BOOKS.pruneMissing()) RECENT_BOOKS.saveToFile();
 
-  // Rebuild when the index is missing, invalid, or was built with the other
-  // metadata mode. Otherwise entering the screen stays instant.
+  // Rebuild when the index is missing, invalid, was built with the other
+  // metadata mode, or was built before the current scan-scope rules. The scope
+  // marker makes a firmware change to books-only / no-TXT rebuild exactly once.
+  // Otherwise entering the screen stays instant.
   const bool readMetadata = SETTINGS.libraryUseMetadata != 0;
   const bool rebuildNeeded = library::isLibraryIndexDirty() || !index.open(library::libraryIndexPath()) ||
-                             index.header().metadataEnabled != readMetadata;
+                             index.header().metadataEnabled != readMetadata ||
+                             !library::isLibraryScanScopeCurrent();
   if (rebuildNeeded) {
 #ifdef RICKYOS_PRODUCT
     invalidateRickyShelfCaches();
@@ -236,7 +240,14 @@ void LibraryListActivity::onExit() {
 
 bool LibraryListActivity::rebuildIndex() {
   library::BuildStats stats;
+#ifdef RICKYOS_PRODUCT
+  // RickyOS keeps the shelf scoped to the canonical /books folder. Other
+  // folders on the card are left untouched and are never auto-added; only
+  // books placed in /books (including its subfolders) appear on the shelf.
+  const bool ok = library::buildLibraryIndex(RickyStorageLayout::BOOKS, stats, SETTINGS.libraryUseMetadata != 0);
+#else
   const bool ok = library::buildLibraryIndex("/", stats, SETTINGS.libraryUseMetadata != 0);
+#endif
   if (!ok) {
     LOG_ERR("LIB", "index build failed");
     return false;

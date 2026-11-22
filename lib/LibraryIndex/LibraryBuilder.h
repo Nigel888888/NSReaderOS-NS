@@ -76,4 +76,9 @@ const char* libraryIndexPath();
 bool markLibraryIndexDirty();
 bool isLibraryIndexDirty();
 
+// True once the index has been rebuilt under the current scan scope (books
+// folder only, TXT excluded). False after a firmware change to those rules,
+// so the activity rebuilds exactly once and then leaves the index alone.
+bool isLibraryScanScopeCurrent();
+
 }  // namespace library

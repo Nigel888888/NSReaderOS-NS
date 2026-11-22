@@ -25,6 +25,10 @@ constexpr char NEW_PATH[] = "/.crosspoint/library.new";
 constexpr char BACKUP_PATH[] = "/.crosspoint/library.bak";
 constexpr char STAGE_PATH[] = "/.crosspoint/library.stage";
 constexpr char DIRTY_PATH[] = "/.crosspoint/library.dirty";
+// Marks that the index was built under the current scan scope (books-only,
+// no TXT) so a firmware change can force exactly one rebuild. Bump the suffix
+// whenever the scan root or accepted extensions change.
+constexpr char SCOPE_PATH[] = "/.crosspoint/library.scope-books1";
 constexpr char CACHE_DIR[] = "/.crosspoint";
 // Sticky fallback when the marker could not be persisted (card unavailable at
 // write time): callers must still see the index as stale until a rebuild clears it.
@@ -184,11 +188,30 @@ void clearLibraryIndexDirty() {
   if (Storage.exists(DIRTY_PATH) && !Storage.remove(DIRTY_PATH)) {
     LOG_ERR("LIBIDX", "cannot clear dirty marker");
   }
+  // A successful rebuild ran under the current scan scope. Record that so the
+  // activity does not rebuild on every entry, but does rebuild once after a
+  // firmware change to the scope rules.
+  if (!Storage.exists(SCOPE_PATH)) {
+    HalFile marker;
+    if (!Storage.openFileForWrite("LIBIDX", SCOPE_PATH, marker)) {
+      LOG_ERR("LIBIDX", "cannot persist scan-scope marker");
+    } else {
+      marker.close();
+    }
+  }
 }
 
 bool isBookName(const std::string& name) {
+  // TXT files are deliberately not books on this product: the shelf is for
+  // formatted books (EPUB/MD/XTC). Plain-text notes and exported records stay
+  // on the card but are never listed on the shelf.
+#ifdef RICKYOS_PRODUCT
+  return FsHelpers::checkFileExtension(name, ".epub") || FsHelpers::checkFileExtension(name, ".md") ||
+         FsHelpers::checkFileExtension(name, ".xtc");
+#else
   return FsHelpers::checkFileExtension(name, ".epub") || FsHelpers::checkFileExtension(name, ".txt") ||
          FsHelpers::checkFileExtension(name, ".md") || FsHelpers::checkFileExtension(name, ".xtc");
+#endif
 }
 
 // Hidden entries (including macOS AppleDouble sidecars) and system folders such
@@ -1077,6 +1100,8 @@ bool emitIndex(const char* folderStagePath, WalkState& st, const uint16_t* order
 }  // namespace
 
 const char* libraryIndexPath() { return INDEX_PATH; }
+
+bool isLibraryScanScopeCurrent() { return Storage.exists(SCOPE_PATH); }
 
 bool markLibraryIndexDirty() {
   if (Storage.exists(DIRTY_PATH)) return true;
