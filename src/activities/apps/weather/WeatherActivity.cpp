@@ -17,6 +17,7 @@
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "util/PluginHttp.h"
+#include "util/TaskWatchdog.h"
 
 namespace {
 
@@ -26,6 +27,10 @@ constexpr const char* kCachePath = "/weather_cache.json";
 // keeping the caps tight limits the peak String reserve on the first fetch.
 constexpr size_t kMaxForecastResponse = 8 * 1024;
 constexpr size_t kMaxGeocodeResponse = 4 * 1024;
+// Arduino's loop task is subscribed to the task watchdog. TLS connect/read can
+// block far longer than that, so every wait poll feeds it and a request is
+// aborted after this deadline rather than rebooting or pinning a black screen.
+constexpr unsigned long kNetworkRequestTimeoutMs = 10000;
 constexpr unsigned long kMessageDurationMs = 3200;
 
 struct WeatherLayout {
@@ -145,6 +150,12 @@ WeatherActivity::~WeatherActivity() = default;
 freeink::SecureHttpClient* WeatherActivity::httpClient() {
   if (!session_) session_ = makeUniqueNoThrow<freeink::SecureHttpClient>();
   return session_.get();  // may be nullptr on OOM; callers must check
+}
+
+bool WeatherActivity::networkShouldAbort(const unsigned long started) const {
+  // pluginhttp documents that this callback is polled in every wait loop.
+  resetTaskWatchdogIfSubscribed();
+  return millis() - started >= kNetworkRequestTimeoutMs;
 }
 
 void WeatherActivity::onEnter() {
@@ -274,7 +285,7 @@ void WeatherActivity::ensureWifiThen(PendingAction action) {
 
 void WeatherActivity::queueFetch() {
   if (phase_ != Phase::Idle) return;
-  phase_ = Phase::FetchRequested;
+  phase_ = pending_ == PendingAction::GeocodeAndUpdate ? Phase::GeocodeRequested : Phase::ForecastRequested;
   requestUpdate();
 }
 
@@ -290,7 +301,8 @@ void WeatherActivity::promptCityName() {
       tr(STR_WEATHER_CITY_PROMPT), location_.name, 48);
 }
 
-bool WeatherActivity::geocodeCity(const std::string& name, Location& out) {
+bool WeatherActivity::geocodeCity(const std::string& name, Location& out, const unsigned long started) {
+  resetTaskWatchdogIfSubscribed();
   const std::string encoded = pluginhttp::urlEncodeQuery(name);
   char url[384];
   snprintf(url, sizeof(url),
@@ -300,7 +312,9 @@ bool WeatherActivity::geocodeCity(const std::string& name, Location& out) {
   auto* client = httpClient();
   if (!client) return false;  // OOM: never dereference a null session
   String body;
-  const int status = pluginhttp::request(client, url, "GET", "", {}, body, kMaxGeocodeResponse);
+  const auto keepAlive = [this, started]() { return networkShouldAbort(started); };
+  const int status = pluginhttp::request(client, url, "GET", "", {}, body, kMaxGeocodeResponse, nullptr, keepAlive);
+  resetTaskWatchdogIfSubscribed();
   if (status != 200) return false;
 
   JsonDocument doc;
@@ -343,21 +357,11 @@ void WeatherActivity::applyForecast(JsonObject current, JsonArray dailyTime, Jso
   saveCache();
 }
 
-void WeatherActivity::doFetch() {
+void WeatherActivity::fetchForecast(const bool cityChanged) {
+  resetTaskWatchdogIfSubscribed();
   if (!wifiConnected()) {
     showMessage(tr(STR_WEATHER_NO_WIFI));
     return;
-  }
-
-  if (pending_ == PendingAction::GeocodeAndUpdate) {
-    Location located;
-    if (!geocodeCity(pendingCityName_, located)) {
-      showMessage(tr(STR_WEATHER_CITY_NOT_FOUND));
-      return;
-    }
-    location_ = located;
-    saveLocation();
-    pendingCityName_.clear();
   }
 
   char url[320];
@@ -373,7 +377,10 @@ void WeatherActivity::doFetch() {
     return;
   }
   String body;
-  const int status = pluginhttp::request(client, url, "GET", "", {}, body, kMaxForecastResponse);
+  const unsigned long started = millis();
+  const auto keepAlive = [this, started]() { return networkShouldAbort(started); };
+  const int status = pluginhttp::request(client, url, "GET", "", {}, body, kMaxForecastResponse, nullptr, keepAlive);
+  resetTaskWatchdogIfSubscribed();
   if (status != 200) {
     showMessage(tr(STR_WEATHER_UPDATE_FAILED));
     return;
@@ -393,8 +400,7 @@ void WeatherActivity::doFetch() {
 
   applyForecast(current, daily["time"].as<JsonArray>(), daily["temperature_2m_max"].as<JsonArray>(),
                 daily["temperature_2m_min"].as<JsonArray>(), daily["weather_code"].as<JsonArray>());
-  showMessage(pending_ == PendingAction::GeocodeAndUpdate ? tr(STR_WEATHER_CITY_UPDATED)
-                                                          : tr(STR_WEATHER_UPDATED));
+  showMessage(cityChanged ? tr(STR_WEATHER_CITY_UPDATED) : tr(STR_WEATHER_UPDATED));
 }
 
 void WeatherActivity::loop() {
@@ -403,10 +409,41 @@ void WeatherActivity::loop() {
     if (wifiConnected() && pending_ != PendingAction::None) queueFetch();
   }
 
-  // Network I/O runs here, off the render task. No renderer access in this phase.
-  if (phase_ == Phase::FetchRequested) {
-    phase_ = Phase::Fetching;
-    doFetch();
+  // Network I/O runs here, off the render task. No renderer access in these
+  // phases. Each request gets its own loop turn so the render task can paint
+  // the busy popup between geocoding and the forecast, and the loop task can
+  // feed its watchdog instead of disappearing into two TLS calls at once.
+  if (phase_ == Phase::GeocodeRequested) {
+    phase_ = Phase::Geocoding;
+    requestUpdate();
+    return;
+  }
+  if (phase_ == Phase::Geocoding) {
+    resetTaskWatchdogIfSubscribed();
+    Location located;
+    if (!geocodeCity(pendingCityName_, located, millis())) {
+      pending_ = PendingAction::None;
+      pendingCityName_.clear();
+      phase_ = Phase::Idle;
+      showMessage(tr(STR_WEATHER_CITY_NOT_FOUND));
+      return;
+    }
+    location_ = located;
+    saveLocation();
+    pendingCityName_.clear();
+    phase_ = Phase::ForecastRequested;
+    requestUpdate();
+    return;
+  }
+  if (phase_ == Phase::ForecastRequested) {
+    phase_ = Phase::Forecasting;
+    requestUpdate();
+    return;
+  }
+  if (phase_ == Phase::Forecasting) {
+    const bool cityChanged = pending_ == PendingAction::GeocodeAndUpdate;
+    fetchForecast(cityChanged);
+    pending_ = PendingAction::None;
     phase_ = Phase::Idle;
     requestUpdate();
     return;

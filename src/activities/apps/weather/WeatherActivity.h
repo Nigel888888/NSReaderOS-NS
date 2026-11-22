@@ -57,7 +57,10 @@ class WeatherActivity final : public Activity {
     Day days[kForecastDays];
   };
 
-  enum class Phase : uint8_t { Idle, FetchRequested, Fetching };
+  // One network request per loop turn. The render task gets a real frame
+  // between geocoding and the forecast, and the loop task can keep feeding the
+  // watchdog instead of blocking inside two back-to-back TLS requests.
+  enum class Phase : uint8_t { Idle, GeocodeRequested, Geocoding, ForecastRequested, Forecasting };
   enum class PendingAction : uint8_t { None, Update, GeocodeAndUpdate };
 
   Location location_;
@@ -82,11 +85,14 @@ class WeatherActivity final : public Activity {
   bool wifiConnected() const;
   void ensureWifiThen(PendingAction action);
   void queueFetch();
-  void doFetch();
+  void fetchForecast(bool cityChanged);
   void promptCityName();
-  bool geocodeCity(const std::string& name, Location& out);
+  bool geocodeCity(const std::string& name, Location& out, unsigned long started);
   void applyForecast(JsonObject current, JsonArray dailyTime, JsonArray dailyMax, JsonArray dailyMin,
                      JsonArray dailyCode);
+  // Called from every network wait loop: feed the task watchdog and bound a
+  // single request so a stalled TLS read can never hang the UI forever.
+  bool networkShouldAbort(unsigned long started) const;
   // Returns nullptr on OOM; callers must check before passing to request().
   freeink::SecureHttpClient* httpClient();
 };
