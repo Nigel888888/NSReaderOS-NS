@@ -118,11 +118,35 @@ namespace {
 // reader's anti-aliased text. The next touch goes back to the fast B/W refresh; the panel
 // keeps the 16-level state, so its gray edge pixels are driven back cleanly.
 constexpr uint32_t kGraySettleDelayMs = 1500;
+// A text-turn settle only drives pixels it believes changed. Re-anchor the panel
+// with a real GC16 clean often enough that differential drift cannot accumulate
+// into a visible second image.
+constexpr uint8_t kGrayCleanEvery = 4;
+// Non-reader screens normally push FAST frames; sweep a full clean into the
+// cadence so old pages cannot build up a grey floor between settles.
+constexpr int kUiFullCleanEvery = 12;
 
-// Off for now: on device a settle occasionally left the panel out of step with the
-// driver (two screens superimposed until a full refresh), cause not yet found. The
-// anti-aliased drawing it uses stays in place for when it returns.
-bool graySettleAllowed() { return false; }
+// The earlier "two screens superimposed" failures were traced to stale scan-line
+// queues and a driver state that only a panel restart / full clean resets; both
+// fixes now ship in patch_rickyos_epdiy.py. Keep the simulator off (no real panel).
+bool graySettleAllowed() {
+#if defined(SIMULATOR)
+  return false;
+#else
+  return true;
+#endif
+}
+
+// Global UI text anti-aliasing. The renderer's native 4-bit glyph coverage is
+// already smooth but light edge pixels disappear on e-paper; lifting them
+// slightly toward ink keeps the gradient visible without thickening strokes.
+// The reader installs its own curve for body text, which overrides this scope.
+constexpr uint8_t kGlobalTextCurve[16] = {0, 1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 14, 15, 15};
+
+// Both variables are touched only from the render task.
+uint8_t gGraySettles = 0;
+bool gFullCleanAfterSettle = false;
+int gUiFramesSinceClean = 0;
 }  // namespace
 #endif
 
@@ -170,6 +194,19 @@ void ActivityManager::renderTaskLoop() {
 #endif
         idleGeneration = idleRenderGeneration.load(std::memory_order_relaxed);
         display.setInverted(SETTINGS.screenInverted != 0);
+#if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
+        const GfxRenderer::TextWeightScope globalTextWeight(renderer, kGlobalTextCurve);
+        // After a gray settle the panel state is only approximately tracked by the
+        // differential waveform; give the very next B/W frame a full clean. Also
+        // sweep one in periodically for screens that never settle (reader pages
+        // already run their own refresh cadence).
+        if (gFullCleanAfterSettle ||
+            (!currentActivity->isReaderActivity() && ++gUiFramesSinceClean >= kUiFullCleanEvery)) {
+          renderer.requestNextFullRefresh();
+          gFullCleanAfterSettle = false;
+          gUiFramesSinceClean = 0;
+        }
+#endif
         currentActivity->render(std::move(lock));
         idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
         waitTicks = idleDelayTicks;
@@ -204,6 +241,7 @@ void ActivityManager::renderTaskLoop() {
 void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation) {
   if (!renderer.beginGrayscale16()) return;
   const unsigned long started = millis();
+  const GfxRenderer::TextWeightScope globalTextWeight(renderer, kGlobalTextCurve);
   renderer.setDisplayCapture(true);
   currentActivity->render(std::move(lock));
   renderer.setDisplayCapture(false);
@@ -218,12 +256,11 @@ void ActivityManager::settleToGray(RenderLock&& lock, const uint32_t generation)
   // The text-turn waveform only drives pixels it believes changed, so small errors in
   // the panel's real state build up across fast refreshes and settles (old screens show
   // through). Every few settles is a full GC16 clean instead.
-  static uint8_t settles = 0;
-  constexpr uint8_t kCleanEvery = 8;
-  settles = static_cast<uint8_t>((settles + 1) % kCleanEvery);
-  display.setNextGray16Profile(settles == 0 ? 2 : 1);
+  gGraySettles = static_cast<uint8_t>((gGraySettles + 1) % kGrayCleanEvery);
+  display.setNextGray16Profile(gGraySettles == 0 ? 2 : 1);
 #endif
   const bool committed = renderer.commitGrayscale16();
+  if (committed) gFullCleanAfterSettle = true;
   LOG_DBG("ACT", "Gray settle: %s in %lu ms", committed ? "done" : "failed", millis() - started);
 }
 #endif
@@ -236,7 +273,7 @@ void ActivityManager::loop() {
     // show through new ones. Drop them once frames have stopped for a few seconds (the
     // PMIC's own 500 ms off-hold falls in the idle time). Never during a frame push.
     RenderLock railsLock(RenderLock::Mode::Try);
-    if (railsLock.ownsLock()) display.railsOffIfIdle(3000);
+    if (railsLock.ownsLock()) display.railsOffIfIdle(2000);
   }
 #endif
   if (mappedInput.consumeSuppressedRelease()) {

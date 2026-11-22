@@ -378,8 +378,10 @@ void RssActivity::drawArticleList() {
   int top = metrics.topPadding + metrics.headerHeight + BUTTON_TOP + BUTTON_H + metrics.verticalSpacing;
   listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD,
                     renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
-  rowHeight = 72;
-  rowGap = 8;
+  // Size the row from the two text lines instead of a fixed height so the
+  // selection pill covers the whole entry with equal padding above and below.
+  rowHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID) + renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 28;
+  rowGap = 12;
   if (rows.empty()) {
     renderer.drawText(NOTOSANS_18_FONT_ID, SIDE_PAD, listBounds.y + 20, tr(STR_RSS_NO_ARTICLES));
     return;
@@ -392,9 +394,11 @@ void RssActivity::drawArticleList() {
     const bool sel = (i == selected);
     bool black = true;
     if (sel) black = GUI.drawSelectionBackground(renderer, r);
-    renderer.drawText(NOTOSANS_18_FONT_ID, r.x + 8, r.y + 4, rows[i].title.c_str(), black, EpdFontFamily::BOLD);
-    renderer.drawText(NOTOSANS_16_FONT_ID, r.x + 8, r.y + 4 + renderer.getLineHeight(NOTOSANS_18_FONT_ID),
-                      rows[i].subtitle.c_str(), black);
+    const int titleLine = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
+    const int subLine = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
+    const int textTop = r.y + (r.height - titleLine - subLine) / 2;
+    renderer.drawText(NOTOSANS_18_FONT_ID, r.x + 8, textTop, rows[i].title.c_str(), black, EpdFontFamily::BOLD);
+    renderer.drawText(NOTOSANS_16_FONT_ID, r.x + 8, textTop + titleLine, rows[i].subtitle.c_str(), black);
   }
 }
 
@@ -407,8 +411,10 @@ void RssActivity::drawFeedList() {
   int top = metrics.topPadding + metrics.headerHeight + BUTTON_TOP + BUTTON_H + metrics.verticalSpacing;
   listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD,
                     renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
-  rowHeight = 72;
-  rowGap = 8;
+  // Size the row from the two text lines instead of a fixed height so the
+  // selection pill covers the whole entry with equal padding above and below.
+  rowHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID) + renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 28;
+  rowGap = 12;
   if (rows.empty()) {
     renderer.drawText(NOTOSANS_18_FONT_ID, SIDE_PAD, listBounds.y + 20, tr(STR_RSS_NO_FEEDS));
     return;
@@ -421,9 +427,11 @@ void RssActivity::drawFeedList() {
     const bool sel = (i == selected);
     bool black = true;
     if (sel) black = GUI.drawSelectionBackground(renderer, r);
-    renderer.drawText(NOTOSANS_18_FONT_ID, r.x + 8, r.y + 4, rows[i].title.c_str(), black, EpdFontFamily::BOLD);
-    renderer.drawText(NOTOSANS_16_FONT_ID, r.x + 8, r.y + 4 + renderer.getLineHeight(NOTOSANS_18_FONT_ID),
-                      rows[i].subtitle.c_str(), black);
+    const int titleLine = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
+    const int subLine = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
+    const int textTop = r.y + (r.height - titleLine - subLine) / 2;
+    renderer.drawText(NOTOSANS_18_FONT_ID, r.x + 8, textTop, rows[i].title.c_str(), black, EpdFontFamily::BOLD);
+    renderer.drawText(NOTOSANS_16_FONT_ID, r.x + 8, textTop + titleLine, rows[i].subtitle.c_str(), black);
   }
   renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD,
                     renderer.getScreenHeight() - metrics.buttonHintsHeight - 4, tr(STR_RSS_TAP_REMOVE));
