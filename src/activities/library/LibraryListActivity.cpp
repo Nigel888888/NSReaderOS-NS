@@ -75,6 +75,63 @@ const char* tabLabelFor(const int tab) {
   return tr(STR_LIBRARY_TAB_RECENT);
 }
 
+#ifdef RICKYOS_PRODUCT
+// The product shelf materialises six covers, but entering/leaving it used to
+// re-stat every recent book and re-open every visible cover. Those SD card
+// round trips are visible as a pause. Keep the last resolved rows and cover
+// paths for as long as the recents/index/shelf inputs are unchanged; the
+// Activity itself is recreated on navigation, so the cache has to outlive it.
+constexpr int RICKY_SHELF_CAPACITY = 6;
+
+struct PinnedLookupCache {
+  bool valid = false;
+  uint64_t signature = 0;
+  uint8_t count = 0;
+  uint16_t rows[RecentBooksStore::MAX_RECENT_BOOKS] = {};
+} gPinnedLookupCache;
+
+struct ShelfSnapshot {
+  bool valid = false;
+  uint64_t signature = 0;
+  std::array<std::string, RICKY_SHELF_CAPACITY> titles{}, authors{}, paths{}, covers{};
+} gShelfSnapshot;
+
+uint64_t mixShelfHash(uint64_t hash, const uint64_t value) {
+  return (hash ^ value) * 1099511628211ULL;
+}
+
+uint64_t recentBooksSignature(const std::vector<RecentBook>& books, const uint16_t indexCount) {
+  uint64_t hash = 1469598103934665603ULL;
+  hash = mixShelfHash(hash, static_cast<uint64_t>(books.size()));
+  hash = mixShelfHash(hash, static_cast<uint64_t>(indexCount));
+  for (const RecentBook& book : books) {
+    hash = mixShelfHash(hash, library::clixPathHash(book.path.data(), book.path.size()));
+  }
+  return hash;
+}
+
+uint64_t shelfSignature(const int start, const int height, const int visible, const uint16_t indexCount,
+                        const int activeTab, const library::SortOrder sortOrder, const uint8_t readingFilter,
+                        const std::string& query, const uint16_t* pinnedRows, const uint8_t pinnedTotal) {
+  uint64_t hash = 1469598103934665603ULL;
+  hash = mixShelfHash(hash, static_cast<uint64_t>(start));
+  hash = mixShelfHash(hash, static_cast<uint64_t>(height));
+  hash = mixShelfHash(hash, static_cast<uint64_t>(visible));
+  hash = mixShelfHash(hash, static_cast<uint64_t>(indexCount));
+  hash = mixShelfHash(hash, static_cast<uint64_t>(activeTab));
+  hash = mixShelfHash(hash, static_cast<uint64_t>(sortOrder));
+  hash = mixShelfHash(hash, static_cast<uint64_t>(readingFilter));
+  hash = mixShelfHash(hash, library::clixPathHash(query.data(), query.size()));
+  for (uint8_t i = 0; i < pinnedTotal; ++i) hash = mixShelfHash(hash, static_cast<uint64_t>(pinnedRows[i]));
+  return hash;
+}
+
+void invalidateRickyShelfCaches() {
+  gPinnedLookupCache.valid = false;
+  gShelfSnapshot.valid = false;
+}
+#endif  // RICKYOS_PRODUCT
+
 }  // namespace
 
 LibraryListActivity::LibraryListActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
@@ -152,6 +209,9 @@ void LibraryListActivity::onEnter() {
   const bool rebuildNeeded = library::isLibraryIndexDirty() || !index.open(library::libraryIndexPath()) ||
                              index.header().metadataEnabled != readMetadata;
   if (rebuildNeeded) {
+#ifdef RICKYOS_PRODUCT
+    invalidateRickyShelfCaches();
+#endif
     index.close();
     GUI.drawPopup(renderer, tr(STR_LIBRARY_REBUILDING));
     rebuildIndex();
@@ -187,6 +247,9 @@ bool LibraryListActivity::rebuildIndex() {
           static_cast<unsigned>(stats.enriched), static_cast<unsigned>(stats.duplicatesDropped),
           static_cast<unsigned>(stats.unreadableSkipped));
   if (stats.dedupDegraded) LOG_ERR("LIB", "rebuild completed without duplicate detection");
+#ifdef RICKYOS_PRODUCT
+  invalidateRickyShelfCaches();
+#endif
   return true;
 }
 
@@ -220,24 +283,49 @@ void LibraryListActivity::resolvePinned() {
   pinnedTotal = static_cast<uint8_t>(std::min<size_t>(books.size(), RecentBooksStore::MAX_RECENT_BOOKS));
   for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = 0xFFFF;
   if (pinnedTotal > 0 && index.isOpen()) {
-    library::BookIdentity identities[RecentBooksStore::MAX_RECENT_BOOKS];
-    for (int i = 0; i < pinnedTotal; i++) {
-      const std::string& path = books[static_cast<size_t>(i)].path;
-      identities[i].pathHash = library::clixPathHash(path.data(), path.size());
-      // Size is only a lookup prefilter; 0 (stat failed, e.g. the index handle
-      // is the card's one open reader) falls back to hash-only matching.
-      identities[i].fileSize = 0;
-      HalFile file;
-      if (Storage.openFileForRead("LIB", path.c_str(), file)) {
-        identities[i].fileSize = static_cast<uint32_t>(file.fileSize());
+#ifdef RICKYOS_PRODUCT
+    // Same recents + same index count means the previous lookup is still valid.
+    // This avoids opening every recent book on every library enter, which was
+    // the main source of the visible pause.
+    const uint64_t signature = recentBooksSignature(books, index.bookCount());
+    if (gPinnedLookupCache.valid && gPinnedLookupCache.signature == signature) {
+      pinnedTotal = gPinnedLookupCache.count;
+      for (int i = 0; i < pinnedTotal; i++) pinnedAscRows[i] = gPinnedLookupCache.rows[i];
+    } else {
+#endif
+      library::BookIdentity identities[RecentBooksStore::MAX_RECENT_BOOKS];
+      for (int i = 0; i < pinnedTotal; i++) {
+        const std::string& path = books[static_cast<size_t>(i)].path;
+        identities[i].pathHash = library::clixPathHash(path.data(), path.size());
+        // Size is only a lookup prefilter; 0 (stat failed, e.g. the index handle
+        // is the card's one open reader) falls back to hash-only matching.
+        identities[i].fileSize = 0;
+        HalFile file;
+        if (Storage.openFileForRead("LIB", path.c_str(), file)) {
+          identities[i].fileSize = static_cast<uint32_t>(file.fileSize());
+        }
       }
+      if (!index.recentRowsFor(identities, pinnedTotal, pinnedAscRows)) {
+        // Without the match the overlay would duplicate every pinned book that is
+        // also in the index; better to drop the pins than to show doubles.
+        LOG_ERR("LIB", "recent-book lookup failed; overlay disabled");
+        pinnedTotal = 0;
+#ifdef RICKYOS_PRODUCT
+        gPinnedLookupCache.valid = false;
+#endif
+      } else {
+#ifdef RICKYOS_PRODUCT
+        gPinnedLookupCache.valid = true;
+        gPinnedLookupCache.signature = signature;
+        gPinnedLookupCache.count = pinnedTotal;
+        for (int i = 0; i < pinnedTotal; i++) gPinnedLookupCache.rows[i] = pinnedAscRows[i];
+#endif
+      }
+#ifdef RICKYOS_PRODUCT
     }
-    if (!index.recentRowsFor(identities, pinnedTotal, pinnedAscRows)) {
-      // Without the match the overlay would duplicate every pinned book that is
-      // also in the index; better to drop the pins than to show doubles.
-      LOG_ERR("LIB", "recent-book lookup failed; overlay disabled");
-      pinnedTotal = 0;
-    }
+  } else {
+    gPinnedLookupCache.valid = false;
+#endif
   }
   refreshOverlap();
 }
@@ -1250,25 +1338,29 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   LOG_DBG("RICKY", "shelf bounds=%d,%d,%d,%d body=%d,%d,%d,%d start=%d count=%d visible=%d cover=%d", bounds.x,
           bounds.y, bounds.width, bounds.height, body.x, body.y, body.width, body.height, start, count, visible,
           coverHeight);
-  if (start != shelfStart || coverHeight != shelfHeight) {
+  const uint64_t shelfSignatureValue =
+      shelfSignature(start, coverHeight, visible, index.bookCount(), activeTabIndex, sortOrder, readingFilter, query,
+                     pinnedAscRows, pinnedTotal);
+  if (gShelfSnapshot.valid && gShelfSnapshot.signature == shelfSignatureValue) {
+    // Reuse the bounded strings and cover paths. Only progress text is
+    // refreshed below, because it can change without touching the index.
     shelfCount = visible;
-    // Materialize only four bounded index records; no vector of every book/cover.
+    for (int i = 0; i < visible; ++i) {
+      shelfTitles[i] = gShelfSnapshot.titles[i];
+      shelfAuthors[i] = gShelfSnapshot.authors[i];
+      shelfPaths[i] = gShelfSnapshot.paths[i];
+      shelfCovers[i] = gShelfSnapshot.covers[i];
+    }
+    shelfStart = start;
+    shelfHeight = coverHeight;
+  } else {
+    shelfCount = visible;
+    gShelfSnapshot.valid = false;
+    // Materialize only the visible bounded index records; no vector of every book/cover.
     for (int i = 0; i < visible; ++i) {
       rowTextFor(start + i, shelfTitles[i], shelfAuthors[i]);
       RickyPageUi::stripBookExtension(shelfTitles[i]);
       if (!entryPath(start + i, shelfPaths[i])) shelfPaths[i].clear();
-      const auto& path = shelfPaths[i];
-      const char* format = FsHelpers::hasEpubExtension(path)       ? "EPUB"
-                           : FsHelpers::hasTxtExtension(path)      ? "TXT"
-                           : FsHelpers::hasMarkdownExtension(path) ? "MD"
-                           : FsHelpers::hasXtcExtension(path)      ? "XTC"
-                                                                   : "";
-      const auto* stats = READING_STATS.findMatchingBookForPath(path);
-      if (stats)
-        snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_PROGRESS), format,
-                 static_cast<unsigned>(stats->lastProgressPercent));
-      else
-        snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_UNREAD), format);
       shelfCovers[i].clear();
     }
     index.close();
@@ -1286,6 +1378,26 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     }
     shelfStart = start;
     shelfHeight = coverHeight;
+    gShelfSnapshot.titles = shelfTitles;
+    gShelfSnapshot.authors = shelfAuthors;
+    gShelfSnapshot.paths = shelfPaths;
+    gShelfSnapshot.covers = shelfCovers;
+    gShelfSnapshot.signature = shelfSignatureValue;
+    gShelfSnapshot.valid = true;
+  }
+  for (int i = 0; i < visible; ++i) {
+    const auto& path = shelfPaths[i];
+    const char* format = FsHelpers::hasEpubExtension(path)       ? "EPUB"
+                         : FsHelpers::hasTxtExtension(path)      ? "TXT"
+                         : FsHelpers::hasMarkdownExtension(path) ? "MD"
+                         : FsHelpers::hasXtcExtension(path)      ? "XTC"
+                                                                 : "";
+    const auto* stats = READING_STATS.findMatchingBookForPath(path);
+    if (stats)
+      snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_PROGRESS), format,
+               static_cast<unsigned>(stats->lastProgressPercent));
+    else
+      snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_UNREAD), format);
   }
   for (int i = 0; i < visible; ++i) shelfItems[i] = fui::coverGridItem(shelfTitles[i].c_str(), start + i);
   shelfGrid = {};
