@@ -93,14 +93,17 @@ inline void applyCardListStyle(freeink::ui::ListProps& props, const freeink::ui:
   static const uint8_t kBarBits[64] = {0};
   static const freeink::Icon kBarIcon{4, 64, 32, kBarBits};
 
+  // GfxRenderer also declares a global `enum Color`; qualify the SDK enum
+  // everywhere here or the two names collide in translation units that
+  // include both headers (most activities do).
   StyleSet styles;
   styles.explicitlySet = true;
-  styles.normal.background = Paint::solid(Color::White);
+  styles.normal.background = Paint::solid(freeink::ui::Color::White);
   styles.normal.foreground = Paint::none();
-  styles.normal.border = Paint::solid(Color::LightGray);
+  styles.normal.border = Paint::solid(freeink::ui::Color::LightGray);
   styles.normal.borderWidth = 1;
   styles.selected = styles.normal;
-  styles.selected.background = Paint::dither(Color::LightGray);
+  styles.selected.background = Paint::dither(freeink::ui::Color::LightGray);
   styles.focused = styles.selected;
   styles.active = styles.selected;
   styles.disabled = styles.normal;
@@ -109,14 +112,14 @@ inline void applyCardListStyle(freeink::ui::ListProps& props, const freeink::ui:
   props.rowRadius = 10;
   props.selectionMarker = SelectionMarker::Bitmap;
   props.markerBitmap = bitmapFromIcon(kBarIcon);
-  props.markerPaint = Paint::solid(Color::Black);
+  props.markerPaint = Paint::solid(freeink::ui::Color::Black);
   props.markerInset = 0;
 
   props.labelText = theme.bodyText;
   props.labelText.bold = true;
-  props.labelText.color = Color::Black;
+  props.labelText.color = freeink::ui::Color::Black;
   props.subtitleText = theme.smallText;
-  props.subtitleText.color = Color::DarkGray;
+  props.subtitleText.color = freeink::ui::Color::DarkGray;
 }
 
 // Tap release with coords, plus the raw release the tap classifier never

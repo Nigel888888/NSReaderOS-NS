@@ -212,9 +212,9 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   props.count = static_cast<uint16_t>(rowItems.size());
   props.action = ACTION_ROW;
   props.inputMask = fui::InputTouch | fui::InputLongPress;
-  // Taller rows with more breathing room between saved sentences. The book
-  // title is the subtitle, drawn on the line below the sentence and aligned
-  // right, so each row reads "sentence / ——— source" cleanly.
+  // Taller rows with more breathing room between saved sentences: the source
+  // sits in the gray subtitle under the bold sentence, with the date painted
+  // as a separate capsule at the card's bottom right.
   props.rowHeight = static_cast<int16_t>(std::max<int>(72, renderer.getLineHeight(UI_12_FONT_ID) * 3));
   props.rowGap = static_cast<int16_t>(std::max<int>(8, metrics.verticalSpacing));
   // Same minimal card treatment as the vocabulary screen: white rounded card,
