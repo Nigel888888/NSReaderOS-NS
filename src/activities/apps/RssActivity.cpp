@@ -44,8 +44,8 @@ constexpr int CARD_RADIUS = 8;
 constexpr unsigned long MESSAGE_MS = 3000;
 constexpr const char* UI_STATE_PATH = "/.crosspoint/rss/ui-state.txt";
 // Re-entering the app used to re-read and re-parse the whole article index
-// from SD (the main reason the entry felt slow). The RSS data is already
-// process-wide, so keep a cache for the lifetime of the firmware.
+// from SD. Park the index here only on onExit (move, not copy): a second live
+// copy of every title/URL doubled heap pressure during dictionary lookups.
 std::vector<RssStore::Feed> gFeedsCache;
 std::vector<RssStore::Article> gArticlesCache;
 bool gFeedsCached = false;
@@ -173,13 +173,19 @@ void RssActivity::onEnter() {
   // The article index is large; re-reading it on every entry made the app feel
   // sluggish. Reuse the process-wide cache unless this is the first entry.
   if (gFeedsCached) {
-    feeds = gFeedsCache;
+    feeds = std::move(gFeedsCache);
+    gFeedsCache.clear();
+    gFeedsCache.shrink_to_fit();
+    gFeedsCached = false;
     rebuildFeedRows();
   } else {
     loadFeeds();
   }
   if (gArticlesCached) {
-    articles = gArticlesCache;
+    articles = std::move(gArticlesCache);
+    gArticlesCache.clear();
+    gArticlesCache.shrink_to_fit();
+    gArticlesCached = false;
   } else {
     loadArticles();
   }
@@ -206,6 +212,12 @@ void RssActivity::onEnter() {
 
 void RssActivity::onExit() {
   saveState();
+  // Move the index out of the dying Activity; the next entry takes it back
+  // instead of re-reading the SD, without ever holding two live copies.
+  gFeedsCache = std::move(feeds);
+  gArticlesCache = std::move(articles);
+  gFeedsCached = true;
+  gArticlesCached = true;
   Activity::onExit();
 }
 
@@ -219,14 +231,10 @@ void RssActivity::loadArticles() {
   RssStore::loadArticles(articles);
   std::sort(articles.begin(), articles.end(),
             [](const RssStore::Article& a, const RssStore::Article& b) { return a.timestamp > b.timestamp; });
-  gArticlesCache = articles;
-  gArticlesCached = true;
 }
 
 void RssActivity::loadFeeds() {
   RssStore::loadFeeds(feeds);
-  gFeedsCache = feeds;
-  gFeedsCached = true;
   rebuildFeedRows();
 }
 
@@ -533,9 +541,8 @@ void RssActivity::openArticle(int index) {
 void RssActivity::toggleCurrentFavorite() {
   if (openGuid.empty()) return;
   if (RssStore::toggleFavorite(articles, openGuid)) {
-    // Keep the process-wide cache coherent so the star state survives a
-    // leave/enter cycle without re-reading the index from SD.
-    gArticlesCache = articles;
+    // The Activity object keeps `articles` alive across app switches, so no
+    // second cache copy is needed for the star state to survive a round trip.
     if (view == View::Favorites) rebuildFavoriteRows();
     else if (view == View::Updates) rebuildUpdateRows();
     showMessage(tr(STR_RSS_FAV_TOGGLED));
@@ -608,15 +615,15 @@ void RssActivity::rebuildBodyWords() {
       const size_t start = t;
       while (t < line.size() && !isWordSeparator(static_cast<unsigned char>(line[t]))) ++t;
       if (t <= start) continue;
-      std::string token = line.substr(start, t - start);
+      const std::string token = line.substr(start, t - start);
       if (!isSelectableBodyToken(token)) continue;
       BodyWord word;
       word.x = renderer.getTextWidth(font, line.substr(0, start).c_str());
       word.width = renderer.getTextWidth(font, token.c_str());
       word.line = static_cast<int>(li);
       word.textOffset = lineStart + start;
-      word.text = std::move(token);
-      bodyWords.push_back(std::move(word));
+      word.textLength = static_cast<uint16_t>(std::min<size_t>(t - start, UINT16_MAX));
+      bodyWords.push_back(word);
     }
   }
 }
@@ -645,7 +652,7 @@ std::string RssActivity::bodySentenceFor(const int wordIndex) const {
     return bodyLines[word.line];
   }
   const size_t wordStart = word.textOffset;
-  const size_t wordEnd = wordStart + word.text.size();
+  const size_t wordEnd = wordStart + word.textLength;
 
   size_t start = 0;
   for (size_t i = wordStart; i > 0; --i) {
@@ -699,10 +706,33 @@ void RssActivity::lookupBodyWord(const int x, const int y) {
     return;
   }
 
-  const std::string token = bodyWords[idx].text;
+  // Copy the two small strings we still need, then drop the per-article word
+  // boxes and wrapped lines. Dictionary::lookup() needs one contiguous 32 KB
+  // inflate window plus the definition buffer; holding ~thousands of token
+  // strings made ESP.getMaxAllocHeap() refuse the lookup as "LowMemory".
+  const std::string token = bodyText.substr(bodyWords[idx].textOffset, bodyWords[idx].textLength);
   const std::string context = bodySentenceFor(idx);
+  std::string book = tr(STR_RSS_TITLE);
+  for (const auto& article : articles) {
+    if (article.guid == openGuid) {
+      if (!article.title.empty()) book = article.title;
+      break;
+    }
+  }
+
   dictionaryBusy = true;
   requestUpdateAndWait();
+  const int savedLine = bodyLine;
+  bodyWords.clear();
+  bodyWords.shrink_to_fit();
+  bodyLineOffsets.clear();
+  bodyLineOffsets.shrink_to_fit();
+  bodyLines.clear();
+  bodyLines.shrink_to_fit();
+  // The list rows duplicate every article title; the reading view does not
+  // need them while the dictionary grabs its inflate window.
+  rows.clear();
+  rows.shrink_to_fit();
 
   Dictionary dict;
   bool ok = dict.open(SETTINGS.dictionaryName);
@@ -717,15 +747,14 @@ void RssActivity::lookupBodyWord(const int x, const int y) {
   const bool found = ok && dict.lookup(token.c_str(), definition, headword, &result);
   dictionaryBusy = false;
 
+  // Restore the reading view before leaving it: bodyText is untouched, so
+  // wrapping it again rebuilds both the lines and the word boxes.
+  wrapBodyLines();
+  bodyLine = std::min(savedLine, static_cast<int>(bodyLines.size()) - 1);
+  rebuildUpdateRows();  // restore the list rows we dropped for the lookup
+  requestUpdate();
+
   if (found) {
-    std::string book = tr(STR_RSS_TITLE);
-    for (const auto& article : articles) {
-      if (article.guid == openGuid) {
-        if (!article.title.empty()) book = article.title;
-        break;
-      }
-    }
-    requestUpdate();
     // The definition card already carries "add to vocabulary" and "save as
     // quote"; reusing it keeps RSS word collection identical to book reading.
     startActivityForResultWith<DictionaryDefinitionActivity>(
@@ -963,10 +992,9 @@ void RssActivity::drawArticleList() {
   } else {
     const int first = listFirstIndex();
     const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
-    const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
-    // Clamp the trailing "peek" card to the list band. Without this its lower
-    // edge can paint over the action bar, hiding the refresh button until the
-    // very last page (where rows.size() clips it) -- exactly the reported bug.
+    // Draw only rows that fit completely. The old "+1" peek card showed the
+    // next page's first row squeezing into the bottom of the list.
+    const int last = std::min(static_cast<int>(rows.size()), first + visible);
     const int listBottom = listBounds.y + listBounds.height;
     for (int i = first; i < last; ++i) {
       Rect r = rowRectFor(i - first, listBounds, rowHeight, rowGap);
@@ -996,7 +1024,7 @@ void RssActivity::drawFeedList() {
   } else {
     const int first = listFirstIndex();
     const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
-    const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
+    const int last = std::min(static_cast<int>(rows.size()), first + visible);
     const int listBottom = listBounds.y + listBounds.height;
     for (int i = first; i < last; ++i) {
       Rect r = rowRectFor(i - first, listBounds, rowHeight, rowGap);

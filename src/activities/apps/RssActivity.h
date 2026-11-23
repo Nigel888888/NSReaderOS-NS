@@ -62,7 +62,9 @@ class RssActivity final : public Activity {
     int width = 0;
     int line = 0;
     size_t textOffset = 0;  // byte offset of the token inside bodyText
-    std::string text;
+    uint16_t textLength = 0;
+    // No std::string copy: a long article can hold thousands of tokens, and
+    // one heap string each starves the dictionary's 32 KB inflate window.
   };
 
   void loadArticles();
