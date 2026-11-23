@@ -41,7 +41,7 @@ class WeatherActivity final : public Activity {
   };
 
   struct Day {
-    char date[6] = {};  // "MM-DD"
+    char date[12] = {};  // "YYYY-MM-DD" when available, legacy "MM-DD" accepted
     float high = 0.0f;
     float low = 0.0f;
     int code = -1;
@@ -51,6 +51,9 @@ class WeatherActivity final : public Activity {
     bool valid = false;
     std::string city;
     float temperature = 0.0f;
+    float feelsLike = 0.0f;
+    float precipitation = 0.0f;  // daily max chance of rain, percent
+    float uvIndex = 0.0f;        // daily max UV index
     int weatherCode = -1;
     float windSpeed = 0.0f;
     char observed[32] = {};
@@ -88,8 +91,7 @@ class WeatherActivity final : public Activity {
   void fetchForecast(bool cityChanged);
   void promptCityName();
   bool geocodeCity(const std::string& name, Location& out, unsigned long started);
-  void applyForecast(JsonObject current, JsonArray dailyTime, JsonArray dailyMax, JsonArray dailyMin,
-                     JsonArray dailyCode);
+  void applyForecast(JsonObject current, JsonObject daily);
   // Called from every network wait loop: feed the task watchdog and bound a
   // single request so a stalled TLS read can never hang the UI forever.
   bool networkShouldAbort(unsigned long started) const;

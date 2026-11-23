@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
 #include "Memory.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -138,13 +139,162 @@ void drawButton(const GfxRenderer& renderer, const Rect button, const char* labe
                     button.y + (button.height - textHeight) / 2, label, foregroundBlack);
 }
 
-// "2026-11-22" -> "11-22" (safe on a short, fixed date string).
-void shortDate(const char* iso, char* out, size_t outSize) {
-  if (!iso || std::strlen(iso) < 10) {
-    snprintf(out, outSize, "--");
-    return;
+// Keep the full ISO date so the weekday can be derived correctly even when
+// the cache is a day old. Legacy "MM-DD" values still render without a row
+// label; they simply fall back to the device's current weekday.
+void copyIsoDate(const char* iso, char* out, size_t outSize) {
+  if (!iso || outSize == 0) return;
+  snprintf(out, outSize, "%s", iso);
+}
+
+int weekdayFromIso(const char* iso) {
+  if (!iso || std::strlen(iso) < 10) return -1;
+  char buf[16] = {};
+  snprintf(buf, sizeof(buf), "%.4s", iso);
+  const int year = std::atoi(buf);
+  snprintf(buf, sizeof(buf), "%.2s", iso + 5);
+  const int month = std::atoi(buf);
+  snprintf(buf, sizeof(buf), "%.2s", iso + 8);
+  const int day = std::atoi(buf);
+  if (year < 1970 || month < 1 || month > 12 || day < 1 || day > 31) return -1;
+  struct tm t = {};
+  t.tm_year = year - 1900;
+  t.tm_mon = month - 1;
+  t.tm_mday = day;
+  t.tm_hour = 12;  // noon avoids DST-day rollover surprises
+  mktime(&t);
+  return t.tm_wday;  // 0 = Sunday
+}
+
+const char* weekdayName(int wday) {
+  switch (wday) {
+    case 0: return tr(STR_WEATHER_SUN);
+    case 1: return tr(STR_WEATHER_MON);
+    case 2: return tr(STR_WEATHER_TUE);
+    case 3: return tr(STR_WEATHER_WED);
+    case 4: return tr(STR_WEATHER_THU);
+    case 5: return tr(STR_WEATHER_FRI);
+    case 6: return tr(STR_WEATHER_SAT);
+    default: return "";
   }
-  snprintf(out, outSize, "%c%c-%c%c", iso[5], iso[6], iso[8], iso[9]);
+}
+
+const char* uvLevelName(float uv) {
+  if (uv < 3.0f) return tr(STR_WEATHER_UV_LOW);
+  if (uv < 6.0f) return tr(STR_WEATHER_UV_MODERATE);
+  if (uv < 8.0f) return tr(STR_WEATHER_UV_HIGH);
+  return tr(STR_WEATHER_UV_VERY_HIGH);
+}
+
+bool isWetCode(int code) {
+  return code == 51 || code == 53 || code == 55 || code == 56 || code == 57 || code == 61 || code == 63 ||
+         code == 65 || code == 66 || code == 67 || code == 80 || code == 81 || code == 82 || code == 95 ||
+         code == 96 || code == 99;
+}
+
+const char* adviceFor(int code, float precipitation, float uv, float feelsLike) {
+  if (isWetCode(code) || precipitation >= 60.0f) return tr(STR_WEATHER_ADVICE_UMBRELLA);
+  if (uv >= 6.0f) return tr(STR_WEATHER_ADVICE_SUNSCREEN);
+  if (feelsLike <= 5.0f) return tr(STR_WEATHER_ADVICE_WARM);
+  return tr(STR_WEATHER_ADVICE_OUTDOOR);
+}
+
+// Fit text into a fixed width by trimming whole UTF-8 codepoints. Used by the
+// five-day columns, where a long localized condition must not spill over.
+void drawFittedText(const GfxRenderer& renderer, int fontId, int x, int y, int maxWidth, const char* text,
+                    bool black = true, EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
+  if (!text || maxWidth <= 0) return;
+  std::string fitted = text;
+  while (!fitted.empty() && renderer.getTextWidth(fontId, fitted.c_str(), style) > maxWidth) {
+    size_t n = fitted.size() - 1;
+    while (n > 0 && (static_cast<unsigned char>(fitted[n]) & 0xC0) == 0x80) --n;
+    fitted.erase(n);
+  }
+  renderer.drawText(fontId, x, y, fitted.c_str(), black, style);
+}
+
+void drawCenteredFitted(const GfxRenderer& renderer, int fontId, int centerX, int y, int maxWidth, const char* text,
+                        bool black = true, EpdFontFamily::Style style = EpdFontFamily::REGULAR) {
+  const int width = renderer.getTextWidth(fontId, text, style);
+  drawFittedText(renderer, fontId, centerX - std::min(width, maxWidth) / 2, y, maxWidth, text, black, style);
+}
+
+// --- Small line-art weather icons, built from the renderer's primitives so
+// no new bitmap assets are needed on the device. ---------------------------
+void drawSun(const GfxRenderer& renderer, int cx, int cy, int radius) {
+  const int r = std::max(6, radius);
+  for (int q = 0; q < 4; ++q) {
+    const int xDir = (q == 0 || q == 3) ? -1 : 1;
+    const int yDir = (q < 2) ? -1 : 1;
+    renderer.drawArc(r / 2, cx, cy, xDir, yDir, 1, true);
+  }
+  const int inner = r / 2 + 3;
+  const int outer = r + 3;
+  for (int i = 0; i < 8; ++i) {
+    const float angle = static_cast<float>(i) * 3.14159265f / 4.0f;
+    const int x1 = cx + static_cast<int>(std::cos(angle) * inner);
+    const int y1 = cy + static_cast<int>(std::sin(angle) * inner);
+    const int x2 = cx + static_cast<int>(std::cos(angle) * outer);
+    const int y2 = cy + static_cast<int>(std::sin(angle) * outer);
+    renderer.drawLine(x1, y1, x2, y2, true);
+  }
+}
+
+void drawCloud(const GfxRenderer& renderer, int x, int y, int width, int height) {
+  const int h = std::max(8, height);
+  const int radius = std::min(h / 2, width / 4);
+  // Flat base with two rounded humps reads as a cloud at e-paper resolution.
+  renderer.drawRoundedRect(x, y + h / 3, width, h - h / 3, 1, radius, true, true, false, false, true);
+  renderer.drawArc(radius, x + width / 3, y + h / 2 + radius / 2, -1, -1, 1, true);
+  renderer.drawArc(radius, x + 2 * width / 3, y + h / 2 + radius / 2, 1, -1, 1, true);
+  renderer.drawLine(x + 2, y + h, x + width - 2, y + h, true);
+}
+
+void drawRainCloud(const GfxRenderer& renderer, int x, int y, int width, int height) {
+  drawCloud(renderer, x, y, width, height / 2);
+  const int baseY = y + height / 2 + 4;
+  for (int i = 0; i < 3; ++i) {
+    const int dx = x + width * (i + 1) / 4;
+    renderer.drawLine(dx, baseY, dx - 2, baseY + height / 3, true);
+  }
+}
+
+void drawWeatherIcon(const GfxRenderer& renderer, int code, int x, int y, int size) {
+  if (code == 0 || code == 1) {
+    drawSun(renderer, x + size / 2, y + size / 2, size / 4);
+  } else if (code == 2) {
+    drawSun(renderer, x + size * 2 / 3, y + size / 3, size / 6);
+    drawCloud(renderer, x + 2, y + size / 3, size - 4, size * 2 / 3);
+  } else if (code == 3 || code == 45 || code == 48) {
+    drawCloud(renderer, x + 2, y + size / 4, size - 4, size * 3 / 4);
+  } else {
+    drawRainCloud(renderer, x + 2, y + 2, size - 4, size - 4);
+  }
+}
+
+void drawThermometerIcon(const GfxRenderer& renderer, int x, int y, int size) {
+  const int cx = x + size / 3;
+  const int top = y + 2;
+  const int bottom = y + size * 2 / 3;
+  renderer.drawRoundedRect(cx - 2, top, 4, bottom - top, 1, 2, true);
+  renderer.drawArc(size / 5, cx, bottom, -1, -1, 1, true);
+  renderer.drawArc(size / 5, cx, bottom, 1, -1, 1, true);
+  renderer.drawArc(size / 5, cx, bottom, -1, 1, 1, true);
+  renderer.drawArc(size / 5, cx, bottom, 1, 1, 1, true);
+  renderer.drawLine(cx + 3, top + 4, x + size - 2, top + 4, true);
+  renderer.drawLine(cx + 3, top + 10, x + size - 4, top + 10, true);
+}
+
+void drawDropIcon(const GfxRenderer& renderer, int x, int y, int size) {
+  const int cx = x + size / 2;
+  const int r = size / 3;
+  for (int q = 0; q < 4; ++q) {
+    const int xDir = (q == 0 || q == 3) ? -1 : 1;
+    const int yDir = (q < 2) ? -1 : 1;
+    renderer.drawArc(r, cx, y + r + 2, xDir, yDir, 1, true);
+  }
+  renderer.drawLine(cx - r, y + r + 2, cx, y + size - 2, true);
+  renderer.drawLine(cx + r, y + r + 2, cx, y + size - 2, true);
 }
 
 }  // namespace
@@ -216,6 +366,9 @@ void WeatherActivity::loadCache() {
   cache_.valid = true;
   cache_.city = doc["city"] | "";
   cache_.temperature = static_cast<float>(doc["temperature"] | 0.0);
+  cache_.feelsLike = static_cast<float>(doc["feelsLike"] | cache_.temperature);
+  cache_.precipitation = static_cast<float>(doc["precipitation"] | 0.0);
+  cache_.uvIndex = static_cast<float>(doc["uv"] | 0.0);
   cache_.weatherCode = static_cast<int>(doc["code"] | -1);
   cache_.windSpeed = static_cast<float>(doc["wind"] | 0.0);
   const char* observed = doc["observed"] | "";
@@ -230,7 +383,7 @@ void WeatherActivity::loadCache() {
         ++i;
         continue;
       }
-      shortDate(d["date"] | "", cache_.days[i].date, sizeof(cache_.days[i].date));
+      copyIsoDate(d["date"] | "", cache_.days[i].date, sizeof(cache_.days[i].date));
       cache_.days[i].high = static_cast<float>(d["high"] | 0.0);
       cache_.days[i].low = static_cast<float>(d["low"] | 0.0);
       cache_.days[i].code = static_cast<int>(d["code"] | -1);
@@ -243,6 +396,9 @@ void WeatherActivity::saveCache() const {
   JsonDocument doc;
   doc["city"] = cache_.city;
   doc["temperature"] = cache_.temperature;
+  doc["feelsLike"] = cache_.feelsLike;
+  doc["precipitation"] = cache_.precipitation;
+  doc["uv"] = cache_.uvIndex;
   doc["code"] = cache_.weatherCode;
   doc["wind"] = cache_.windSpeed;
   doc["observed"] = cache_.observed;
@@ -340,26 +496,42 @@ bool WeatherActivity::geocodeCity(const std::string& name, Location& out, const 
   return true;
 }
 
-void WeatherActivity::applyForecast(JsonObject current, JsonArray dailyTime, JsonArray dailyMax,
-                                    JsonArray dailyMin, JsonArray dailyCode) {
+void WeatherActivity::applyForecast(JsonObject current, JsonObject daily) {
   cache_.valid = true;
   cache_.city = location_.name;
   if (!current.isNull()) {
     cache_.temperature = static_cast<float>(current["temperature_2m"] | 0.0);
+    cache_.feelsLike = static_cast<float>(current["apparent_temperature"] | cache_.temperature);
     cache_.weatherCode = static_cast<int>(current["weather_code"] | -1);
     cache_.windSpeed = static_cast<float>(current["wind_speed_10m"] | 0.0);
     const char* observed = current["time"] | "";
     snprintf(cache_.observed, sizeof(cache_.observed), "%s", observed);
   }
-  if (!dailyTime.isNull()) {
-    size_t i = 0;
-    for (; i < kForecastDays && i < dailyTime.size(); ++i) {
-      shortDate(dailyTime[i] | "", cache_.days[i].date, sizeof(cache_.days[i].date));
-      cache_.days[i].high = dailyMax.isNull() ? 0.0f : static_cast<float>(dailyMax[i] | 0.0);
-      cache_.days[i].low = dailyMin.isNull() ? 0.0f : static_cast<float>(dailyMin[i] | 0.0);
-      cache_.days[i].code = dailyCode.isNull() ? -1 : static_cast<int>(dailyCode[i] | -1);
+  if (!daily.isNull()) {
+    const JsonArray dailyTime = daily["time"].as<JsonArray>();
+    const JsonArray dailyMax = daily["temperature_2m_max"].as<JsonArray>();
+    const JsonArray dailyMin = daily["temperature_2m_min"].as<JsonArray>();
+    const JsonArray dailyCode = daily["weather_code"].as<JsonArray>();
+    const JsonArray dailyRain = daily["precipitation_probability_max"].as<JsonArray>();
+    const JsonArray dailyUv = daily["uv_index_max"].as<JsonArray>();
+    if (!dailyTime.isNull()) {
+      size_t i = 0;
+      for (; i < kForecastDays && i < dailyTime.size(); ++i) {
+        copyIsoDate(dailyTime[i] | "", cache_.days[i].date, sizeof(cache_.days[i].date));
+        cache_.days[i].high = dailyMax.isNull() ? 0.0f : static_cast<float>(dailyMax[i] | 0.0);
+        cache_.days[i].low = dailyMin.isNull() ? 0.0f : static_cast<float>(dailyMin[i] | 0.0);
+        cache_.days[i].code = dailyCode.isNull() ? -1 : static_cast<int>(dailyCode[i] | -1);
+      }
+      for (; i < kForecastDays; ++i) cache_.days[i] = Day{};
     }
-    for (; i < kForecastDays; ++i) cache_.days[i] = Day{};
+    // "Today" metrics are the first day's daily maxima; Open-Meteo does not
+    // expose them as `current` variables.
+    if (!dailyRain.isNull() && dailyRain.size() > 0) {
+      cache_.precipitation = static_cast<float>(dailyRain[0] | 0.0);
+    }
+    if (!dailyUv.isNull() && dailyUv.size() > 0) {
+      cache_.uvIndex = static_cast<float>(dailyUv[0] | 0.0);
+    }
   }
   saveCache();
 }
@@ -374,8 +546,9 @@ void WeatherActivity::fetchForecast(const bool cityChanged) {
   char url[320];
   snprintf(url, sizeof(url),
            "https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f"
-           "&current=temperature_2m,weather_code,wind_speed_10m"
-           "&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=%d&timezone=auto",
+           "&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m"
+           "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,uv_index_max"
+           "&forecast_days=%d&timezone=auto",
            location_.latitude, location_.longitude, kForecastDays);
 
   auto* client = httpClient();
@@ -405,8 +578,7 @@ void WeatherActivity::fetchForecast(const bool cityChanged) {
     return;
   }
 
-  applyForecast(current, daily["time"].as<JsonArray>(), daily["temperature_2m_max"].as<JsonArray>(),
-                daily["temperature_2m_min"].as<JsonArray>(), daily["weather_code"].as<JsonArray>());
+  applyForecast(current, daily);
   showMessage(cityChanged ? tr(STR_WEATHER_CITY_UPDATED) : tr(STR_WEATHER_UPDATED));
 }
 
@@ -519,71 +691,135 @@ void WeatherActivity::render(RenderLock&&) {
   const int radius = std::min(metrics.optionPopupSelectionRadius, std::min(card.width, card.height) / 2);
   renderer.drawRoundedRect(card.x, card.y, card.width, card.height, 1, radius, true);
 
-  const int pad = std::max(12, metrics.contentSidePadding / 2);
-  const int lineGap = std::max(4, metrics.verticalSpacing / 3);
+  // Layout follows the supplied reference: a titled "today" block, a row of
+  // four metrics, then a five-column week strip -- all separated by hairlines.
+  const int pad = std::max(16, metrics.contentSidePadding / 2);
+  const int lineGap = std::max(6, metrics.verticalSpacing / 2);
+  const int bigFont = NOTOSANS_18_FONT_ID;
+  const int smallFont = NOTOSANS_12_FONT_ID;
+  const int bigLine = renderer.getLineHeight(bigFont);
+  const int smallLine = renderer.getLineHeight(smallFont);
+  const int innerW = card.width - 2 * pad;
+  const auto divider = [&](int yy) { renderer.fillRect(card.x + pad, yy, innerW, 1, true); };
   int y = card.y + pad;
 
-  const char* cityName = location_.name.c_str();
-  int textWidth = renderer.getTextWidth(NOTOSANS_18_FONT_ID, cityName, EpdFontFamily::BOLD);
-  renderer.drawText(NOTOSANS_18_FONT_ID, card.x + (card.width - textWidth) / 2, y, cityName, true, EpdFontFamily::BOLD);
-  y += renderer.getLineHeight(NOTOSANS_18_FONT_ID) + lineGap;
+  renderer.drawText(bigFont, card.x + pad, y, tr(STR_WEATHER_TODAY), true, EpdFontFamily::BOLD);
+  drawSun(renderer, card.x + card.width - pad - 20, y + bigLine / 2, 18);
+  y += bigLine + lineGap;
+  divider(y);
+  y += lineGap + 2;
 
   if (cache_.valid && cache_.city == location_.name) {
-    char buffer[96];
-    snprintf(buffer, sizeof(buffer), tr(STR_WEATHER_TEMP_FORMAT), cache_.temperature);
-    textWidth = renderer.getTextWidth(NOTOSANS_18_FONT_ID, buffer, EpdFontFamily::BOLD);
-    renderer.drawText(NOTOSANS_18_FONT_ID, card.x + (card.width - textWidth) / 2, y, buffer, true,
-                      EpdFontFamily::BOLD);
-    y += renderer.getLineHeight(NOTOSANS_18_FONT_ID) + lineGap;
-
-    const char* description = weatherDescription(cache_.weatherCode);
-    textWidth = renderer.getTextWidth(NOTOSANS_18_FONT_ID, description);
-    renderer.drawText(NOTOSANS_18_FONT_ID, card.x + (card.width - textWidth) / 2, y, description);
-    y += renderer.getLineHeight(NOTOSANS_18_FONT_ID) + lineGap;
-
+    // Today: condition + high/low on the left, a large weather icon on right.
+    const int iconSize = 64;
+    drawWeatherIcon(renderer, cache_.weatherCode, card.x + card.width - pad - iconSize, y, iconSize);
+    renderer.drawText(bigFont, card.x + pad, y, weatherDescription(cache_.weatherCode), true, EpdFontFamily::BOLD);
+    char range[48];
+    snprintf(range, sizeof(range), "%.0f°/%.0f°", cache_.days[0].high, cache_.days[0].low);
+    renderer.drawText(bigFont, card.x + pad, y + bigLine + 4, range, true, EpdFontFamily::BOLD);
     if (cache_.observed[0]) {
-      snprintf(buffer, sizeof(buffer), "%s %s", tr(STR_WEATHER_OBSERVED), cache_.observed);
-      renderer.drawText(NOTOSANS_18_FONT_ID, card.x + pad, y, buffer);
-      y += renderer.getLineHeight(NOTOSANS_18_FONT_ID) + lineGap;
+      char observedLine[96];
+      snprintf(observedLine, sizeof(observedLine), "%s %s", tr(STR_WEATHER_OBSERVED), cache_.observed);
+      drawFittedText(renderer, smallFont, card.x + pad, y + 2 * (bigLine + 4), innerW - iconSize - 12, observedLine);
     }
-    snprintf(buffer, sizeof(buffer), tr(STR_WEATHER_WIND_FORMAT), cache_.windSpeed);
-    char windLine[120];
-    snprintf(windLine, sizeof(windLine), "%s %s", tr(STR_WEATHER_WIND), buffer);
-    renderer.drawText(NOTOSANS_18_FONT_ID, card.x + pad, y, windLine);
-    y += renderer.getLineHeight(NOTOSANS_18_FONT_ID) + lineGap;
+    y += std::max(iconSize, 2 * bigLine + 8 + smallLine) + lineGap;
+    divider(y);
+    y += lineGap + 2;
 
-    // Divider between current conditions and the forecast block.
-    y += lineGap / 2;
-    renderer.fillRect(card.x + pad, y, card.width - pad * 2, 1, true);
-    y += lineGap / 2 + 2;
+    // Four metric cells: chance of rain, feels-like, UV level and advice.
+    const int colW = innerW / 4;
+    const char* labels[4] = {tr(STR_WEATHER_PRECIP), tr(STR_WEATHER_FEELS_LIKE), tr(STR_WEATHER_UV),
+                             tr(STR_WEATHER_ADVICE)};
+    char precipText[24];
+    char feelsText[24];
+    snprintf(precipText, sizeof(precipText), "%.0f%%", cache_.precipitation);
+    snprintf(feelsText, sizeof(feelsText), "%.0f°", cache_.feelsLike);
+    const char* values[4] = {precipText, feelsText, uvLevelName(cache_.uvIndex),
+                             adviceFor(cache_.weatherCode, cache_.precipitation, cache_.uvIndex, cache_.feelsLike)};
+    const int iconBox = 36;
+    const int iconTop = y + smallLine + 4;
+    for (int i = 0; i < 4; ++i) {
+      const int left = card.x + pad + i * colW;
+      const int center = left + colW / 2;
+      drawCenteredFitted(renderer, smallFont, center, y, colW - 8, labels[i]);
+      switch (i) {
+        case 0: drawDropIcon(renderer, center - iconBox / 2, iconTop, iconBox); break;
+        case 1: drawThermometerIcon(renderer, center - iconBox / 2, iconTop, iconBox); break;
+        case 2: drawSun(renderer, center, iconTop + iconBox / 2, iconBox / 3); break;
+        default: drawCloud(renderer, center - iconBox / 2, iconTop + 6, iconBox, iconBox - 8); break;
+      }
+      if (i == 3) {
+        // Advice wraps inside its cell instead of being truncated.
+        std::string advice = values[i];
+        int line = 0;
+        size_t pos = 0;
+        while (pos < advice.size() && line < 2) {
+          size_t take = pos;
+          while (take < advice.size()) {
+            size_t step = 1;
+            const unsigned char c = static_cast<unsigned char>(advice[take]);
+            if ((c & 0xE0) == 0xC0) step = 2;
+            else if ((c & 0xF0) == 0xE0) step = 3;
+            else if ((c & 0xF8) == 0xF0) step = 4;
+            if (take + step > advice.size()) step = 1;
+            if (renderer.getTextWidth(smallFont, advice.substr(pos, take + step - pos).c_str()) > colW - 10) break;
+            take += step;
+          }
+          if (take == pos) take = std::min(advice.size(), pos + 1);
+          drawFittedText(renderer, smallFont, left + 5, iconTop + iconBox + 4 + line * (smallLine + 2),
+                         colW - 10, advice.substr(pos, take - pos).c_str());
+          pos = take;
+          ++line;
+        }
+      } else {
+        drawCenteredFitted(renderer, bigFont, center, iconTop + iconBox + 4, colW - 8, values[i], true,
+                           EpdFontFamily::BOLD);
+      }
+      if (i > 0) renderer.fillRect(left, y, 1, iconBox + smallLine + bigLine + lineGap, true);
+    }
+    y += smallLine + 4 + iconBox + 4 + 2 * bigLine + lineGap;
+    divider(y);
+    y += lineGap + 2;
 
-    // 5-day forecast, three aligned columns: date | condition | high/low.
-    // Condition reuses weatherDescription() so both languages are covered;
-    // the temperature range is universal symbols, no translation needed.
-    const int rowFont = NOTOSANS_16_FONT_ID;
-    const int rowHeight = renderer.getLineHeight(rowFont);
-    const int dateX = card.x + pad;
-    const int condX = dateX + renderer.getTextWidth(rowFont, "00-00") + pad;
-    const int tempRight = card.x + card.width - pad;
+    // Five-day strip: weekday / line-art icon / condition / high-low.
+    renderer.drawText(bigFont, card.x + pad, y, tr(STR_WEATHER_NEXT_FIVE), true, EpdFontFamily::BOLD);
+    y += bigLine + lineGap;
+    divider(y);
+    y += lineGap + 2;
+
+    const int dayW = innerW / kForecastDays;
+    const int dayIcon = 40;
+    int todayWday = weekdayFromIso(cache_.days[0].date);
+    if (todayWday < 0) {
+      const time_t now = time(nullptr);
+      const struct tm* local = localtime(&now);
+      todayWday = local ? local->tm_wday : 0;
+    }
     for (int i = 0; i < kForecastDays && cache_.days[i].date[0]; ++i) {
-      renderer.drawText(rowFont, dateX, y, cache_.days[i].date);
-      renderer.drawText(rowFont, condX, y, weatherDescription(cache_.days[i].code));
-      char range[32];
-      snprintf(range, sizeof(range), "%.0f° / %.0f°", cache_.days[i].high, cache_.days[i].low);
-      renderer.drawText(rowFont, tempRight - renderer.getTextWidth(rowFont, range), y, range);
-      y += rowHeight + lineGap;
+      const int left = card.x + pad + i * dayW;
+      const int center = left + dayW / 2;
+      int wday = weekdayFromIso(cache_.days[i].date);
+      if (wday < 0) wday = (todayWday + i) % 7;
+      drawCenteredFitted(renderer, bigFont, center, y, dayW - 8, weekdayName(wday), true, EpdFontFamily::BOLD);
+      drawWeatherIcon(renderer, cache_.days[i].code, center - dayIcon / 2, y + bigLine + 6, dayIcon);
+      drawCenteredFitted(renderer, smallFont, center, y + bigLine + 6 + dayIcon + 4, dayW - 8,
+                         weatherDescription(cache_.days[i].code));
+      char dayRange[32];
+      snprintf(dayRange, sizeof(dayRange), "%.0f°/%.0f°", cache_.days[i].high, cache_.days[i].low);
+      drawCenteredFitted(renderer, smallFont, center, y + bigLine + 6 + dayIcon + 4 + smallLine + 2, dayW - 8,
+                         dayRange);
+      if (i > 0) renderer.fillRect(left, y, 1, bigLine + 6 + dayIcon + 4 + smallLine + smallLine + 8, true);
     }
   } else {
     const char* noData = tr(STR_WEATHER_NO_DATA);
-    textWidth = renderer.getTextWidth(NOTOSANS_18_FONT_ID, noData);
-    renderer.drawText(NOTOSANS_18_FONT_ID, card.x + (card.width - textWidth) / 2,
-                      y + renderer.getLineHeight(NOTOSANS_18_FONT_ID), noData);
+    const int textWidth = renderer.getTextWidth(bigFont, noData);
+    renderer.drawText(bigFont, card.x + (card.width - textWidth) / 2, y + bigLine, noData);
   }
 
   if (message_ && millis() < messageUntil_) {
-    textWidth = renderer.getTextWidth(NOTOSANS_18_FONT_ID, message_);
-    renderer.drawText(NOTOSANS_18_FONT_ID, card.x + (card.width - textWidth) / 2,
-                      card.y + card.height - pad - renderer.getLineHeight(NOTOSANS_18_FONT_ID), message_);
+    const int textWidth = renderer.getTextWidth(smallFont, message_);
+    renderer.drawText(smallFont, card.x + (card.width - textWidth) / 2,
+                      card.y + card.height - pad - smallLine, message_);
   }
 
   const int buttonRadius = std::min(metrics.optionPopupSelectionRadius,
