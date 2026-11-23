@@ -21,7 +21,7 @@ class RickyHomeUi final : public UiAppHost {
   int coverHeight() const { return thumbnailHeight; }
   static constexpr int LIBRARY = -3;
   static constexpr int STATISTICS = -4;
-  static constexpr int BANNER = -5;  // tap the banner to edit its picture / phrase
+  static constexpr int BANNER = -5;  // LONG-press the banner to edit picture / phrase
 
  private:
   static void screenFn(UiScreen& screen, void* user);

@@ -176,30 +176,47 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
   }
 }
 
-// Every app sits on a rounded-square tile (the Settings cards' corner language) so the
-// grid reads as apps rather than loose glyphs; the selected one is filled with the icon
-// knocked out, like the selected tab.
-constexpr int kAppTileSize = 112;
-constexpr int kAppTileRadius = 28;
-constexpr int kAppTileStroke = 3;
-constexpr int kAppPillWidth = kAppTileSize;  // the tile's footprint in the cell layout
-constexpr int kAppPillHeight = kAppTileSize;
+// Reference style: a clean 3x4 ruled grid (thin gray dividers), each cell a
+// bare black line icon over its label — no rounded-square tile, no heavy black
+// selection block. The selected cell gets only a soft light-gray capsule behind
+// the icon so direction-key navigation still has feedback without breaking the
+// minimal look.
+constexpr int kAppHaloSize = kRickyAppIconSize + 16;   // 72px soft selection halo
+constexpr int kAppHaloRadius = kAppHaloSize / 2;
 
 void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const bool selected) {
-  const int tileX = x + (kRickyAppIconSize - kAppTileSize) / 2;
-  const int tileY = y + (kRickyAppIconSize - kAppTileSize) / 2;
   if (selected) {
-    renderer.fillRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileRadius, Color::Black);
-  } else {
-    renderer.drawRoundedRect(tileX, tileY, kAppTileSize, kAppTileSize, kAppTileStroke, kAppTileRadius, true);
+    const int haloX = x + (kRickyAppIconSize - kAppHaloSize) / 2;
+    const int haloY = y + (kRickyAppIconSize - kAppHaloSize) / 2;
+    renderer.fillRoundedRect(haloX, haloY, kAppHaloSize, kAppHaloSize, kAppHaloRadius, Color::LightGray);
   }
-  if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, !selected)) return;
+  // Icons are pure black line art in the reference; keep them black on either
+  // state (the light halo, not a knockout, marks selection).
+  if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, true)) return;
   constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;
   for (int row = 0; row < kRickyAppIconSize; ++row) {
     for (int column = 0; column < kRickyAppIconSize; ++column) {
       if ((icon[row * rowBytes + column / 8] & (0x80U >> (column % 8))) == 0)
-        renderer.drawPixel(x + column, y + row, !selected);
+        renderer.drawPixel(x + column, y + row, true);
     }
+  }
+}
+
+// Draw the ruled 3x4 grid: one thin outer frame plus internal dividers,
+// matching the reference's plain table (no gaps, no rounded tiles). A 1px ink
+// line is the cleanest divider on e-paper and reads like the reference's hairline.
+void drawAppGridRules(const GfxRenderer& renderer, const Rect& rect) {
+  const int right = rect.x + rect.width;
+  const int bottom = rect.y + rect.height;
+  renderer.drawRect(rect.x, rect.y, rect.width, rect.height, 1, true);
+  for (int c = 1; c < InxGridGeometry::columns; ++c) {
+    const int x = rect.x + c * rect.width / InxGridGeometry::columns;
+    renderer.drawLine(x, rect.y, x, bottom, 1, true);
+  }
+  const int rowsDrawn = std::min(InxGridGeometry::rows, 4);
+  for (int r = 1; r < rowsDrawn; ++r) {
+    const int y = rect.y + r * rect.height / rowsDrawn;
+    renderer.drawLine(rect.x, y, right, y, 1, true);
   }
 }
 }  // namespace
@@ -340,6 +357,10 @@ bool AppsMenuActivity::handleCustomInput() {
 void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, const bool showSelection) const {
   const int start = InxGridGeometry::pageStart(nav.selected, visibleCount);
   const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
+#ifdef RICKYOS_PRODUCT
+  // Reference style: a plain ruled 3x4 table drawn behind the icons.
+  drawAppGridRules(renderer, rect);
+#endif
 
   for (int slot = 0; slot < InxGridGeometry::itemsPerPage && start + slot < visibleCount; ++slot) {
     const int visibleIndex = start + slot;
@@ -353,13 +374,15 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
     const int labelX = cell.x + (cell.width - renderer.getTextWidth(UI_10_FONT_ID, label.c_str())) / 2;
 #ifdef RICKYOS_PRODUCT
     if (const uint8_t* icon = rickyAppIcon(kAppEntries[appIndex].icon)) {
-      // Lay out the capsule's height so a selected tile never crowds its label.
-      constexpr int labelGap = 12;
-      const int blockTop = cell.y + std::max(8, (cell.height - kAppPillHeight - labelGap - lineHeight) / 2);
+      // Center the icon + label as one block inside the cell so a short grid
+      // never pushes the label past the row divider. The soft halo is drawn
+      // around the icon center by drawRickyAppIcon.
+      constexpr int labelGap = 6;
+      const int blockHeight = kRickyAppIconSize + labelGap + lineHeight;
+      const int blockTop = cell.y + std::max(2, (cell.height - blockHeight) / 2);
       const int iconX = cell.x + (cell.width - kRickyAppIconSize) / 2;
-      const int iconY = blockTop + (kAppPillHeight - kRickyAppIconSize) / 2;
-      drawRickyAppIcon(renderer, icon, iconX, iconY, isSelected);
-      renderer.drawText(UI_10_FONT_ID, labelX, blockTop + kAppPillHeight + labelGap, label.c_str(), true);
+      drawRickyAppIcon(renderer, icon, iconX, blockTop, isSelected);
+      renderer.drawText(UI_10_FONT_ID, labelX, blockTop + kRickyAppIconSize + labelGap, label.c_str(), true);
       continue;
     }
 #endif

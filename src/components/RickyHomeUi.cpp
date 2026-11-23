@@ -71,7 +71,11 @@ void RickyHomeUi::onAction(const fui::ActionEvent& event, void* user) {
 
 int RickyHomeUi::selectedAction(const MappedInputManager& input) {
   pending = -1;
-  const auto touch = routeTouch(input);
+  // Banner editing and the reading calendar are long-press only (see the
+  // InputLongPress hits below) so a stray tap on the home page can never open
+  // an editor. Forward long-press snapshots to the interaction table; normal
+  // taps still route through InputTouch exactly as before.
+  const auto touch = routeTouch(input, /*withLongPress=*/true);
   return touch.snap.touchReleased ? pending : -1;
 }
 
@@ -316,7 +320,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   }
   gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
   target.fill(fui::Rect{banner.x, static_cast<int16_t>(banner.bottom() - 1), banner.width, 1}, black);
-  screen.frame().hit(banner, OPEN_BOOK, BANNER, fui::InputTouch);
+  // Long-press only: a single tap on the banner must not open the editor.
+  screen.frame().hit(banner, OPEN_BOOK, BANNER, fui::InputLongPress);
 
   // ---- Reading record: a real month calendar that follows the current date. ----
   const int calYear = dated ? local.tm_year + 1900 : 0;
@@ -415,7 +420,8 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       target.text(fui::Rect{box.x, box.y, box.width, static_cast<int16_t>(smallHeight)}, dayText, dayStyle);
     }
   }
-  screen.frame().hit(record, OPEN_BOOK, STATISTICS, fui::InputTouch);
+  // Long-press only: opening the calendar/stats is deliberate, never a stray tap.
+  screen.frame().hit(record, OPEN_BOOK, STATISTICS, fui::InputLongPress);
 
   // ---- Footer: left "now reading" (books[0]) | right paged "recently read". ----
   // The calendar's last row can sit visually tight against the section label.
