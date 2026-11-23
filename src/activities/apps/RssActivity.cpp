@@ -468,7 +468,9 @@ int RssActivity::listTop() const {
 // Draws one card-style row: outlined rounded card, bold title, subtle
 // subtitle, and a pill showing the date at the right edge (blank if none).
 void RssActivity::drawCardRow(const Rect& r, const Row& row, bool selected) {
-  bool black = false;
+  // `black` is the text colour: true = dark glyphs (on a light card),
+  // false = light glyphs (on the filled selection background).
+  bool black = true;
   if (selected) {
     black = GUI.drawSelectionBackground(renderer, r);
   } else {
@@ -492,7 +494,10 @@ void RssActivity::drawCardRow(const Rect& r, const Row& row, bool selected) {
   renderer.drawText(NOTOSANS_16_FONT_ID, innerX, textTop + titleLine, row.subtitle.c_str(), black);
   if (!row.date.empty() && dateW > 0) {
     const Rect pill{r.x + r.width - dateW - 10, textTop + 2, dateW, subLine + 4};
-    renderer.fillRoundedRect(pill.x, pill.y, pill.width, pill.height, pill.height / 2, black ? Color::White : Color::Black);
+    // On a light card the pill is dark with light text; on a filled selection
+    // the pill is light with dark text -- always the inverse of the card.
+    renderer.fillRoundedRect(pill.x, pill.y, pill.width, pill.height, pill.height / 2,
+                             black ? Color::Black : Color::White);
     renderer.drawText(UI_10_FONT_ID, pill.x + 8, pill.y + 2, row.date.c_str(), !black);
   }
 }
