@@ -128,6 +128,12 @@ static_assert(visibleAppCount(effectiveHiddenMask(0, true)) == kAppCount,
 static_assert(appIndexForVisibleIndex(appBit(kAppEntries[1].id), 1) == 2,
               "visible indices must skip a hidden middle app");
 
+// The apps menu is recreated on every return (goToApps replaces the activity),
+// and UiListActivity::onEnter() resets the cursor to 0. Remember the last tile
+// the user actually opened so returning selects that app instead of always
+// landing on index 0 ("File transfer").
+int gLastOpenedVisibleApp = -1;
+
 }  // namespace
 
 #ifdef RICKYOS_PRODUCT
@@ -234,6 +240,16 @@ int AppsMenuActivity::getAppIndexForVisibleIndex(const int visibleIndex) {
 void AppsMenuActivity::onEnter() {
   UiListActivity::onEnter();
   rebuildRowItems();
+  // UiListActivity::onEnter() reset the cursor to 0; restore the app the user
+  // last opened so the grid no longer highlights "File transfer" every time.
+  const int count = getVisibleAppCount();
+  if (count <= 0) return;
+  if (gLastOpenedVisibleApp >= 0 && gLastOpenedVisibleApp < count) {
+    nav.selected = gLastOpenedVisibleApp;
+    nav.follow(count);  // pull the viewport to the restored page
+  } else {
+    gLastOpenedVisibleApp = nav.selected;
+  }
 }
 
 void AppsMenuActivity::rebuildRowItems() {
@@ -272,6 +288,7 @@ int AppsMenuActivity::iconIndexFromPoint(const int x, const int y) const {
 
 void AppsMenuActivity::openSelected() {
   const int appIndex = getAppIndexForVisibleIndex(nav.selected);
+  if (appIndex >= 0) gLastOpenedVisibleApp = nav.selected;
   if (appIndex >= 0) (activityManager.*kAppEntries[appIndex].open)();
 }
 
