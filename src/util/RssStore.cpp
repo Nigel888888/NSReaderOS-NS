@@ -371,6 +371,7 @@ bool RssStore::loadArticles(std::vector<Article>& articles) {
     a.bodyFile = v["file"] | "";
     a.timestamp = static_cast<uint32_t>(v["ts"] | 0);
     a.feedIndex = static_cast<int>(v["fi"] | -1);
+    a.favorite = static_cast<bool>(v["fav"] | false);
     if (a.guid.empty() || a.bodyFile.empty()) continue;
     articles.push_back(std::move(a));
     if (articles.size() >= MAX_ARTICLES) break;
@@ -391,10 +392,21 @@ bool RssStore::saveArticles(const std::vector<Article>& articles) {
     o["file"] = a.bodyFile;
     o["ts"] = a.timestamp;
     o["fi"] = a.feedIndex;
+    o["fav"] = a.favorite;
   }
   String out;
   serializeJson(doc, out);
   return Storage.writeFile(ARTICLES_PATH, out);
+}
+
+bool RssStore::toggleFavorite(std::vector<Article>& articles, const std::string& guid) {
+  for (Article& a : articles) {
+    if (a.guid == guid) {
+      a.favorite = !a.favorite;
+      return saveArticles(articles);
+    }
+  }
+  return false;
 }
 
 bool RssStore::loadBody(const Article& article, std::string& body) {

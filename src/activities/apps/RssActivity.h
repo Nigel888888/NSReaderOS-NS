@@ -10,15 +10,22 @@
 #include "components/Rect.h"
 #include "util/RssStore.h"
 
-// Offline RSS reader. One activity hosts three views:
-//   Articles : the cached article list (newest first), with Update / Feeds buttons.
-//   Feeds    : subscription management (add via keyboard, remove, per-feed update).
-//   Article  : paged plain-text reading of one cached article.
+// Vocabulary RSS reader, styled after the redesigned phone screen:
+//   - a titled header with a star (toggle favorite) action
+//   - a three-way segmented tab: Updates / Feeds / Favorites
+//   - card-style rows (bold title, subtitle, date pill at the right edge)
+//   - a bottom action bar: Update / Add feed / Manage
 //
-// Networking runs strictly in loop(), off the render task. A Phase state machine
-// keeps each fetch on its own loop turn so the render task can paint the busy
-// notice and the loop task can feed its watchdog. All drawing is in render()
-// while holding RenderLock. This mirrors the weather app's proven structure.
+// Three views share one set of rows:
+//   Updates   : all cached articles, newest first
+//   Feeds     : subscription management (add via keyboard, tap to remove)
+//   Favorites : articles starred by the user
+//   Article   : paged plain-text reading of one cached article (no tabs/bar)
+//
+// Networking runs strictly in loop(), off the render task. A Phase state
+// machine keeps each fetch on its own loop turn so the render task can paint
+// the busy notice and the loop task can feed its watchdog. All drawing is in
+// render() while holding RenderLock. This mirrors the weather app's structure.
 class RssActivity final : public Activity {
  public:
   RssActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);
@@ -29,7 +36,7 @@ class RssActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  enum class View : uint8_t { Articles, Feeds, Article };
+  enum class View : uint8_t { Updates, Feeds, Favorites, Article };
   enum class Phase : uint8_t {
     Idle,
     FetchRequested,   // start next feed on the following turn
@@ -39,18 +46,27 @@ class RssActivity final : public Activity {
   struct Row {
     std::string title;
     std::string subtitle;
+    std::string date;  // date pill, empty hides the pill
+    bool favorite = false;
+    std::string favoriteGuid;  // article guid, so Favorites rows can be opened
   };
 
   void loadArticles();
   void loadFeeds();
-  void rebuildArticleRows();
+  void rebuildUpdateRows();
+  void rebuildFavoriteRows();
   void rebuildFeedRows();
 
   void drawArticleList();
   void drawFeedList();
   void drawArticleBody();
-  void drawHeaderAndButtons(const char* title);
+  void drawHeaderAndTabs(const char* title, bool showStar);
+  void drawTabs();
+  void drawBottomBar(bool onFeeds);
+  int listTop() const;
+  void drawCardRow(const Rect& r, const Row& row, bool selected);
   void drawMessage();
+  void selectTab(View target);
 
   void updateAll();
   void beginFetch();
@@ -59,15 +75,17 @@ class RssActivity final : public Activity {
 
   void addFeed();
   void removeSelectedFeed();
+  void toggleCurrentFavorite();
   void openArticle(int index);
   void scrollBody(int lines);
   void wrapBodyLines();
 
-  View view = View::Articles;
+  View view = View::Updates;
   Phase phase = Phase::Idle;
   int selected = 0;
-  int articlesSelected = 0;
+  int updatesSelected = 0;
   int feedsSelected = 0;
+  int favoritesSelected = 0;
 
   std::vector<RssStore::Article> articles;
   std::vector<RssStore::Feed> feeds;
@@ -82,10 +100,13 @@ class RssActivity final : public Activity {
   std::string bodyText;
   std::vector<std::string> bodyLines;
   int bodyLine = 0;
+  std::string openGuid;  // guid of the article being read, for the star action
 
+  Rect tabRects[3]{};
+  Rect starButton{0, 0, 0, 0};
   Rect updateButton{0, 0, 0, 0};
-  Rect feedsButton{0, 0, 0, 0};
   Rect addButton{0, 0, 0, 0};
+  Rect manageButton{0, 0, 0, 0};
   Rect backButton{0, 0, 0, 0};
   Rect listBounds{0, 0, 0, 0};
   int rowHeight = 0;

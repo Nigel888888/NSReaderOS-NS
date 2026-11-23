@@ -26,25 +26,14 @@ namespace {
 // Hold time on Confirm that opens the delete confirmation.
 constexpr unsigned long ENTER_ACTIONS_MODE_MS = 700;
 
-// The dashboard above the list: two compact solid cards. Each puts the label
-// and its number on one row (label first, count after) in white on black.
-constexpr int STATS_CARD_HEIGHT = 64;
+// The segmented capsule splits the counter band into two equal halves.
 constexpr int STATS_CARD_GAP = 12;
-constexpr int STATS_CARD_RADIUS = 6;
 constexpr int STATS_ICON_SIZE = 24;
 constexpr int STATS_ICON_PAD = 10;
-// Corner radius of the counter cards.
-// The review button under the counters. Enlarged for the high-DPI Read Pico
-// panel: the old 44/40 px bars were hard to see and to hit.
-constexpr int REVIEW_BUTTON_HEIGHT = 64;
-constexpr int REVIEW_BUTTON_GAP = 12;
-// The Anki export button, beneath the review button.
-constexpr int EXPORT_BUTTON_HEIGHT = 60;
-constexpr int EXPORT_BUTTON_GAP = 10;
 // How long the export result stays on the button.
 constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
 // The font the counters are drawn in. One step smaller so the label + number
-// sit comfortably inside the card and read as a compact statistic.
+// sit comfortably inside the capsule and read as a compact statistic.
 constexpr int STATS_FONT_ID = NOTOSANS_16_FONT_ID;
 // Section label above the list ("我的生词"), with the total written right
 // after the text (not right-aligned) and generous space above/below.
@@ -52,6 +41,13 @@ constexpr int SECTION_LABEL_HEIGHT = 30;
 constexpr int SECTION_LABEL_GAP = 24;
 // Extra breathing room between the button band and the section label row.
 constexpr int BAND_TO_SECTION_GAP = 16;
+// Minimal-style dashboard: a segmented counter capsule plus a 2x2 action grid
+// (Start review / Export Anki / Manage words / Sort order). Management and
+// sorting sit right beside Review and Export, as requested.
+constexpr int CAPSULE_HEIGHT = 56;
+constexpr int CAPSULE_GAP = 14;
+constexpr int ACTION_BUTTON_HEIGHT = 58;
+constexpr int ACTION_BUTTON_GAP = 12;
 
 }  // namespace
 
@@ -415,34 +411,46 @@ void VocabularyActivity::startReview() {
   });
 }
 
-// Draws the two counters and the review button above the list.
+// Draws the segmented counter capsule and the 2x2 action grid above the list.
+// The layout mirrors the redesigned phone mock-up: a single rounded capsule
+// split into "collected / due" halves, then four side-by-side actions where
+// Manage words and Sort order sit next to Start review and Export Anki.
 void VocabularyActivity::drawStatsBand(const Rect& band) {
-  // The band is drawn straight to the renderer, before the list is built, so
-  // any clip a previous screen left behind has to go: otherwise the counters
-  // would silently be drawn outside it.
   renderer.clearClipRect();
   const int cardWidth = (band.width - STATS_CARD_GAP) / 2;
   if (cardWidth <= 0 || band.height <= 0) {
     return;
   }
-  // Left: how many words the notebook holds.
-  drawCounterCard(Rect{band.x, band.y, cardWidth, STATS_CARD_HEIGHT}, static_cast<int>(entries.size()),
-                  tr(STR_VOCABULARY_SAVED), Book24Icon);
-  // Right: how many of them are due for review.
-  drawCounterCard(Rect{band.x + cardWidth + STATS_CARD_GAP, band.y, cardWidth, STATS_CARD_HEIGHT}, dueCount,
-                  tr(STR_VOCABULARY_TO_REVIEW), BookmarkIcon);
 
-  // The button under the counters starts the session. Its box is remembered
-  // so the tap can be hit-tested outside the list.
-  const Rect button{band.x, band.y + STATS_CARD_HEIGHT + REVIEW_BUTTON_GAP, band.width, REVIEW_BUTTON_HEIGHT};
-  reviewButton = button;
-  // Active style: a filled black bar, the primary action on this screen.
-  GUI.drawActionButton(renderer, button, reviewLabel.c_str(), true);
+  // One capsule outline with a divider down the middle. The selected half is
+  // filled black, the other stays white -- the same segmented look as the
+  // reference screenshot. The counters are informational (not tabs), so the
+  // "collected" half is the highlighted default.
+  const int capsuleRadius = CAPSULE_HEIGHT / 2;
+  renderer.drawRoundedRect(band.x, band.y, band.width, CAPSULE_HEIGHT, 2, capsuleRadius, true);
+  renderer.drawLine(band.x + cardWidth + STATS_CARD_GAP / 2, band.y + 8,
+                    band.x + cardWidth + STATS_CARD_GAP / 2, band.y + CAPSULE_HEIGHT - 8, 2, true);
+  // Left half: collected count. Filled (selected) pill -> white text.
+  renderer.fillRoundedRect(band.x + 1, band.y + 1, cardWidth - 2, CAPSULE_HEIGHT - 2, capsuleRadius - 1, Color::Black);
+  drawCounterCard(Rect{band.x + 1, band.y + 1, cardWidth - 2, CAPSULE_HEIGHT - 2},
+                  static_cast<int>(entries.size()), tr(STR_VOCABULARY_SAVED), nullptr, /*whiteText=*/true);
+  // Right half: due count. White pill, dark text.
+  drawCounterCard(Rect{band.x + cardWidth + STATS_CARD_GAP - 1, band.y + 1, cardWidth - 2, CAPSULE_HEIGHT - 2},
+                  dueCount, tr(STR_VOCABULARY_TO_REVIEW), nullptr, /*whiteText=*/false);
 
-  // Export to Anki: outlined (secondary), with the last result shown in place
-  // of the label for a few seconds.
-  const Rect exportRect{band.x, button.y + REVIEW_BUTTON_HEIGHT + EXPORT_BUTTON_GAP, band.width, EXPORT_BUTTON_HEIGHT};
-  exportButton = exportRect;
+  // 2x2 action grid. Row 1: Start review (primary, filled) + Export Anki
+  // (secondary, outlined). Row 2: Manage words + Sort order (both outlined;
+  // Manage shows filled while its mode is active).
+  const int gridY = band.y + CAPSULE_HEIGHT + CAPSULE_GAP;
+  const int halfW = (band.width - ACTION_BUTTON_GAP) / 2;
+  const int row2Y = gridY + ACTION_BUTTON_HEIGHT + ACTION_BUTTON_GAP;
+  reviewButton = Rect{band.x, gridY, halfW, ACTION_BUTTON_HEIGHT};
+  exportButton = Rect{band.x + halfW + ACTION_BUTTON_GAP, gridY, halfW, ACTION_BUTTON_HEIGHT};
+  manageButton = Rect{band.x, row2Y, halfW, ACTION_BUTTON_HEIGHT};
+  sortButton = Rect{band.x + halfW + ACTION_BUTTON_GAP, row2Y, halfW, ACTION_BUTTON_HEIGHT};
+
+  GUI.drawActionButton(renderer, reviewButton, reviewLabel.c_str(), true);
+
   const char* exportText = tr(STR_VOCABULARY_EXPORT_ANKI);
   if (!exportMessage.empty() && static_cast<long>(millis() - exportMessageUntil) >= 0) {
     exportMessage.clear();
@@ -450,36 +458,46 @@ void VocabularyActivity::drawStatsBand(const Rect& band) {
   if (!exportMessage.empty()) {
     exportText = exportMessage.c_str();
   }
-  GUI.drawActionButton(renderer, exportRect, exportText, false);
+  GUI.drawActionButton(renderer, exportButton, exportText, false);
+
+  const char* manageText = manageMode ? tr(STR_VOCABULARY_DONE) : tr(STR_VOCABULARY_MANAGE);
+  GUI.drawActionButton(renderer, manageButton, manageText, manageMode);
+  const char* sortText = sortOrder == 0 ? tr(STR_VOCAB_SORT_NEWEST) : tr(STR_VOCAB_SORT_OLDEST);
+  GUI.drawActionButton(renderer, sortButton, sortText, false);
 }
 
-// One compact counter card: solid black background, white icon, and the label
-// followed by its count on a single row -- label first, number after.
-void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, const char* label, const uint8_t* icon) {
+// One counter half inside the capsule: label then count, centred as one row.
+// `whiteText` selects white-on-black for the filled half, black-on-white for
+// the empty half. `icon` is unused in the capsule layout but kept optional.
+void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, const char* label, const uint8_t* icon,
+                                         const bool whiteText) {
   if (rect.width <= 0 || rect.height <= 0 || !label) {
     return;
   }
   renderer.clearClipRect();
-  // Solid black card: drawRoundedRect only strokes an outline (white inside),
-  // which left white boxes with white text that looked empty. Fill it instead.
-  renderer.fillRoundedRect(rect.x, rect.y, rect.width, rect.height, STATS_CARD_RADIUS, Color::Black);
 
-  int textX = rect.x + STATS_ICON_PAD;
-  // Vertically centre the single "label + number" row inside the card.
-  const int lineHeight = renderer.getLineHeight(STATS_FONT_ID);
-  const int baseline = rect.y + (rect.height - lineHeight) / 2;
-  // White icon on the black fill.
-  if (icon) {
-    renderer.drawIconInverted(icon, textX, rect.y + (rect.height - STATS_ICON_SIZE) / 2, STATS_ICON_SIZE);
-    textX += STATS_ICON_SIZE + STATS_ICON_PAD / 2;
-  }
-  // Label first, in white.
-  renderer.drawText(STATS_FONT_ID, textX, baseline, label, /*black=*/false, EpdFontFamily::BOLD);
-  textX += renderer.getTextWidth(STATS_FONT_ID, label, EpdFontFamily::BOLD) + STATS_ICON_PAD / 2;
-  // Count right after the label, also white.
+  // Compose "LABEL count" so the pair can be centred as a unit.
   char number[16];
   std::snprintf(number, sizeof(number), "%d", value);
-  renderer.drawText(STATS_FONT_ID, textX, baseline, number, /*black=*/false, EpdFontFamily::BOLD);
+  const int pad = icon ? STATS_ICON_PAD : 0;
+  const int iconW = icon ? STATS_ICON_SIZE + STATS_ICON_PAD / 2 : 0;
+  const int labelW = renderer.getTextWidth(STATS_FONT_ID, label, EpdFontFamily::BOLD);
+  const int numberW = renderer.getTextWidth(STATS_FONT_ID, number, EpdFontFamily::BOLD);
+  const int gap = STATS_ICON_PAD / 2;
+  const int textW = iconW + labelW + gap + numberW;
+  int textX = rect.x + std::max<int>(pad, (rect.width - textW) / 2);
+
+  const int lineHeight = renderer.getLineHeight(STATS_FONT_ID);
+  const int baseline = rect.y + (rect.height - lineHeight) / 2;
+  if (icon) {
+    if (whiteText) {
+      renderer.drawIconInverted(icon, textX, rect.y + (rect.height - STATS_ICON_SIZE) / 2, STATS_ICON_SIZE);
+    }
+    textX += iconW;
+  }
+  renderer.drawText(STATS_FONT_ID, textX, baseline, label, !whiteText, EpdFontFamily::BOLD);
+  textX += labelW + gap;
+  renderer.drawText(STATS_FONT_ID, textX, baseline, number, !whiteText, EpdFontFamily::BOLD);
 }
 
 // Section label: the caption with the total written immediately after it in
@@ -505,10 +523,9 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(renderer.getScreenWidth() - (safe.x + safe.width)),
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
 
-  // The counters and the two action buttons come first: they take the top of
-  // the content area, the list takes what is left.
-  const int bandHeight =
-      STATS_CARD_HEIGHT + REVIEW_BUTTON_GAP + REVIEW_BUTTON_HEIGHT + EXPORT_BUTTON_GAP + EXPORT_BUTTON_HEIGHT;
+  // The counter capsule and the 2x2 action grid come first: they take the top
+  // of the content area, the list takes what is left.
+  const int bandHeight = CAPSULE_HEIGHT + CAPSULE_GAP + ACTION_BUTTON_HEIGHT * 2 + ACTION_BUTTON_GAP;
   const fui::Rect band = screen.takeTop(static_cast<int16_t>(bandHeight));
   drawStatsBand(Rect{band.x, band.y, band.width, band.height});
 
@@ -521,23 +538,12 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
     return;
   }
 
-  // Section caption with the total right after the text. Two small buttons on
-  // the right edge: the sort toggle and the manage-mode toggle. Manage mode is
-  // the reliable tap-based delete path (checkbox each row -> Select all /
-  // Delete selected in the bottom bar). Its entry button had been zeroed out in
-  // an earlier pass, which made the whole checkbox flow unreachable.
+  // Section caption with the total right after the text. The Manage and Sort
+  // buttons now live in the 2x2 action grid above (see drawStatsBand); this
+  // row is just the list's label, matching the minimal reference layout.
   const fui::Rect labelBand = screen.takeTop(static_cast<int16_t>(SECTION_LABEL_HEIGHT));
   drawSectionLabel(Rect{labelBand.x, labelBand.y, labelBand.width, labelBand.height}, tr(STR_VOC_SECTION_WORDS),
                    static_cast<int>(entries.size()));
-  const char* sortText = sortOrder == 0 ? tr(STR_VOCAB_SORT_NEWEST) : tr(STR_VOCAB_SORT_OLDEST);
-  const int sortW = renderer.getTextWidth(SMALL_FONT_ID, sortText) + 16;
-  sortButton = Rect{labelBand.x + labelBand.width - sortW, labelBand.y, sortW, labelBand.height};
-  const char* manageText = manageMode ? tr(STR_VOCABULARY_DONE) : tr(STR_VOCABULARY_MANAGE);
-  const int manageW = renderer.getTextWidth(SMALL_FONT_ID, manageText) + 16;
-  constexpr int BUTTON_GAP = 8;
-  manageButton = Rect{sortButton.x - BUTTON_GAP - manageW, labelBand.y, manageW, labelBand.height};
-  GUI.drawActionButton(renderer, sortButton, sortText, false);
-  GUI.drawActionButton(renderer, manageButton, manageText, manageMode);
   screen.spacer(static_cast<int16_t>(SECTION_LABEL_GAP));
 
   if (manageMode) {

@@ -17,11 +17,20 @@
 #include "components/icons/book24.h"
 #include "components/icons/bookmark.h"
 #include "fontIds.h"
+#include "util/TimeUtils.h"
 
 namespace fui = freeink::ui;
 
 namespace {
 constexpr int ROW_ICON_SIZE = 32;
+// Short YYYY-MM-DD stamp shown under each saved sentence, as in the redesign.
+std::string quoteDate(const uint32_t epochSeconds) {
+  std::tm local{};
+  if (epochSeconds == 0 || !TimeUtils::getLocalDateTime(epochSeconds, local)) return std::string();
+  char buf[16];
+  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", local.tm_year + 1900, local.tm_mon + 1, local.tm_mday);
+  return std::string(buf);
+}
 constexpr int COUNTER_HEIGHT = 34;
 // Export-to-Clippings button under the counter band. High-DPI friendly size,
 // matching the secondary button treatment in VocabularyActivity.
@@ -129,7 +138,9 @@ void QuotesActivity::rebuildRows() {
       row.key = q.key;
       row.favorite = q.favorite;
       row.label = q.sentence;
-      row.subtitle = q.book;
+      // Reference screen shows the source and the save date under the line.
+      const std::string date = quoteDate(q.timestamp);
+      row.subtitle = date.empty() ? q.book : (q.book.empty() ? date : q.book + "  ·  " + date);
       rows.push_back(std::move(row));
     }
   }
@@ -206,6 +217,8 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   // right, so each row reads "sentence / ——— source" cleanly.
   props.rowHeight = static_cast<int16_t>(std::max<int>(72, renderer.getLineHeight(UI_12_FONT_ID) * 3));
   props.rowGap = static_cast<int16_t>(std::max<int>(8, metrics.verticalSpacing));
+  // Card-style rows with softly rounded corners, matching the reference screen.
+  props.rowRadius = 10;
   props.subtitleText = screen.theme().smallText;
   props.subtitleText.align = fui::TextAlign::Right;
   syncTabListViewport(screen, props);

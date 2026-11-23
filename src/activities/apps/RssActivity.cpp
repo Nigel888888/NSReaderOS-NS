@@ -22,11 +22,15 @@ namespace fui = freeink::ui;
 
 namespace {
 
-constexpr int SIDE_PAD = 20;
-constexpr int HEADER_H = 56;
-constexpr int BUTTON_H = 56;
-constexpr int BUTTON_GAP = 12;
-constexpr int BUTTON_TOP = 8;
+constexpr int SIDE_PAD = 16;
+constexpr int TAB_H = 56;
+constexpr int TAB_TOP = 6;
+constexpr int TAB_GAP = 8;
+constexpr int BAR_H = 56;
+constexpr int BAR_GAP = 12;
+constexpr int BAR_TOP = 8;
+constexpr int CARD_GAP = 10;
+constexpr int CARD_RADIUS = 8;
 constexpr unsigned long MESSAGE_MS = 3000;
 // A single feed request is bounded well above the HTTP library's own 15 s
 // per-read timeout; this is only a last-resort backstop (see weather app).
@@ -50,11 +54,12 @@ RssActivity::~RssActivity() = default;
 void RssActivity::onEnter() {
   Activity::onEnter();
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  view = View::Articles;
+  view = View::Updates;
   phase = Phase::Idle;
   selected = 0;
-  articlesSelected = 0;
+  updatesSelected = 0;
   feedsSelected = 0;
+  favoritesSelected = 0;
   message.clear();
   messageUntil = 0;
   fetchFeedIndex = -1;
@@ -74,7 +79,6 @@ void RssActivity::loadArticles() {
   RssStore::loadArticles(articles);
   std::sort(articles.begin(), articles.end(),
             [](const RssStore::Article& a, const RssStore::Article& b) { return a.timestamp > b.timestamp; });
-  rebuildArticleRows();
 }
 
 void RssActivity::loadFeeds() {
@@ -82,13 +86,30 @@ void RssActivity::loadFeeds() {
   rebuildFeedRows();
 }
 
-void RssActivity::rebuildArticleRows() {
+void RssActivity::rebuildUpdateRows() {
   rows.clear();
   rows.reserve(articles.size());
   for (const auto& a : articles) {
     Row r;
     r.title = a.title;
-    r.subtitle = a.date.empty() ? a.feed : (a.date + "  |  " + a.feed);
+    r.subtitle = a.feed;
+    r.date = a.date;
+    r.favorite = a.favorite;
+    r.favoriteGuid = a.guid;
+    rows.push_back(std::move(r));
+  }
+}
+
+void RssActivity::rebuildFavoriteRows() {
+  rows.clear();
+  for (const auto& a : articles) {
+    if (!a.favorite) continue;
+    Row r;
+    r.title = a.title;
+    r.subtitle = a.feed;
+    r.date = a.date;
+    r.favorite = a.favorite;
+    r.favoriteGuid = a.guid;
     rows.push_back(std::move(r));
   }
 }
@@ -150,9 +171,26 @@ void RssActivity::queueNextFetch() {
       showMessage(msg);
     }
     loadArticles();
+    if (view == View::Updates) rebuildUpdateRows();
+    else if (view == View::Favorites) rebuildFavoriteRows();
+    if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
     return;
   }
   phase = Phase::Fetching;
+  requestUpdate();
+}
+
+// Switch to one of the three list tabs and restore that tab's cursor.
+void RssActivity::selectTab(View target) {
+  if (view == target) return;
+  if (view == View::Updates) updatesSelected = selected;
+  else if (view == View::Feeds) feedsSelected = selected;
+  else if (view == View::Favorites) favoritesSelected = selected;
+  view = target;
+  if (target == View::Updates) { rebuildUpdateRows(); selected = updatesSelected; }
+  else if (target == View::Feeds) { rebuildFeedRows(); selected = feedsSelected; }
+  else if (target == View::Favorites) { rebuildFavoriteRows(); selected = favoritesSelected; }
+  if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
   requestUpdate();
 }
 
@@ -177,14 +215,9 @@ void RssActivity::loop() {
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     if (view == View::Article) {
-      view = View::Articles;
-      selected = articlesSelected;
-      rebuildArticleRows();
-      requestUpdate();
-    } else if (view == View::Feeds) {
-      loadArticles();
-      view = View::Articles;
-      selected = articlesSelected;
+      view = View::Updates;
+      rebuildUpdateRows();
+      selected = updatesSelected;
       requestUpdate();
     } else {
       activityManager.goToApps();
@@ -195,29 +228,37 @@ void RssActivity::loop() {
   int tx = 0, ty = 0;
   const bool tapped = mappedInput.wasScreenTapped(tx, ty);
   if (phase == Phase::Idle && tapped) {
-    if (view == View::Articles) {
+    if (view != View::Article) {
+      // Segmented tabs at the top.
+      if (hit(tabRects[0], tx, ty)) { selectTab(View::Updates); return; }
+      if (hit(tabRects[1], tx, ty)) { selectTab(View::Feeds); return; }
+      if (hit(tabRects[2], tx, ty)) { selectTab(View::Favorites); return; }
+      // Bottom action bar.
       if (hit(updateButton, tx, ty)) { updateAll(); return; }
-      if (hit(feedsButton, tx, ty)) {
-        view = View::Feeds;
-        selected = feedsSelected;
-        rebuildFeedRows();
-        requestUpdate();
-        return;
-      }
-      if (hit(rowRectFor(selected, listBounds, rowHeight, rowGap), tx, ty) || hit(listBounds, tx, ty)) {
+      if (hit(addButton, tx, ty)) { addFeed(); return; }
+      if (hit(manageButton, tx, ty)) { selectTab(View::Feeds); return; }
+    }
+
+    if (view == View::Updates || view == View::Favorites) {
+      if (hit(listBounds, tx, ty)) {
         int idx = (ty - listBounds.y) / (rowHeight + rowGap);
-        if (idx >= 0 && idx < static_cast<int>(articles.size())) openArticle(idx);
+        if (idx >= 0 && idx < static_cast<int>(rows.size())) {
+          // Updates/Favorites rows map 1:1 to the sorted articles array only
+          // for Updates; Favorites is a filtered subset, so resolve by guid.
+          if (view == View::Updates) {
+            openArticle(idx);
+          } else {
+            const std::string guid = rows[idx].title.empty() ? std::string() : rows[idx].favoriteGuid;
+            int articleIndex = -1;
+            for (size_t i = 0; i < articles.size(); ++i) {
+              if (articles[i].favorite && articles[i].guid == guid) { articleIndex = static_cast<int>(i); break; }
+            }
+            if (articleIndex >= 0) openArticle(articleIndex);
+          }
+        }
         return;
       }
     } else if (view == View::Feeds) {
-      if (hit(backButton, tx, ty)) {
-        loadArticles();
-        view = View::Articles;
-        selected = articlesSelected;
-        requestUpdate();
-        return;
-      }
-      if (hit(addButton, tx, ty)) { addFeed(); return; }
       if (hit(listBounds, tx, ty)) {
         int idx = (ty - listBounds.y) / (rowHeight + rowGap);
         if (idx >= 0 && idx < static_cast<int>(feeds.size())) {
@@ -228,10 +269,11 @@ void RssActivity::loop() {
         return;
       }
     } else if (view == View::Article) {
+      if (hit(starButton, tx, ty)) { toggleCurrentFavorite(); return; }
       if (hit(backButton, tx, ty)) {
-        view = View::Articles;
-        selected = articlesSelected;
-        rebuildArticleRows();
+        view = View::Updates;
+        rebuildUpdateRows();
+        selected = updatesSelected;
         requestUpdate();
         return;
       }
@@ -242,13 +284,15 @@ void RssActivity::loop() {
     }
   }
 
-  // Button / touch navigation of the current list.
-  if (phase == Phase::Idle && (view == View::Articles || view == View::Feeds)) {
+  // Button navigation of the current list.
+  if (phase == Phase::Idle && view != View::Article) {
     int next = selected;
     if (mappedInput.wasReleased(MappedInputManager::Button::ScreenDown)) next = selected + 1;
     else if (mappedInput.wasReleased(MappedInputManager::Button::ScreenUp)) next = selected - 1;
     else if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-      if (view == View::Articles && selected < static_cast<int>(articles.size())) openArticle(selected);
+      if (view == View::Feeds) { if (selected >= 0 && selected < static_cast<int>(feeds.size())) { feedsSelected = selected; removeSelectedFeed(); } }
+      else if (view == View::Updates) { if (selected >= 0 && selected < static_cast<int>(articles.size())) openArticle(selected); }
+      else if (view == View::Favorites) { if (selected >= 0 && selected < static_cast<int>(rows.size())) { const std::string guid = rows[selected].favoriteGuid; for (size_t i = 0; i < articles.size(); ++i) { if (articles[i].favorite && articles[i].guid == guid) { openArticle(static_cast<int>(i)); break; } } } }
       return;
     }
     const int count = static_cast<int>(rows.size());
@@ -256,7 +300,9 @@ void RssActivity::loop() {
     if (next >= count) next = count - 1;
     if (next != selected && count > 0) {
       selected = next;
-      if (view == View::Articles) articlesSelected = selected; else feedsSelected = selected;
+      if (view == View::Updates) updatesSelected = selected;
+      else if (view == View::Feeds) feedsSelected = selected;
+      else if (view == View::Favorites) favoritesSelected = selected;
       requestUpdate();
     }
   }
@@ -264,7 +310,7 @@ void RssActivity::loop() {
 
 void RssActivity::openArticle(int index) {
   if (index < 0 || index >= static_cast<int>(articles.size())) return;
-  articlesSelected = index;
+  openGuid = articles[index].guid;
   if (!RssStore::loadBody(articles[index], bodyText)) {
     bodyText = tr(STR_RSS_NO_BODY);
   }
@@ -272,6 +318,15 @@ void RssActivity::openArticle(int index) {
   bodyLine = 0;
   wrapBodyLines();
   requestUpdate();
+}
+
+void RssActivity::toggleCurrentFavorite() {
+  if (openGuid.empty()) return;
+  if (RssStore::toggleFavorite(articles, openGuid)) {
+    if (view == View::Favorites) rebuildFavoriteRows();
+    else if (view == View::Updates) rebuildUpdateRows();
+    showMessage(tr(STR_RSS_FAV_TOGGLED));
+  }
 }
 
 void RssActivity::wrapBodyLines() {
@@ -339,7 +394,7 @@ void RssActivity::addFeed() {
           showMessage(tr(STR_RSS_ADD_FAILED));
         }
       },
-      tr(STR_RSS_FEED_PROMPT), std::string("https://"), 48);
+      tr(STR_RSS_FEED_PROMPT), std::string("https://"), 256);
 }
 
 void RssActivity::removeSelectedFeed() {
@@ -349,72 +404,132 @@ void RssActivity::removeSelectedFeed() {
   RssStore::removeFeed(feeds, static_cast<size_t>(feedsSelected));
   loadFeeds();
   loadArticles();
+  if (view == View::Updates) rebuildUpdateRows();
+  else if (view == View::Favorites) rebuildFavoriteRows();
   if (feedsSelected >= static_cast<int>(feeds.size())) feedsSelected = static_cast<int>(feeds.size()) - 1;
   selected = feedsSelected;
   showMessage(tr(STR_RSS_REMOVED));
 }
 
-void RssActivity::drawHeaderAndButtons(const char* title) {
+// Header plus the three-way segmented tab bar. When `showStar` is set (the
+// reading view) a small star button occupies the right of the title band.
+void RssActivity::drawHeaderAndTabs(const char* title, bool showStar) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   GUI.drawHeader(renderer, Rect{SIDE_PAD, metrics.topPadding, renderer.getScreenWidth() - 2 * SIDE_PAD,
                                 metrics.headerHeight},
                  title);
-  const int y = metrics.topPadding + metrics.headerHeight + BUTTON_TOP;
+  if (showStar) {
+    starButton = Rect{renderer.getScreenWidth() - SIDE_PAD - 120, metrics.topPadding + 4, 120,
+                      metrics.headerHeight - 8};
+    const bool starred = [this]() {
+      for (const auto& a : articles) if (a.guid == openGuid) return a.favorite;
+      return false;
+    }();
+    GUI.drawActionButton(renderer, starButton,
+                         starred ? tr(STR_RSS_STARRED) : tr(STR_RSS_STAR), starred);
+  }
+}
+
+// Draws the three segmented tabs (Updates / Feeds / Favorites). The active one
+// is a filled pill, the others are outlined, matching the reference screen.
+void RssActivity::drawTabs() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int y = metrics.topPadding + metrics.headerHeight + TAB_TOP;
   const int width = renderer.getScreenWidth() - 2 * SIDE_PAD;
-  const int half = (width - BUTTON_GAP) / 2;
-  updateButton = Rect{SIDE_PAD, y, half, BUTTON_H};
-  feedsButton = Rect{SIDE_PAD + half + BUTTON_GAP, y, half, BUTTON_H};
-  backButton = Rect{SIDE_PAD, y, 120, BUTTON_H};
-  addButton = Rect{SIDE_PAD + width - 120, y, 120, BUTTON_H};
-  return;
+  const int segW = (width - TAB_GAP * 2) / 3;
+  const char* labels[3] = {tr(STR_RSS_UPDATE), tr(STR_RSS_FEEDS), tr(STR_RSS_FAVORITES)};
+  const View views[3] = {View::Updates, View::Feeds, View::Favorites};
+  for (int i = 0; i < 3; ++i) {
+    tabRects[i] = Rect{SIDE_PAD + i * (segW + TAB_GAP), y, segW, TAB_H};
+    GUI.drawActionButton(renderer, tabRects[i], labels[i], view == views[i]);
+  }
+}
+
+// Bottom action bar: Update / Add feed / Manage, three equal buttons.
+void RssActivity::drawBottomBar(bool onFeeds) {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int barY = renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
+  const int width = renderer.getScreenWidth() - 2 * SIDE_PAD;
+  const int btnW = (width - BAR_GAP * 2) / 3;
+  updateButton = Rect{SIDE_PAD, barY, btnW, BAR_H};
+  addButton = Rect{SIDE_PAD + btnW + BAR_GAP, barY, btnW, BAR_H};
+  manageButton = Rect{SIDE_PAD + 2 * (btnW + BAR_GAP), barY, btnW, BAR_H};
+  GUI.drawActionButton(renderer, updateButton, tr(STR_RSS_UPDATE), false);
+  GUI.drawActionButton(renderer, addButton, tr(STR_RSS_ADD_FEED), false);
+  GUI.drawActionButton(renderer, manageButton, tr(STR_RSS_MANAGE), onFeeds);
+}
+
+// Top y of the card list, sitting below the tabs and above the bottom bar.
+int RssActivity::listTop() const {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  return metrics.topPadding + metrics.headerHeight + TAB_TOP + TAB_H + metrics.verticalSpacing;
+}
+
+// Draws one card-style row: outlined rounded card, bold title, subtle
+// subtitle, and a pill showing the date at the right edge (blank if none).
+void RssActivity::drawCardRow(const Rect& r, const Row& row, bool selected) {
+  bool black = false;
+  if (selected) {
+    black = GUI.drawSelectionBackground(renderer, r);
+  } else {
+    renderer.fillRoundedRect(r.x, r.y, r.width, r.height, CARD_RADIUS, Color::White);
+    renderer.drawRoundedRect(r.x, r.y, r.width, r.height, 1, CARD_RADIUS, true);
+  }
+  const int titleLine = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
+  const int subLine = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
+  const int innerX = r.x + 12;
+  const int dateW = row.date.empty() ? 0 : renderer.getTextWidth(UI_10_FONT_ID, row.date.c_str()) + 16;
+  const int maxTitleW = r.width - 24 - dateW - 8;
+  // Clip/measure the title to the space left of the date pill.
+  std::string title = row.title;
+  while (!title.empty() && renderer.getTextWidth(NOTOSANS_18_FONT_ID, title.c_str(), EpdFontFamily::BOLD) > maxTitleW) {
+    size_t n = title.size() - 1;
+    while (n > 0 && (static_cast<unsigned char>(title[n]) & 0xC0) == 0x80) --n;
+    title.erase(n);
+  }
+  const int textTop = r.y + (r.height - titleLine - subLine) / 2;
+  renderer.drawText(NOTOSANS_18_FONT_ID, innerX, textTop, title.c_str(), black, EpdFontFamily::BOLD);
+  renderer.drawText(NOTOSANS_16_FONT_ID, innerX, textTop + titleLine, row.subtitle.c_str(), black);
+  if (!row.date.empty() && dateW > 0) {
+    const Rect pill{r.x + r.width - dateW - 10, textTop + 2, dateW, subLine + 4};
+    renderer.fillRoundedRect(pill.x, pill.y, pill.width, pill.height, pill.height / 2, black ? Color::White : Color::Black);
+    renderer.drawText(UI_10_FONT_ID, pill.x + 8, pill.y + 2, row.date.c_str(), !black);
+  }
 }
 
 void RssActivity::drawArticleList() {
-  drawHeaderAndButtons(tr(STR_RSS_TITLE));
-  GUI.drawActionButton(renderer, updateButton, tr(STR_RSS_UPDATE), false);
-  GUI.drawActionButton(renderer, feedsButton, tr(STR_RSS_FEEDS), false);
-
+  drawHeaderAndTabs(tr(STR_RSS_TITLE), false);
+  drawTabs();
+  drawBottomBar(false);
   const auto& metrics = UITheme::getInstance().getMetrics();
-  int top = metrics.topPadding + metrics.headerHeight + BUTTON_TOP + BUTTON_H + metrics.verticalSpacing;
-  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD,
-                    renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
-  // Size the row from the two text lines instead of a fixed height so the
-  // selection pill covers the whole entry with equal padding above and below.
+  const int top = listTop();
+  const int barY = renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
+  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, barY - CARD_GAP - top};
   rowHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID) + renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 28;
-  rowGap = 12;
+  rowGap = CARD_GAP;
   if (rows.empty()) {
-    renderer.drawText(NOTOSANS_18_FONT_ID, SIDE_PAD, listBounds.y + 20, tr(STR_RSS_NO_ARTICLES));
+    renderer.drawText(NOTOSANS_18_FONT_ID, SIDE_PAD, listBounds.y + 20,
+                      view == View::Favorites ? tr(STR_RSS_NO_FAVORITES) : tr(STR_RSS_NO_ARTICLES));
     return;
   }
   const int first = std::max(0, std::min(selected - 2, static_cast<int>(rows.size()) - 1));
   const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
   const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
   for (int i = first; i < last; ++i) {
-    const Rect r = rowRectFor(i - first, listBounds, rowHeight, rowGap);
-    const bool sel = (i == selected);
-    bool black = true;
-    if (sel) black = GUI.drawSelectionBackground(renderer, r);
-    const int titleLine = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
-    const int subLine = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
-    const int textTop = r.y + (r.height - titleLine - subLine) / 2;
-    renderer.drawText(NOTOSANS_18_FONT_ID, r.x + 8, textTop, rows[i].title.c_str(), black, EpdFontFamily::BOLD);
-    renderer.drawText(NOTOSANS_16_FONT_ID, r.x + 8, textTop + titleLine, rows[i].subtitle.c_str(), black);
+    drawCardRow(rowRectFor(i - first, listBounds, rowHeight, rowGap), rows[i], i == selected);
   }
 }
 
 void RssActivity::drawFeedList() {
-  drawHeaderAndButtons(tr(STR_RSS_FEEDS));
-  GUI.drawActionButton(renderer, backButton, tr(STR_RSS_BACK), false);
-  GUI.drawActionButton(renderer, addButton, tr(STR_RSS_ADD_FEED), false);
-
+  drawHeaderAndTabs(tr(STR_RSS_TITLE), false);
+  drawTabs();
+  drawBottomBar(true);
   const auto& metrics = UITheme::getInstance().getMetrics();
-  int top = metrics.topPadding + metrics.headerHeight + BUTTON_TOP + BUTTON_H + metrics.verticalSpacing;
-  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD,
-                    renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
-  // Size the row from the two text lines instead of a fixed height so the
-  // selection pill covers the whole entry with equal padding above and below.
+  const int top = listTop();
+  const int barY = renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
+  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, barY - CARD_GAP - top};
   rowHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID) + renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 28;
-  rowGap = 12;
+  rowGap = CARD_GAP;
   if (rows.empty()) {
     renderer.drawText(NOTOSANS_18_FONT_ID, SIDE_PAD, listBounds.y + 20, tr(STR_RSS_NO_FEEDS));
     return;
@@ -423,26 +538,18 @@ void RssActivity::drawFeedList() {
   const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
   const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
   for (int i = first; i < last; ++i) {
-    const Rect r = rowRectFor(i - first, listBounds, rowHeight, rowGap);
-    const bool sel = (i == selected);
-    bool black = true;
-    if (sel) black = GUI.drawSelectionBackground(renderer, r);
-    const int titleLine = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
-    const int subLine = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
-    const int textTop = r.y + (r.height - titleLine - subLine) / 2;
-    renderer.drawText(NOTOSANS_18_FONT_ID, r.x + 8, textTop, rows[i].title.c_str(), black, EpdFontFamily::BOLD);
-    renderer.drawText(NOTOSANS_16_FONT_ID, r.x + 8, textTop + titleLine, rows[i].subtitle.c_str(), black);
+    Row unnamed = rows[i];
+    drawCardRow(rowRectFor(i - first, listBounds, rowHeight, rowGap), unnamed, i == selected);
   }
-  renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD,
-                    renderer.getScreenHeight() - metrics.buttonHintsHeight - 4, tr(STR_RSS_TAP_REMOVE));
+  renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD, barY - 2, tr(STR_RSS_TAP_REMOVE));
 }
 
 void RssActivity::drawArticleBody() {
-  drawHeaderAndButtons(tr(STR_RSS_READING));
-  GUI.drawActionButton(renderer, backButton, tr(STR_RSS_BACK), false);
-
+  drawHeaderAndTabs(tr(STR_RSS_READING), true);
   const auto& metrics = UITheme::getInstance().getMetrics();
-  int top = metrics.topPadding + metrics.headerHeight + BUTTON_TOP + BUTTON_H + metrics.verticalSpacing;
+  backButton = Rect{SIDE_PAD, metrics.topPadding + 4, 120, metrics.headerHeight - 8};
+  GUI.drawActionButton(renderer, backButton, tr(STR_RSS_BACK), false);
+  const int top = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD,
                     renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
   const int lineHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
@@ -472,7 +579,7 @@ void RssActivity::render(RenderLock&&) {
     return;
   }
 
-  if (view == View::Articles) drawArticleList();
+  if (view == View::Updates || view == View::Favorites) drawArticleList();
   else if (view == View::Feeds) drawFeedList();
   else drawArticleBody();
   drawMessage();

@@ -43,6 +43,7 @@ class RssStore {
     std::string bodyFile;  // file name under bodies/
     uint32_t timestamp = 0;  // for newest-first sorting
     int feedIndex = -1;      // index into the feeds array, filled on load
+    bool favorite = false;   // starred by the user, shown under the Favorites tab
     // In-memory only: the parsed body text, consumed by fetchFeed when writing
     // the body file. Never serialized into articles.json.
     std::string bodyText;
@@ -62,6 +63,9 @@ class RssStore {
   static bool loadBody(const Article& article, std::string& body);
   // Removes cached articles that belong to a removed feed index.
   static size_t dropArticlesForFeed(std::vector<Article>& articles, int feedIndex);
+  // Toggles the star flag on one article (matched by guid) and persists the
+  // index. Returns true when a matching article was found and saved.
+  static bool toggleFavorite(std::vector<Article>& articles, const std::string& guid);
 
   // ---- fetching & parsing ----------------------------------------------
   // Downloads `url`, parses the RSS/Atom feed and appends new articles to
