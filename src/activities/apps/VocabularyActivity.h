@@ -26,7 +26,9 @@ class VocabularyActivity final : public UiListActivity {
   void onEnter() override;
 
  private:
-  int listCount() const override { return static_cast<int>(entries.size()); }
+  // Visible row count: equals entries.size() in "collected" mode, or only the
+  // due words in "to review" mode.
+  int listCount() const override { return static_cast<int>(rowItems.size()); }
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   void onRowLongPress(int index) override;
@@ -56,6 +58,9 @@ class VocabularyActivity final : public UiListActivity {
   void sortEntries();
   // Toggles newest-first / oldest-first and rebuilds the rows.
   void toggleSort();
+  // Switches between the "collected" (all words) and "to review" (due words)
+  // segments of the counter capsule.
+  void setDueOnly(bool dueOnly);
   // Enters/leaves multi-select management mode.
   void toggleManageMode();
   // Deletes every checked word and persists the notebook.
@@ -66,8 +71,6 @@ class VocabularyActivity final : public UiListActivity {
   // The counter band above the list: the two cards and the review button.
   void drawStatsBand(const Rect& band);
   void drawCounterCard(const Rect& rect, int value, const char* label, const uint8_t* icon, bool whiteText = true);
-  // Small uppercase section label above the list, with a count on the right.
-  void drawSectionLabel(const Rect& band, const char* label, int count);
   // Screen box of the "start review" button, remembered so the tap can be
   // hit-tested outside the list.
   Rect reviewButtonRect() const { return reviewButton; }
@@ -81,6 +84,13 @@ class VocabularyActivity final : public UiListActivity {
   // pointers stay valid between renders.
   std::vector<std::string> rowSubtitles;
   std::vector<freeink::ui::ListItem> rowItems;
+  // Visible row -> position in `entries`, so filter/tap/delete stay aligned.
+  std::vector<int> rowEntryIndex;
+  // Counter capsule segment: false = collected (all words), true = to review
+  // (only due words). Both halves are tappable.
+  bool dueOnly = false;
+  Rect collectedSegment{0, 0, 0, 0};
+  Rect dueSegment{0, 0, 0, 0};
   // How many words are due for review right now.
   int dueCount = 0;
   // The label of the review button, rebuilt whenever the due count changes.

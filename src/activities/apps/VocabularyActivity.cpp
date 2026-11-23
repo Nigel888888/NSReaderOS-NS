@@ -35,11 +35,7 @@ constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
 // The font the counters are drawn in. One step smaller so the label + number
 // sit comfortably inside the capsule and read as a compact statistic.
 constexpr int STATS_FONT_ID = NOTOSANS_16_FONT_ID;
-// Section label above the list ("我的生词"), with the total written right
-// after the text (not right-aligned) and generous space above/below.
-constexpr int SECTION_LABEL_HEIGHT = 30;
-constexpr int SECTION_LABEL_GAP = 24;
-// Extra breathing room between the button band and the section label row.
+// Extra breathing room between the button panel and the first word card.
 constexpr int BAND_TO_SECTION_GAP = 16;
 // Minimal-style dashboard: a segmented counter capsule plus a 2x2 action grid
 // (Start review / Export Anki / Manage words / Sort order). Management and
@@ -94,26 +90,41 @@ void VocabularyActivity::toggleSort() {
   requestUpdate();
 }
 
+// Switches the counter capsule between every saved word and only the words
+// the scheduler considers due. Both halves are tappable; the list and the
+// review navigation are rebuilt from the same visible-row map.
+void VocabularyActivity::setDueOnly(const bool next) {
+  if (dueOnly == next) return;
+  dueOnly = next;
+  nav.selected = 0;
+  nav.followOnBuild = true;
+  rebuildRowItems();
+  requestUpdate();
+}
+
 // Derives rowSubtitles/rowItems from `entries`. Called whenever `entries`
 // changes (onEnter() load, post-delete) so buildScreen() reuses the cached
 // rows on every repaint.
 void VocabularyActivity::rebuildRowItems() {
   rowSubtitles.clear();
   rowItems.clear();
+  rowEntryIndex.clear();
   // Reserve up front: the ListItem strings point into rowSubtitles, so the
   // vector must not reallocate while the items are being built.
   rowSubtitles.reserve(entries.size());
   rowItems.reserve(entries.size());
-  // Do NOT reset the checkboxes here. This is called after every single row
-  // tap to redraw the list; resetting selectedFlags wiped the flag that tap
-  // had just set, so a row could never stay checked ("勾选不了"). Flags are
-  // initialised once on entering manage mode (toggleManageMode) and cleared
-  // after a batch delete. Only grow/shrink to match a changed entry count.
-  if (manageMode && selectedFlags.size() != entries.size()) {
-    selectedFlags.assign(entries.size(), false);
-  }
+  rowEntryIndex.reserve(entries.size());
+
+  // "To review" segment shows only the words the scheduler considers due now;
+  // "Collected" shows every word. rowEntryIndex maps each visible row back to
+  // its position in `entries` so taps/deletes still hit the right word.
+  const int today = VocabularyFile::currentDayNumber();
+  const int nowMinute = VocabularyFile::currentMinuteOfDay();
   for (size_t i = 0; i < entries.size(); ++i) {
     const auto& entry = entries[i];
+    if (dueOnly && !study::Scheduler::isDue(entry.card, today, nowMinute)) continue;
+    rowEntryIndex.push_back(static_cast<int>(i));
+
     // Row subtitle: the definition excerpt, then the book it came from.
     std::string subtitle = entry.summary;
     if (!entry.book.empty()) {
@@ -127,17 +138,23 @@ void VocabularyActivity::rebuildRowItems() {
     fui::ListItem item;
     item.label = entry.headword.c_str();
     item.subtitle = rowSubtitles.back().c_str();
+    // No leading badge icon in the minimal card design. Manage mode still
+    // needs its checkbox so batch deletion stays usable.
     if (manageMode) {
-      // A checkbox per word; tapping the row toggles selection instead of
-      // opening the card.
       item.icon = GUI.checkboxIcon(i < selectedFlags.size() && selectedFlags[i]);
       item.value = nullptr;
     } else {
-      item.icon = listIconFor(UIIcon::Bookmark, 32);  // subtitle rows carry the larger icon
+      item.icon = {};
       item.value = ">";
     }
     item.actionValue = static_cast<int16_t>(rowItems.size());
     rowItems.push_back(item);
+  }
+
+  // Keep the checkbox flags sized to the full notebook (indexed by entries
+  // position); they are only initialised once on entering manage mode.
+  if (manageMode && selectedFlags.size() != entries.size()) {
+    selectedFlags.assign(entries.size(), false);
   }
 }
 
@@ -156,25 +173,32 @@ void VocabularyActivity::activateIndex(const int index) {
   nav.selected = index;
 
   if (manageMode) {
-    if (index >= 0 && index < static_cast<int>(selectedFlags.size())) {
-      selectedFlags[index] = !selectedFlags[index];
-      rebuildRowItems();
-      requestUpdate();
+    // Checkbox flags are indexed by the full notebook, not by visible rows.
+    if (index >= 0 && index < static_cast<int>(rowEntryIndex.size())) {
+      const int entryIndex = rowEntryIndex.at(index);
+      if (entryIndex >= 0 && entryIndex < static_cast<int>(selectedFlags.size())) {
+        selectedFlags[entryIndex] = !selectedFlags[entryIndex];
+        rebuildRowItems();
+        requestUpdate();
+      }
     }
     return;
   }
 
-  const auto& entry = entries.at(index);
+  // Map the visible row to its word, and navigate within the visible list.
+  const int entryIndex = rowEntryIndex.at(index);
+  const auto& entry = entries.at(entryIndex);
   // The row only holds an excerpt; the full definition stays on disk.
   std::string sentence;
   std::string definition;
   VocabularyFile::loadText(entry.headword, sentence, definition);
-  // Hand the card the whole ordered word list plus this position so Prev/Next
-  // can step through the notebook without returning here.
+  // Hand the card the currently visible word list plus this position so
+  // Prev/Next steps through what the user is looking at (all words, or only
+  // the due ones) without returning here.
   std::vector<std::string> navWords;
-  navWords.reserve(entries.size());
-  for (const auto& e : entries) {
-    navWords.push_back(e.headword);
+  navWords.reserve(rowEntryIndex.size());
+  for (const int ei : rowEntryIndex) {
+    navWords.push_back(entries.at(ei).headword);
   }
   // Re-reading a saved word: the sentence is already attached to the card, so
   // do not offer the "save as quote" action here (it belongs to the reader).
@@ -193,10 +217,13 @@ void VocabularyActivity::onRowLongPress(const int index) {
   app.clearTapFlash();
   nav.selected = index;
   if (manageMode) {
-    if (index >= 0 && index < static_cast<int>(selectedFlags.size())) {
-      selectedFlags[index] = !selectedFlags[index];
-      rebuildRowItems();
-      requestUpdate();
+    if (index >= 0 && index < static_cast<int>(rowEntryIndex.size())) {
+      const int entryIndex = rowEntryIndex.at(index);
+      if (entryIndex >= 0 && entryIndex < static_cast<int>(selectedFlags.size())) {
+        selectedFlags[entryIndex] = !selectedFlags[entryIndex];
+        rebuildRowItems();
+        requestUpdate();
+      }
     }
     return;
   }
@@ -267,6 +294,16 @@ bool VocabularyActivity::handleCustomInput() {
     const auto hit = [tx, ty](const Rect& r) {
       return r.width > 0 && r.height > 0 && tx >= r.x && tx < r.x + r.width && ty >= r.y && ty < r.y + r.height;
     };
+    // Both halves of the counter capsule are real tabs now: tapping "to
+    // review" filters the list to due words and moves the dark pill.
+    if (hit(collectedSegment)) {
+      setDueOnly(false);
+      return true;
+    }
+    if (hit(dueSegment)) {
+      setDueOnly(true);
+      return true;
+    }
     if (hit(sortButton)) {
       toggleSort();
       return true;
@@ -337,18 +374,19 @@ void VocabularyActivity::deleteSelected() {
   if (nav.selected < 0 || nav.selected >= listCount()) {
     return;
   }
-  const std::string headword = entries.at(nav.selected).headword;
+  const int entryIndex = rowEntryIndex.at(nav.selected);
+  const std::string headword = entries.at(entryIndex).headword;
   if (!VocabularyFile::remove(headword)) {
     LOG_ERR("VOC", "Failed to remove vocabulary entry '%s'", headword.c_str());
     return;
   }
-  entries.erase(entries.begin() + nav.selected);
-  // Deleting shifts every later word's index, so the cached subtitles and
-  // actionValues must be re-derived, not just trimmed.
+  entries.erase(entries.begin() + entryIndex);
+  // Deleting shifts every later word's index, so the cached subtitles and the
+  // row->entry map must be re-derived, not just trimmed.
   rebuildRowItems();
 
-  // Move the selector up if the last word was deleted.
-  if (nav.selected >= static_cast<int>(entries.size()) && nav.selected > 0) {
+  // Move the selector up if the last visible row was deleted.
+  if (nav.selected >= listCount() && nav.selected > 0) {
     nav.selected--;
   }
   nav.follow(listCount());
@@ -422,21 +460,19 @@ void VocabularyActivity::drawStatsBand(const Rect& band) {
     return;
   }
 
-  // One capsule outline with a divider down the middle. The selected half is
-  // filled black, the other stays white -- the same segmented look as the
-  // reference screenshot. The counters are informational (not tabs), so the
-  // "collected" half is the highlighted default.
+  // Segmented control from the redesign: one light-gray rounded bar with a
+  // dark rounded capsule over the active half. Both halves are tappable and
+  // drive the list filter (see handleCustomInput()).
   const int capsuleRadius = CAPSULE_HEIGHT / 2;
-  renderer.drawRoundedRect(band.x, band.y, band.width, CAPSULE_HEIGHT, 2, capsuleRadius, true);
-  renderer.drawLine(band.x + cardWidth + STATS_CARD_GAP / 2, band.y + 8,
-                    band.x + cardWidth + STATS_CARD_GAP / 2, band.y + CAPSULE_HEIGHT - 8, 2, true);
-  // Left half: collected count. Filled (selected) pill -> white text.
-  renderer.fillRoundedRect(band.x + 1, band.y + 1, cardWidth - 2, CAPSULE_HEIGHT - 2, capsuleRadius - 1, Color::Black);
-  drawCounterCard(Rect{band.x + 1, band.y + 1, cardWidth - 2, CAPSULE_HEIGHT - 2},
-                  static_cast<int>(entries.size()), tr(STR_VOCABULARY_SAVED), nullptr, /*whiteText=*/true);
-  // Right half: due count. White pill, dark text.
-  drawCounterCard(Rect{band.x + cardWidth + STATS_CARD_GAP - 1, band.y + 1, cardWidth - 2, CAPSULE_HEIGHT - 2},
-                  dueCount, tr(STR_VOCABULARY_TO_REVIEW), nullptr, /*whiteText=*/false);
+  renderer.fillRoundedRect(band.x, band.y, band.width, CAPSULE_HEIGHT, capsuleRadius, Color::LightGray);
+  collectedSegment = Rect{band.x, band.y, cardWidth, CAPSULE_HEIGHT};
+  dueSegment = Rect{band.x + cardWidth + STATS_CARD_GAP, band.y, cardWidth, CAPSULE_HEIGHT};
+  const Rect& active = dueOnly ? dueSegment : collectedSegment;
+  renderer.fillRoundedRect(active.x, active.y, active.width, active.height, capsuleRadius, Color::DarkGray);
+  // The active half carries white text; the idle half stays dark-on-gray.
+  drawCounterCard(collectedSegment, static_cast<int>(entries.size()), tr(STR_VOCABULARY_SAVED), nullptr,
+                  /*whiteText=*/!dueOnly);
+  drawCounterCard(dueSegment, dueCount, tr(STR_VOCABULARY_TO_REVIEW), nullptr, /*whiteText=*/dueOnly);
 
   // 2x2 action grid. Row 1: Start review (primary, filled) + Export Anki
   // (secondary, outlined). Row 2: Manage words + Sort order (both outlined;
@@ -500,20 +536,6 @@ void VocabularyActivity::drawCounterCard(const Rect& rect, const int value, cons
   renderer.drawText(STATS_FONT_ID, textX, baseline, number, !whiteText, EpdFontFamily::BOLD);
 }
 
-// Section label: the caption with the total written immediately after it in
-// brackets (not right-aligned), underlined by a hairline rule.
-void VocabularyActivity::drawSectionLabel(const Rect& band, const char* label, const int count) {
-  renderer.clearClipRect();
-  if (band.width <= 0 || band.height <= 0) return;
-  const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-  renderer.drawText(UI_10_FONT_ID, band.x, baseline, label, true, EpdFontFamily::BOLD);
-  const int labelWidth = renderer.getTextWidth(UI_10_FONT_ID, label, EpdFontFamily::BOLD);
-  char number[32];
-  std::snprintf(number, sizeof(number), "  (%d)", count);
-  renderer.drawText(UI_10_FONT_ID, band.x + labelWidth, baseline, number);
-  renderer.drawLine(band.x, band.y + band.height - 1, band.x + band.width, band.y + band.height - 1);
-}
-
 void VocabularyActivity::buildScreen(UiScreen& screen) {
   const auto& metrics = uiThemeMetrics(usesUpstreamStyle());
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer, true, false);
@@ -529,22 +551,14 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
   const fui::Rect band = screen.takeTop(static_cast<int16_t>(bandHeight));
   drawStatsBand(Rect{band.x, band.y, band.width, band.height});
 
-  // Extra space below the button band so the section row below sits lower and
-  // the two groups visually separate.
+  // Breathing room between the action panel and the first word card. The old
+  // "我的生词" section caption is intentionally gone in the minimal redesign.
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing + BAND_TO_SECTION_GAP));
 
-  if (entries.empty()) {
+  if (rowItems.empty()) {
     screen.centeredText(tr(STR_VOCABULARY_EMPTY), screen.theme().bodyText);
     return;
   }
-
-  // Section caption with the total right after the text. The Manage and Sort
-  // buttons now live in the 2x2 action grid above (see drawStatsBand); this
-  // row is just the list's label, matching the minimal reference layout.
-  const fui::Rect labelBand = screen.takeTop(static_cast<int16_t>(SECTION_LABEL_HEIGHT));
-  drawSectionLabel(Rect{labelBand.x, labelBand.y, labelBand.width, labelBand.height}, tr(STR_VOC_SECTION_WORDS),
-                   static_cast<int>(entries.size()));
-  screen.spacer(static_cast<int16_t>(SECTION_LABEL_GAP));
 
   if (manageMode) {
     // Management bar pinned to the bottom: select-all + delete-selected.
@@ -571,6 +585,9 @@ void VocabularyActivity::buildScreen(UiScreen& screen) {
   // Tap opens the word; long-press deletes it.
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   props.valueInset = 8;  // air between the trailing chevron and the row edge
+  // White rounded cards, gray subtitles, and a dark bar on the left of the
+  // pressed card (shared with Quotes so both notebooks look the same).
+  applyCardListStyle(props, screen.theme());
   // Give every row a fixed height, exactly like the Quotes screen. Without it
   // the framework grows rows to fit wrapped subtitles, so rows are unequal and
   // a swipe's start y cannot be mapped to a row by an even-height estimate —

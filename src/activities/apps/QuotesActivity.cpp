@@ -22,8 +22,7 @@
 namespace fui = freeink::ui;
 
 namespace {
-constexpr int ROW_ICON_SIZE = 32;
-// Short YYYY-MM-DD stamp shown under each saved sentence, as in the redesign.
+// Short YYYY-MM-DD stamp shown as a pill on each saved sentence, as in the redesign.
 std::string quoteDate(const uint32_t epochSeconds) {
   std::tm local{};
   if (epochSeconds == 0 || !TimeUtils::getLocalDateTime(epochSeconds, local)) return std::string();
@@ -138,9 +137,10 @@ void QuotesActivity::rebuildRows() {
       row.key = q.key;
       row.favorite = q.favorite;
       row.label = q.sentence;
-      // Reference screen shows the source and the save date under the line.
-      const std::string date = quoteDate(q.timestamp);
-      row.subtitle = date.empty() ? q.book : (q.book.empty() ? date : q.book + "  ·  " + date);
+      // Source sits in the gray subtitle; the save date is painted as a
+      // separate light-gray pill at the card's bottom right (see buildScreen).
+      row.subtitle = q.book;
+      row.date = quoteDate(q.timestamp);
       rows.push_back(std::move(row));
     }
   }
@@ -152,10 +152,10 @@ void QuotesActivity::rebuildRows() {
     fui::ListItem item;
     item.label = row.label.c_str();
     item.subtitle = rowSubtitles.back().c_str();
-    item.icon = row.kind == RowKind::Book ? listIconFor(UIIcon::Book, ROW_ICON_SIZE)
-                                          : listIconFor(UIIcon::Bookmark, ROW_ICON_SIZE);
-    // CrossNext marks every navigable row with a right-hand chevron.
-    item.value = ">";
+    // The reference cards have no leading icon and no chevron; the date pill
+    // (quotes) or book count (books) supplies the secondary information.
+    item.icon = {};
+    item.value = nullptr;
     item.actionValue = static_cast<int16_t>(rowItems.size());
     rowItems.push_back(item);
   }
@@ -217,16 +217,34 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   // right, so each row reads "sentence / ——— source" cleanly.
   props.rowHeight = static_cast<int16_t>(std::max<int>(72, renderer.getLineHeight(UI_12_FONT_ID) * 3));
   props.rowGap = static_cast<int16_t>(std::max<int>(8, metrics.verticalSpacing));
-  // Card-style rows with softly rounded corners, matching the reference screen.
-  props.rowRadius = 10;
-  props.subtitleText = screen.theme().smallText;
-  props.subtitleText.align = fui::TextAlign::Right;
+  // Same minimal card treatment as the vocabulary screen: white rounded card,
+  // bold sentence, gray source and a dark bar on the pressed card's left.
+  applyCardListStyle(props, screen.theme());
   syncTabListViewport(screen, props);
   const fui::Rect body = screen.body();
   listRect = Rect{body.x, body.y, body.width, body.height};
   swipeRowHeight = props.rowHeight;
   swipeRowGap = props.rowGap > 0 ? props.rowGap : 0;
   screen.list(props);
+
+  // The SDK's list has no per-row badge slot, so paint the light-gray date
+  // capsules over each card after the list has drawn. Row geometry matches
+  // the fixed rowHeight/rowGap handed to props above.
+  const int rowStep = props.rowHeight + swipeRowGap;
+  if (rowStep > 0) {
+    const int first = std::max(0, activeNav().top);
+    const int visible = body.height / rowStep + 1;
+    const int last = std::min<int>(static_cast<int>(rows.size()), first + visible);
+    const int pillHeight = renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 4;
+    for (int i = first; i < last; ++i) {
+      if (rows[i].date.empty()) continue;
+      const int dateW = renderer.getTextWidth(UI_10_FONT_ID, rows[i].date.c_str()) + 16;
+      const Rect pill{body.x + body.width - dateW - 10,
+                      body.y + (i - first) * rowStep + props.rowHeight - pillHeight - 8, dateW, pillHeight};
+      renderer.fillRoundedRect(pill.x, pill.y, pill.width, pill.height, pill.height / 2, Color::LightGray);
+      renderer.drawText(UI_10_FONT_ID, pill.x + 8, pill.y + 2, rows[i].date.c_str(), true);
+    }
+  }
 }
 
 void QuotesActivity::activateIndex(const int index) {

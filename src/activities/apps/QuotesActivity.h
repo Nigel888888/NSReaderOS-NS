@@ -63,6 +63,7 @@ class QuotesActivity final : public UiTabListActivity {
     std::string key;
     std::string label;
     std::string subtitle;
+    std::string date;     // YYYY-MM-DD pill drawn at the card's bottom right
     std::string bookKey;  // actual source title for a Book row (may be empty)
     bool favorite = false;
   };

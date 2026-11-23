@@ -430,8 +430,9 @@ void RssActivity::drawHeaderAndTabs(const char* title, bool showStar) {
   }
 }
 
-// Draws the three segmented tabs (Updates / Feeds / Favorites). The active one
-// is a filled pill, the others are outlined, matching the reference screen.
+// Draws the three segmented tabs (Updates / Feeds / Favorites) as one
+// light-gray rounded bar with a dark capsule over the active segment, exactly
+// like the reference screen. Hit rects stay the full thirds of the bar.
 void RssActivity::drawTabs() {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int y = metrics.topPadding + metrics.headerHeight + TAB_TOP;
@@ -439,9 +440,18 @@ void RssActivity::drawTabs() {
   const int segW = (width - TAB_GAP * 2) / 3;
   const char* labels[3] = {tr(STR_RSS_UPDATE), tr(STR_RSS_FEEDS), tr(STR_RSS_FAVORITES)};
   const View views[3] = {View::Updates, View::Feeds, View::Favorites};
+  renderer.fillRoundedRect(SIDE_PAD, y, width, TAB_H, TAB_H / 2, Color::LightGray);
   for (int i = 0; i < 3; ++i) {
     tabRects[i] = Rect{SIDE_PAD + i * (segW + TAB_GAP), y, segW, TAB_H};
-    GUI.drawActionButton(renderer, tabRects[i], labels[i], view == views[i]);
+    const bool active = view == views[i];
+    if (active) {
+      renderer.fillRoundedRect(tabRects[i].x, tabRects[i].y, tabRects[i].width, tabRects[i].height, TAB_H / 2,
+                               Color::DarkGray);
+    }
+    const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[i], EpdFontFamily::BOLD);
+    const int textX = tabRects[i].x + (segW - textWidth) / 2;
+    const int textY = tabRects[i].y + (TAB_H - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
+    renderer.drawText(UI_10_FONT_ID, textX, textY, labels[i], !active, EpdFontFamily::BOLD);
   }
 }
 
@@ -465,21 +475,21 @@ int RssActivity::listTop() const {
   return metrics.topPadding + metrics.headerHeight + TAB_TOP + TAB_H + metrics.verticalSpacing;
 }
 
-// Draws one card-style row: outlined rounded card, bold title, subtle
-// subtitle, and a pill showing the date at the right edge (blank if none).
+// Draws one card-style row: white rounded card, bold title, subtle subtitle
+// and a light-gray date pill at the bottom right. The selected card gets a
+// pale gray wash and a dark vertical bar along its left edge (the pressed
+// shadow from the reference screen); text stays dark in both states.
 void RssActivity::drawCardRow(const Rect& r, const Row& row, bool selected) {
-  // `black` is the text colour: true = dark glyphs (on a light card),
-  // false = light glyphs (on the filled selection background).
-  bool black = true;
   if (selected) {
-    black = GUI.drawSelectionBackground(renderer, r);
+    renderer.fillRoundedRect(r.x, r.y, r.width, r.height, CARD_RADIUS, Color::LightGray);
+    renderer.fillRect(r.x, r.y + 6, 4, r.height - 12);
   } else {
     renderer.fillRoundedRect(r.x, r.y, r.width, r.height, CARD_RADIUS, Color::White);
-    renderer.drawRoundedRect(r.x, r.y, r.width, r.height, 1, CARD_RADIUS, true);
   }
+  renderer.drawRoundedRect(r.x, r.y, r.width, r.height, 1, CARD_RADIUS, true);
   const int titleLine = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
   const int subLine = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
-  const int innerX = r.x + 12;
+  const int innerX = r.x + 14;
   const int dateW = row.date.empty() ? 0 : renderer.getTextWidth(UI_10_FONT_ID, row.date.c_str()) + 16;
   const int maxTitleW = r.width - 24 - dateW - 8;
   // Clip/measure the title to the space left of the date pill.
@@ -490,15 +500,15 @@ void RssActivity::drawCardRow(const Rect& r, const Row& row, bool selected) {
     title.erase(n);
   }
   const int textTop = r.y + (r.height - titleLine - subLine) / 2;
-  renderer.drawText(NOTOSANS_18_FONT_ID, innerX, textTop, title.c_str(), black, EpdFontFamily::BOLD);
-  renderer.drawText(NOTOSANS_16_FONT_ID, innerX, textTop + titleLine, row.subtitle.c_str(), black);
+  renderer.drawText(NOTOSANS_18_FONT_ID, innerX, textTop, title.c_str(), true, EpdFontFamily::BOLD);
+  renderer.drawText(NOTOSANS_16_FONT_ID, innerX, textTop + titleLine, row.subtitle.c_str(), true);
   if (!row.date.empty() && dateW > 0) {
+    // Date capsule: pale gray on a white card, white on the selected wash --
+    // always clearly separated from the card surface, dark text either way.
     const Rect pill{r.x + r.width - dateW - 10, textTop + 2, dateW, subLine + 4};
-    // On a light card the pill is dark with light text; on a filled selection
-    // the pill is light with dark text -- always the inverse of the card.
     renderer.fillRoundedRect(pill.x, pill.y, pill.width, pill.height, pill.height / 2,
-                             black ? Color::Black : Color::White);
-    renderer.drawText(UI_10_FONT_ID, pill.x + 8, pill.y + 2, row.date.c_str(), !black);
+                             selected ? Color::White : Color::LightGray);
+    renderer.drawText(UI_10_FONT_ID, pill.x + 8, pill.y + 2, row.date.c_str(), true);
   }
 }
 

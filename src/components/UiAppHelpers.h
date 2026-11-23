@@ -82,6 +82,43 @@ inline freeink::ui::GfxRendererTarget makeUiTarget(const GfxRenderer& renderer, 
   return target;
 }
 
+// Shared "minimal card" look for the redesigned vocabulary / quotes lists:
+// white rounded cards with a hairline border, a bold black title, a gray
+// subtitle, and a dark vertical bar on the selected card's left edge (the
+// pressed shadow in the reference mock-ups). Text colours live in the
+// TextStyle slots, so the row style's foreground is deliberately left unset.
+inline void applyCardListStyle(freeink::ui::ListProps& props, const freeink::ui::ThemeTokens& theme) {
+  using namespace freeink::ui;
+  // 4x64 1-bpp mask, all bits cleared = all pixels inked (Icon convention).
+  static const uint8_t kBarBits[64] = {0};
+  static const freeink::Icon kBarIcon{4, 64, 32, kBarBits};
+
+  StyleSet styles;
+  styles.explicitlySet = true;
+  styles.normal.background = Paint::solid(Color::White);
+  styles.normal.foreground = Paint::none();
+  styles.normal.border = Paint::solid(Color::LightGray);
+  styles.normal.borderWidth = 1;
+  styles.selected = styles.normal;
+  styles.selected.background = Paint::dither(Color::LightGray);
+  styles.focused = styles.selected;
+  styles.active = styles.selected;
+  styles.disabled = styles.normal;
+  props.rowStyles = styles;
+
+  props.rowRadius = 10;
+  props.selectionMarker = SelectionMarker::Bitmap;
+  props.markerBitmap = bitmapFromIcon(kBarIcon);
+  props.markerPaint = Paint::solid(Color::Black);
+  props.markerInset = 0;
+
+  props.labelText = theme.bodyText;
+  props.labelText.bold = true;
+  props.labelText.color = Color::Black;
+  props.subtitleText = theme.smallText;
+  props.subtitleText.color = Color::DarkGray;
+}
+
 // Tap release with coords, plus the raw release the tap classifier never
 // reports (swipe end, drag-off) delivered off-target: nothing dispatches,
 // but routing drops its pressed-element state instead of ghosting it onto
