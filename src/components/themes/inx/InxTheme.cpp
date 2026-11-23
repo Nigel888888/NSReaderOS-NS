@@ -521,8 +521,11 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
         return StrId::STR_APPS_TITLE;
       case MainTab::StorageFiles:
         return StrId::STR_RICKY_STORAGE;
+      case MainTab::Settings:
       default:
-        return StrId::STR_SETTINGS_TITLE;
+        // The last tab is labelled "Other" (it still opens Settings, which now
+        // also hosts the Storage short-card grid).
+        return StrId::STR_RICKY_NAV_OTHER;
     }
   };
   for (size_t i = 0; i < MainTabs::values.size(); ++i) {

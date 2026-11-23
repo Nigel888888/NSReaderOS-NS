@@ -679,6 +679,12 @@ void ActivityManager::goToUsbDrive() {
 
 void ActivityManager::goToSettings() { replaceActivityWith<SettingsActivity>(); }
 
+void ActivityManager::goToStorageFromSettings() {
+  // Storage is no longer a bottom tab; Settings opens this short-card grid and
+  // Back returns to Settings instead of Home.
+  replaceActivityWith<RickyStorageActivity>(/*fromSettings=*/true);
+}
+
 #ifndef RICKYOS_PRODUCT
 void ActivityManager::goToUglyAvatar() { replaceActivityWith<UglyAvatarActivity>(); }
 #endif

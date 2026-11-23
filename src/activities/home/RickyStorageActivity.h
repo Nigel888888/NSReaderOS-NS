@@ -6,14 +6,19 @@
 
 class RickyStorageActivity final : public UiListActivity {
  public:
-  RickyStorageActivity(GfxRenderer& renderer, MappedInputManager& input)
-      : UiListActivity("RickyStorage", renderer, input) {}
-  MainTab mainTab() const override { return MainTab::StorageFiles; }
+  // fromSettings: opened from the Settings grid instead of the removed tab;
+  // Back then returns to Settings rather than Home.
+  RickyStorageActivity(GfxRenderer& renderer, MappedInputManager& input, bool fromSettings = false)
+      : UiListActivity("RickyStorage", renderer, input), fromSettings_(fromSettings) {}
+  // No longer a bottom navigation tab; it is a Settings sub-page.
+  MainTab mainTab() const override { return MainTab::None; }
   void selectMainTabContentEdge(MainTabContentEdge edge) override {
     nav.requestSelection(MainTabs::contentEdgeIndex(edge, kCardCount));  // Refresh is never an edge
   }
 
  protected:
+  bool fromSettings_ = false;
+  void onBackButton() override;
   // Four folder cards and the SD summary (0..4), then the header's Refresh.
   static constexpr int kCardCount = 5;
   static constexpr int kRefreshAction = kCardCount;

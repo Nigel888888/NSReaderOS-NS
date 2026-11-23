@@ -35,6 +35,15 @@ void RickyStorageActivity::drawFooter() {
   const auto labels = mainTabButtonLabels(tr(STR_BACK), tr(STR_OPEN), true);
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
+
+void RickyStorageActivity::onBackButton() {
+  // Opened from the Settings grid (replaceActivityWith), so no Settings page
+  // remains on the stack — finishing would drop to Home. Return explicitly.
+  if (fromSettings_)
+    activityManager.goToSettings();
+  else
+    activityManager.goHome();
+}
 namespace {
 // "43.1 GB" / "820 MB": one decimal below 100 GB, whole numbers above.
 void formatBytes(char* out, size_t size, uint64_t bytes) {
@@ -380,14 +389,15 @@ void RickyStorageActivity::buildScreen(UiScreen& screen) {
     target.text(screen.takeBottom(smallHeight * 2, gap), tr(STR_RICKY_FOLDER_MISSING), warning);
   }
 
-  // Card sizes are fixed; leftover height becomes the gaps between them.
+  // Short-card grid inside Settings: compact tiles so the five entries (SD
+  // summary + four folders) read as a tight grid. Leftover height becomes gaps.
   const bool wide = content.width > content.height;
   const int columns = wide ? 4 : 2;
   const int gridRows = 4 / columns;
-  const int pad = gap + gap / 2;
-  const int ring = bodyHeight + smallHeight + gap * 3;
+  const int pad = gap / 2 + 2;                              // short-card inset
+  const int ring = bodyHeight + smallHeight + gap;          // smaller usage ring
   const int summaryHeight = ring + pad * 2;
-  const int cellHeight = std::max(48, bodyHeight + smallHeight) + pad * 2;
+  const int cellHeight = std::max(46, bodyHeight + smallHeight) + pad * 2;
   const int needed = summaryHeight + cellHeight * gridRows + gap * gridRows;
   const int section = gap + std::clamp((screen.body().height - needed) / 4, 0, gap * 2);
 

@@ -41,6 +41,7 @@ enum class SettingAction {
   RickyScreenRepair,
   RickyGestures,
   RickyKeys,
+  RickyStorage,
 #endif
 };
 

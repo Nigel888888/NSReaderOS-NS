@@ -464,6 +464,9 @@ void SettingsActivity::rebuildSettingsLists() {
   controlsSettings.push_back(SettingInfo::Action(StrId::STR_BLUETOOTH, SettingAction::Bluetooth));
 #endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_APP_VISIBILITY, SettingAction::AppVisibility));
+  // Storage moved out of the bottom navigation; it now lives here as a
+  // short-card grid (SD summary + books/fonts/images/downloads folders).
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_STORAGE, SettingAction::RickyStorage));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_DATE_AND_TIME, SettingAction::ClockSettings));
   if (BoardConfig::hasHomeKey()) {
     controlsSettings.insert(controlsSettings.begin(),
@@ -1148,6 +1151,11 @@ void SettingsActivity::toggleCurrentSetting() {
         break;
       case SettingAction::RickyKeys:
         startActivityForResultWith<RickyOptionListActivity>(resultHandler, RickyOptionLists::keys());
+        break;
+      case SettingAction::RickyStorage:
+        // Storage is a Settings sub-page now (short-card grid); its Back
+        // returns here via ActivityManager::goToSettings().
+        activityManager.goToStorageFromSettings();
         break;
       case SettingAction::RickyScreenRepair: {
         // Residual charge in the film shows old screens through new ones. Full GC16

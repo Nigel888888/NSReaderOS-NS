@@ -131,6 +131,7 @@ class ActivityManager {
   void goToJoinNetwork();  // File Transfer straight into Join Network (post heap-defrag reboot)
   void goToUsbDrive();
   void goToSettings();
+  void goToStorageFromSettings();  // Storage short-card grid, opened from Settings.
 #ifndef RICKYOS_PRODUCT
   void goToUglyAvatar();
 #endif

@@ -24,9 +24,9 @@ inline constexpr int statusBarHeight = UiHighDpiProfile::enabled ? UiHighDpiProf
 #ifdef RICKYOS_PRODUCT
 // Brand navigation includes a separator, icon, label and breathing room.
 inline constexpr int bottomBarHeight = UiHighDpiProfile::enabled ? 116 : 86;
-// Apps sits in the middle: it is opened more often than Storage.
-inline constexpr std::array<MainTab, 5> values = {MainTab::Recent, MainTab::Library, MainTab::Apps,
-                                                  MainTab::StorageFiles, MainTab::Settings};
+// Four tabs: Storage now lives inside Settings as a short-card grid.
+inline constexpr std::array<MainTab, 4> values = {MainTab::Recent, MainTab::Library, MainTab::Apps,
+                                                  MainTab::Settings};
 #else
 inline constexpr int bottomBarHeight = UiHighDpiProfile::enabled ? UiHighDpiProfile::navigationHeight : 56;
 inline constexpr std::array<MainTab, 5> values = {MainTab::Recent, MainTab::Library, MainTab::Apps, MainTab::Settings,
