@@ -461,8 +461,10 @@ void RssActivity::loop() {
         return;
       }
     } else if (view == View::Article) {
-      if (hit(starButton, tx, ty)) { toggleCurrentFavorite(); return; }
+      if (hit(starButton, tx, ty)) { deleteArmed = false; toggleCurrentFavorite(); return; }
+      if (hit(deleteButton, tx, ty)) { deleteCurrentArticle(); return; }
       if (hit(backButton, tx, ty)) {
+        deleteArmed = false;
         view = View::Updates;
         rebuildUpdateRows();
         selected = updatesSelected;
@@ -530,6 +532,7 @@ void RssActivity::loop() {
 
 void RssActivity::openArticle(int index) {
   if (index < 0 || index >= static_cast<int>(articles.size())) return;
+  deleteArmed = false;
   openGuid = articles[index].guid;
   // Opening an article marks it read; the list rebuild picks up the new flag
   // so its title returns in regular weight instead of bold.
@@ -555,6 +558,33 @@ void RssActivity::toggleCurrentFavorite() {
     else if (view == View::Updates) rebuildUpdateRows();
     showMessage(tr(STR_RSS_FAV_TOGGLED));
   }
+}
+
+void RssActivity::deleteCurrentArticle() {
+  if (openGuid.empty()) return;
+  // Two-step confirm so a stray tap while paging never destroys an article.
+  const unsigned long now = millis();
+  if (!deleteArmed || now >= deleteArmedUntil) {
+    deleteArmed = true;
+    deleteArmedUntil = now + MESSAGE_MS;
+    showMessage(tr(STR_RSS_DELETE_CONFIRM));
+    return;
+  }
+  deleteArmed = false;
+  const std::string guid = openGuid;
+  if (RssStore::deleteArticle(articles, guid)) {
+    openGuid.clear();
+    rebuildUpdateRows();
+    rebuildFavoriteRows();
+    view = View::Updates;
+    selected = updatesSelected;
+    if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
+    scrollTop = updatesScroll;
+    clampScroll();
+    ensureCursorVisible();
+    showMessage(tr(STR_RSS_DELETED));
+  }
+  requestUpdate();
 }
 
 void RssActivity::wrapBodyLines() {
@@ -741,6 +771,14 @@ void RssActivity::lookupBodyWord(const int x, const int y) {
   // need them while the dictionary grabs its inflate window.
   rows.clear();
   rows.shrink_to_fit();
+  // The article index is the single largest resident heap block (~100 entries,
+  // each with several std::string fields). Dictionary::readDefinition() refuses
+  // a lookup when ESP.getMaxAllocHeap() < definition + 8KB, so even with the
+  // dictzip ring moved to PSRAM this index can starve that internal-heap guard.
+  // Park it for the duration of the lookup; `book` was copied out above and the
+  // reading view is restored from `bodyText`, so nothing here still needs it.
+  std::vector<RssStore::Article> parkedArticles;
+  parkedArticles.swap(articles);
 
   Dictionary dict;
   bool ok = dict.open(SETTINGS.dictionaryName);
@@ -754,6 +792,9 @@ void RssActivity::lookupBodyWord(const int x, const int y) {
   Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
   const bool found = ok && dict.lookup(token.c_str(), definition, headword, &result);
   dictionaryBusy = false;
+
+  // Give the article index back before any rebuild that walks it.
+  articles.swap(parkedArticles);
 
   // Restore the reading view before leaving it: bodyText is untouched, so
   // wrapping it again rebuilds both the lines and the word boxes.
@@ -857,7 +898,13 @@ void RssActivity::drawHeaderAndTabs(const char* title, bool showStar) {
                                 metrics.headerHeight},
                  title);
   if (showStar) {
-    starButton = Rect{renderer.getScreenWidth() - SIDE_PAD - 120, metrics.topPadding + 4, 120,
+    // Star and Delete share the right of the title band. Both are two short
+    // CJK labels so a fixed 96px capsule is enough and leaves the title room.
+    constexpr int BTN_W = 96;
+    constexpr int BTN_GAP = 8;
+    deleteButton = Rect{renderer.getScreenWidth() - SIDE_PAD - BTN_W, metrics.topPadding + 4, BTN_W,
+                        metrics.headerHeight - 8};
+    starButton = Rect{deleteButton.x - BTN_GAP - BTN_W, metrics.topPadding + 4, BTN_W,
                       metrics.headerHeight - 8};
     const bool starred = [this]() {
       for (const auto& a : articles) if (a.guid == openGuid) return a.favorite;
@@ -865,6 +912,9 @@ void RssActivity::drawHeaderAndTabs(const char* title, bool showStar) {
     }();
     GUI.drawActionButton(renderer, starButton,
                          starred ? tr(STR_RSS_STARRED) : tr(STR_RSS_STAR), starred);
+    const bool armed = deleteArmed && millis() < deleteArmedUntil;
+    // Keep the capsule label short; the armed hint is shown in the message band.
+    GUI.drawActionButton(renderer, deleteButton, tr(STR_RSS_DELETE), armed);
   }
 }
 

@@ -75,13 +75,20 @@ bool extractChunkSlice(HalFile& file, uint32_t compressedOffset, uint32_t compre
   };
   if (extractSize == 0) return true;
 
-  // Largest block FIRST. Every allocation here is carved from the same big free
-  // run, so taking the ~3KB ChunkSource before the 32KB ring left the ring's
-  // block 12 bytes short on device (largest=32756 against need=32768) even on a
-  // barely fragmented heap. Ordering by size removes that failure mode: the ring
-  // gets the big block while it is still whole, and the small buffers fit in
-  // what remains — or in one of the smaller free blocks.
-  auto window = makeUniqueNoThrow<uint8_t[]>(InflateReader::RING_BYTES);
+  // The 32KB inflate ring is by far the largest contiguous request during a
+  // lookup. On this device the internal heap reports ~89KB free but only ~45KB
+  // as one block after a reading session (articles index + UI), so repeatedly
+  // carving a 32KB window out of it fragments the heap until lookups fail with
+  // "low memory" — even though PSRAM has megabytes free and unused.
+  //
+  // Prefer PSRAM for the ring: uzlib only needs ordinary random-access bytes
+  // for back-references (initWithRing memsets it and never frees a borrowed
+  // buffer), so a PSRAM ring is transparently correct. fall back to the
+  // internal heap on boards/builds without PSRAM. Either way the ring is
+  // allocated FIRST, before the smaller ChunkSource/buf, so it still gets the
+  // largest available block when we do use internal RAM.
+  memory::ByteBuffer window = memory::makePsramByteBufferNoThrow(InflateReader::RING_BYTES);
+  if (!window) window = memory::makeInternalByteBufferNoThrow(InflateReader::RING_BYTES);
   if (!window) return fail(ExtractError::LowMemory);
 
   auto src = makeUniqueNoThrow<ChunkSource>();

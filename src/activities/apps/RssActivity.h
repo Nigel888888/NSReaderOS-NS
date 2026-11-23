@@ -107,6 +107,7 @@ class RssActivity final : public Activity {
   void addFeed();
   void removeSelectedFeed();
   void toggleCurrentFavorite();
+  void deleteCurrentArticle();
   void openArticle(int index);
   void scrollBody(int lines);
   void wrapBodyLines();
@@ -155,10 +156,14 @@ class RssActivity final : public Activity {
   int bodyLine = 0;
   int bodyLineHeight = 0;  // measured by the last reading-view render
   bool dictionaryBusy = false;
-  std::string openGuid;  // guid of the article being read, for the star action
+  std::string openGuid;  // guid of the article being read, for the star/delete actions
+  // Two-step delete: first tap arms, second tap on Delete removes the article.
+  bool deleteArmed = false;
+  unsigned long deleteArmedUntil = 0;
 
   Rect tabRects[3]{};
   Rect starButton{0, 0, 0, 0};
+  Rect deleteButton{0, 0, 0, 0};
   Rect updateButton{0, 0, 0, 0};
   Rect addButton{0, 0, 0, 0};
   Rect manageButton{0, 0, 0, 0};

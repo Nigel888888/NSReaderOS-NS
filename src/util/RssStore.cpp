@@ -444,6 +444,17 @@ bool RssStore::markRead(std::vector<Article>& articles, const std::string& guid)
   return false;
 }
 
+bool RssStore::deleteArticle(std::vector<Article>& articles, const std::string& guid) {
+  for (size_t i = 0; i < articles.size(); ++i) {
+    if (articles[i].guid == guid) {
+      Storage.remove(bodyPath(articles[i].bodyFile).c_str());  // free the SD body first
+      articles.erase(articles.begin() + static_cast<long>(i));
+      return saveArticles(articles);
+    }
+  }
+  return false;
+}
+
 bool RssStore::loadBody(const Article& article, std::string& body) {
   body.clear();
   return Storage.readFileToString("RSS", bodyPath(article.bodyFile).c_str(), MAX_BODY_LENGTH + 1, body);

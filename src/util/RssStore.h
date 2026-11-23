@@ -71,6 +71,9 @@ class RssStore {
   static bool toggleFavorite(std::vector<Article>& articles, const std::string& guid);
   // Marks one article as read (matched by guid) and persists the index.
   static bool markRead(std::vector<Article>& articles, const std::string& guid);
+  // Deletes one article by guid: removes its body file, drops it from the
+  // index and persists. Returns true when a matching article was removed.
+  static bool deleteArticle(std::vector<Article>& articles, const std::string& guid);
   // How many days back a refresh is allowed to import. Older feed items are
   // skipped so the cache stays current and bounded.
   static constexpr uint32_t REFRESH_WINDOW_DAYS = 7;
