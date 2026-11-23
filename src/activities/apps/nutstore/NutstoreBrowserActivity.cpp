@@ -219,7 +219,7 @@ void NutstoreBrowserActivity::activateIndex(const int index) {
 
 void NutstoreBrowserActivity::onBackButton() {
   if (state == State::CHECK_WIFI || navigationHistory.empty()) {
-    onGoHome();
+    activityManager.goToApps();
   } else {
     currentPath = navigationHistory.back();
     navigationHistory.pop_back();

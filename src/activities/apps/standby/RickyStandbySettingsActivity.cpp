@@ -152,7 +152,7 @@ bool RickyStandbySettingsActivity::handleCustomInput() {
 
 bool RickyStandbySettingsActivity::handleButtons() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    finish();
+    activityManager.goToApps();
     return true;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {

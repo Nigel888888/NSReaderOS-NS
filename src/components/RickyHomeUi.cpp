@@ -450,8 +450,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const int listTop = footer.y + smallHeight + gap / 2;
   const int listHeight = footer.bottom() - listTop;
 
-  // Left column: the pinned current book is a bordered card with only its
-  // cover; a progress bar sits immediately BELOW the card at the same width.
+  // Left column: the pinned current book is now an enlarged cover that fills
+  // the column. No title or percentage text; the progress bar is overlaid on
+  // the bottom edge of the artwork.
   if (!books || books->empty()) {
     target.text(fui::Rect{footer.x, static_cast<int16_t>(listTop + listHeight / 2),
                           static_cast<int16_t>(dividerX - footer.x - gap), static_cast<int16_t>(smallHeight)},
@@ -459,14 +460,11 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     screen.frame().hit(fui::Rect{footer.x, footer.y, static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(footer.height)}, OPEN_BOOK, LIBRARY, fui::InputTouch);
   } else {
-    // Cover on top (artwork only, no card/frame), then two text lines —
-    // the book title and its read percentage — and the progress bar below.
     const int boxW = dividerX - footer.x - gap;
     const int barHeight = 6;
-    const int inGap = std::max(2, gap / 3);
-    const int textBlockH = smallHeight * 2;
-    const int coverAreaH = std::max<int>(0, listHeight - textBlockH - barHeight - inGap * 2);
-    const int coverH = std::min<int>(coverAreaH, boxW * 4 / 3);
+    // The removed title + percentage lines give the cover the whole column;
+    // keep the 3:4 book shape and center it horizontally.
+    const int coverH = std::min<int>(listHeight, boxW * 4 / 3);
     const int coverW = coverH * 3 / 4;
     const fui::Rect cover{static_cast<int16_t>(footer.x + (boxW - coverW) / 2), static_cast<int16_t>(listTop),
                           static_cast<int16_t>(coverW), static_cast<int16_t>(coverH)};
@@ -478,19 +476,15 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       // until a later redraw (swipe) happened to re-bind the height.
       thumbnailHeight = coverH;
       paint(cover, 0, false);  // no hairline frame — artwork only
+      // Overlay the progress bar on the bottom of the cover (inset on both
+      // sides) instead of reserving a separate row for text beneath it.
+      const int barInset = std::max(2, gap / 4);
+      RickyPageUi::progressBar(
+          target, fui::Rect{static_cast<int16_t>(cover.x + barInset),
+                            static_cast<int16_t>(cover.bottom() - barHeight - barInset),
+                            static_cast<int16_t>(cover.width - barInset * 2), static_cast<int16_t>(barHeight)},
+          progress);
     }
-    const int textY = listTop + coverH + inGap;
-    const auto& book = (*books)[0];
-    target.text(fui::Rect{footer.x, static_cast<int16_t>(textY), static_cast<int16_t>(boxW),
-                          static_cast<int16_t>(smallHeight)},
-                titleOf(book), strong);
-    snprintf(statsText, sizeof(statsText), tr(STR_RICKY_READ_PROGRESS), static_cast<unsigned>(progress));
-    target.text(fui::Rect{footer.x, static_cast<int16_t>(textY + smallHeight), static_cast<int16_t>(boxW),
-                          static_cast<int16_t>(smallHeight)},
-                statsText, small);
-    RickyPageUi::progressBar(
-        target, fui::Rect{footer.x, static_cast<int16_t>(textY + textBlockH + inGap), static_cast<int16_t>(boxW),
-                          static_cast<int16_t>(barHeight)}, progress);
     screen.frame().hit(fui::Rect{footer.x, static_cast<int16_t>(listTop), static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(listHeight)}, OPEN_BOOK, 0, fui::InputTouch);
   }

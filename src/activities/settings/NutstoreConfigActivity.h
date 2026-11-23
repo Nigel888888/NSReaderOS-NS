@@ -19,6 +19,7 @@ class NutstoreConfigActivity final : public UiListActivity {
   void buildScreen(UiScreen& screen) override;
   void activateIndex(int index) override;
   bool handleCustomInput() override;
+  void onBackButton() override;
 
  private:
   std::array<freeink::ui::ListItem, ROWS> rows{};

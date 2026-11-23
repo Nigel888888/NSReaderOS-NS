@@ -177,21 +177,11 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
 }
 
 // Reference style: a clean 3x4 ruled grid (thin gray dividers), each cell a
-// bare black line icon over its label — no rounded-square tile, no heavy black
-// selection block. The selected cell gets only a soft light-gray capsule behind
-// the icon so direction-key navigation still has feedback without breaking the
-// minimal look.
-constexpr int kAppHaloSize = kRickyAppIconSize + 16;   // 72px soft selection halo
-constexpr int kAppHaloRadius = kAppHaloSize / 2;
-
-void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const bool selected) {
-  if (selected) {
-    const int haloX = x + (kRickyAppIconSize - kAppHaloSize) / 2;
-    const int haloY = y + (kRickyAppIconSize - kAppHaloSize) / 2;
-    renderer.fillRoundedRect(haloX, haloY, kAppHaloSize, kAppHaloSize, kAppHaloRadius, Color::LightGray);
-  }
-  // Icons are pure black line art in the reference; keep them black on either
-  // state (the light halo, not a knockout, marks selection).
+// bare black line icon over its label — no rounded-square tile, no shadow/halo
+// and no selection marker behind the last opened app.
+void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y,
+                      const bool /*selected*/) {
+  // Icons are pure black line art, with no backing shape in any state.
   if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, true)) return;
   constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;
   for (int row = 0; row < kRickyAppIconSize; ++row) {
@@ -375,8 +365,8 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
 #ifdef RICKYOS_PRODUCT
     if (const uint8_t* icon = rickyAppIcon(kAppEntries[appIndex].icon)) {
       // Center the icon + label as one block inside the cell so a short grid
-      // never pushes the label past the row divider. The soft halo is drawn
-      // around the icon center by drawRickyAppIcon.
+      // never pushes the label past the row divider. Icons are plain black line
+      // art with no selection halo behind them.
       constexpr int labelGap = 6;
       const int blockHeight = kRickyAppIconSize + labelGap + lineHeight;
       const int blockTop = cell.y + std::max(2, (cell.height - blockHeight) / 2);

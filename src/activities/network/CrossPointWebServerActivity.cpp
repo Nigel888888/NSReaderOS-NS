@@ -109,7 +109,7 @@ void CrossPointWebServerActivity::onEnter() {
   LOG_DBG("WEBACT", "Launching NetworkModeSelectionActivity...");
   startActivityForResultWith<NetworkModeSelectionActivity>([this](const ActivityResult& result) {
     if (result.isCancelled) {
-      onGoHome();
+      activityManager.goToApps();
     } else {
       onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
     }
@@ -187,7 +187,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
 
       startActivityForResultWith<NetworkModeSelectionActivity>([this](const ActivityResult& result) {
         if (result.isCancelled) {
-          onGoHome();
+          activityManager.goToApps();
         } else {
           onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
         }
@@ -208,7 +208,7 @@ void CrossPointWebServerActivity::onNetworkModeSelected(const NetworkMode mode) 
           }
           onWifiSelectionComplete(!result.isCancelled);
         })) {
-      onGoHome();
+      activityManager.goToApps();
     }
   } else {
     // AP mode - start access point
@@ -236,7 +236,7 @@ void CrossPointWebServerActivity::onWifiSelectionComplete(const bool connected) 
 
     startActivityForResultWith<NetworkModeSelectionActivity>([this](const ActivityResult& result) {
       if (result.isCancelled) {
-        onGoHome();
+        activityManager.goToApps();
       } else {
         onNetworkModeSelected(std::get<NetworkModeResult>(result.data).mode);
       }
@@ -251,7 +251,7 @@ void CrossPointWebServerActivity::startAccessPoint() {
   // Configure and start the AP
   if (!NetworkStartup::setMode(renderer, WIFI_AP)) {
     LOG_ERR("WEBACT", "Failed to initialize WiFi for Access Point");
-    onGoHome();
+    activityManager.goToApps();
     return;
   }
   delay(100);
@@ -267,7 +267,7 @@ void CrossPointWebServerActivity::startAccessPoint() {
 
   if (!apStarted) {
     LOG_ERR("WEBACT", "ERROR: Failed to start Access Point!");
-    onGoHome();
+    activityManager.goToApps();
     return;
   }
 
@@ -293,7 +293,7 @@ void CrossPointWebServerActivity::startAccessPoint() {
   dnsServer = new (std::nothrow) DNSServer();
   if (!dnsServer) {
     LOG_ERR("WEBACT", "OOM: DNSServer (%u bytes)", static_cast<unsigned>(sizeof(DNSServer)));
-    onGoHome();
+    activityManager.goToApps();
     return;
   }
   dnsServer->setErrorReplyCode(DNSReplyCode::NoError);
@@ -325,7 +325,7 @@ void CrossPointWebServerActivity::startWebServer() {
     if constexpr (transferMemory::guarded) {
       showMemoryError();
     } else {
-      onGoHome();
+      activityManager.goToApps();
     }
     return;
   }
@@ -366,7 +366,7 @@ void CrossPointWebServerActivity::startWebServer() {
     }
     webServer.reset();
     // Go back on error
-    onGoHome();
+    activityManager.goToApps();
   }
 }
 
@@ -389,7 +389,7 @@ void CrossPointWebServerActivity::loop() {
     int y = 0;
     if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture() ||
         mappedInput.wasScreenTapped(x, y)) {
-      onGoHome();
+      activityManager.goToApps();
     }
     return;
   }
@@ -406,7 +406,7 @@ void CrossPointWebServerActivity::loop() {
       if (millis() - lastWifiCheck > 2000) {  // Check every 2 seconds
         lastWifiCheck = millis();
         const wl_status_t wifiStatus = WiFi.status();
-        // Driver auto-reconnect handles retries; abandon (via onGoHome) only
+        // Driver auto-reconnect handles retries; abandon (via goToApps) only
         // after WIFI_ABANDON_MS, otherwise the activity freezes on a blip.
         bool repaint = false;
         if (wifiStatus != WL_CONNECTED) {
@@ -420,7 +420,7 @@ void CrossPointWebServerActivity::loop() {
           if (millis() - firstDisconnectAt > WIFI_ABANDON_MS) {
             LOG_DBG("WEBACT", "WiFi unavailable for >%lu s; returning to network selection", WIFI_ABANDON_MS / 1000UL);
             state = WebServerActivityState::SHUTTING_DOWN;
-            onGoHome();
+            activityManager.goToApps();
             return;
           }
         } else {
@@ -463,7 +463,7 @@ void CrossPointWebServerActivity::loop() {
       for (int i = 0; i < MAX_ITERATIONS && webServer->isRunning(); i++) {
         webServer->handleClient();
         if (leaveRequested) {
-          onGoHome();
+          activityManager.goToApps();
           return;
         }
         if (transferMemory::guarded && webServer->hasMemoryError()) {
@@ -482,7 +482,7 @@ void CrossPointWebServerActivity::loop() {
           // Home remains available now; other configured actions are deferred
           // to the next main-loop pass.
           if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture()) {
-            onGoHome();
+            activityManager.goToApps();
             return;
           }
         }
@@ -492,7 +492,7 @@ void CrossPointWebServerActivity::loop() {
 
     // Also check outside the request-processing loop.
     if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture()) {
-      onGoHome();
+      activityManager.goToApps();
       return;
     }
   }

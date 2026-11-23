@@ -182,4 +182,11 @@ void NutstoreConfigActivity::activateIndex(const int index) {
       break;
   }
 }
+
+void NutstoreConfigActivity::onBackButton() {
+  // This screen is opened from the Apps grid (replaceActivityWith), so there is
+  // no Apps menu left on the stack; finishing would drop to Home. Return to the
+  // Apps grid explicitly, like the other app screens do.
+  activityManager.goToApps();
+}
 #endif
