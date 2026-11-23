@@ -8,17 +8,24 @@
 #include <WiFi.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <variant>
 
+#include <CrossPointSettings.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #include "MappedInputManager.h"
 #include "activities/network/WifiSelectionActivity.h"
+#include "activities/reader/DictionaryDefinitionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "util/Dictionary.h"
 #include "util/TaskWatchdog.h"
 
 namespace fui = freeink::ui;
@@ -53,6 +60,51 @@ bool hit(const Rect& r, int x, int y) {
 
 Rect rowRectFor(int index, const Rect& bounds, int rowHeight, int rowGap) {
   return Rect{bounds.x, bounds.y + index * (rowHeight + rowGap), bounds.width, rowHeight};
+}
+
+// A dictionary index build streams the whole .idx file; yield to FreeRTOS so
+// the render and watchdog tasks keep running (same contract as the reader).
+void rssIndexBuildYield(void*) { vTaskDelay(1); }
+
+// Word boundaries for RSS prose. Apostrophes and hyphens stay inside a token
+// ("don't", "long-press") because Dictionary::cleanWord() knows what to do
+// with them; quotes and sentence marks do not. CJK has no spaces, so a run of
+// non-ASCII bytes is kept together as one token.
+bool isWordSeparator(const unsigned char c) {
+  if (c < 0x80) {
+    return !std::isalnum(c) && c != '\'' && c != '-';
+  }
+  return false;
+}
+
+bool isSelectableBodyToken(const std::string& token) {
+  for (size_t i = 0; i < token.size(); ++i) {
+    const unsigned char c = static_cast<unsigned char>(token[i]);
+    if (c < 0x80) {
+      if (std::isalnum(c)) return true;
+    } else {
+      return true;  // CJK / other non-ASCII run: let the dictionary clean it
+    }
+  }
+  return false;
+}
+
+// Byte length of a sentence-ending mark at `pos`, including CJK full stops.
+// Mirrors DictWordSelect::sentenceEndLength so a word collected from an RSS
+// article is reviewed in the same kind of context as one from a book.
+size_t rssSentenceEndLength(const std::string& text, const size_t pos) {
+  if (pos >= text.size()) return 0;
+  const unsigned char c = static_cast<unsigned char>(text[pos]);
+  if (c == '.' || c == '!' || c == '?' || c == ';') return 1;
+  if (pos + 2 < text.size() && c == 0xE3 && static_cast<unsigned char>(text[pos + 1]) == 0x80 &&
+      static_cast<unsigned char>(text[pos + 2]) == 0x82) {
+    return 3;  // 。 U+3002
+  }
+  if (pos + 2 < text.size() && c == 0xEF && static_cast<unsigned char>(text[pos + 1]) == 0xBC) {
+    const unsigned char c2 = static_cast<unsigned char>(text[pos + 2]);
+    if (c2 == 0x81 || c2 == 0x9F || c2 == 0x89) return 3;  // ！ ？ ；
+  }
+  return 0;
 }
 
 }  // namespace
@@ -322,6 +374,18 @@ void RssActivity::loop() {
     return;
   }
 
+  // A stationary long-press on article text selects the word under the
+  // finger and opens the same definition card the book reader uses. It
+  // consumes the contact, so releasing cannot also turn the page.
+  if (phase == Phase::Idle && view == View::Article && !dictionaryBusy) {
+    int lpX = 0;
+    int lpY = 0;
+    if (mappedInput.wasScreenLongPress(lpX, lpY)) {
+      lookupBodyWord(lpX, lpY);
+      return;
+    }
+  }
+
   int tx = 0, ty = 0;
   const bool tapped = mappedInput.wasScreenTapped(tx, ty);
   if (phase == Phase::Idle && tapped) {
@@ -480,6 +544,8 @@ void RssActivity::toggleCurrentFavorite() {
 
 void RssActivity::wrapBodyLines() {
   bodyLines.clear();
+  bodyLineOffsets.clear();
+  bodyWords.clear();
   // Simple greedy wrap by measuring with the renderer, splitting on newlines
   // first. Bound the number of lines to keep memory modest.
   const int font = NOTOSANS_18_FONT_ID;
@@ -508,15 +574,197 @@ void RssActivity::wrapBodyLines() {
       }
       if (next == i) next = i + 1;  // never stall
       bodyLines.push_back(line);
+      // Remember where this drawn line starts in the source text: a word
+      // selected on it can then be expanded to its full original sentence.
+      bodyLineOffsets.push_back(pos + i);
       line.clear();
       i = next;
     }
     if (nl == std::string::npos) break;
     pos = nl + 1;
   }
-  if (bodyLines.empty()) bodyLines.push_back("");
+  if (bodyLines.empty()) {
+    bodyLines.push_back("");
+    bodyLineOffsets.push_back(0);
+  }
+  rebuildBodyWords();
   if (bodyLine < 0) bodyLine = 0;
   if (bodyLine >= static_cast<int>(bodyLines.size())) bodyLine = static_cast<int>(bodyLines.size()) - 1;
+}
+
+// Measure the drawn x of every selectable token once, at wrap time. The
+// reading view renders these same lines with the same font from listBounds.x,
+// so a long-press can map a screen point straight back to the token.
+void RssActivity::rebuildBodyWords() {
+  bodyWords.clear();
+  const int font = NOTOSANS_18_FONT_ID;
+  constexpr size_t MAX_WORDS = 4000;
+  for (size_t li = 0; li < bodyLines.size() && bodyWords.size() < MAX_WORDS; ++li) {
+    const std::string& line = bodyLines[li];
+    const size_t lineStart = li < bodyLineOffsets.size() ? bodyLineOffsets[li] : 0;
+    size_t t = 0;
+    while (t < line.size() && bodyWords.size() < MAX_WORDS) {
+      while (t < line.size() && isWordSeparator(static_cast<unsigned char>(line[t]))) ++t;
+      const size_t start = t;
+      while (t < line.size() && !isWordSeparator(static_cast<unsigned char>(line[t]))) ++t;
+      if (t <= start) continue;
+      std::string token = line.substr(start, t - start);
+      if (!isSelectableBodyToken(token)) continue;
+      BodyWord word;
+      word.x = renderer.getTextWidth(font, line.substr(0, start).c_str());
+      word.width = renderer.getTextWidth(font, token.c_str());
+      word.line = static_cast<int>(li);
+      word.textOffset = lineStart + start;
+      word.text = std::move(token);
+      bodyWords.push_back(std::move(word));
+    }
+  }
+}
+
+int RssActivity::bodyWordAt(const int x, const int y) const {
+  if (bodyLineHeight <= 0 || bodyWords.empty()) return -1;
+  if (y < listBounds.y || y >= listBounds.y + listBounds.height) return -1;
+  const int row = (y - listBounds.y) / bodyLineHeight + bodyLine;
+  constexpr int SLOP = 4;  // finger error, same allowance as the book reader
+  for (int i = 0; i < static_cast<int>(bodyWords.size()); ++i) {
+    const BodyWord& word = bodyWords[i];
+    if (word.line != row) continue;
+    const int wordX = listBounds.x + word.x;
+    if (x >= wordX - SLOP && x < wordX + word.width + SLOP) return i;
+  }
+  return -1;
+}
+
+// Full source sentence containing the selected token. bodyLineOffsets keep
+// the drawn line tied to its place in bodyText, so wrapping never truncates
+// the context the word is reviewed in.
+std::string RssActivity::bodySentenceFor(const int wordIndex) const {
+  if (wordIndex < 0 || wordIndex >= static_cast<int>(bodyWords.size())) return std::string();
+  const BodyWord& word = bodyWords[wordIndex];
+  if (bodyText.empty() || word.textOffset >= bodyText.size()) {
+    return bodyLines[word.line];
+  }
+  const size_t wordStart = word.textOffset;
+  const size_t wordEnd = wordStart + word.text.size();
+
+  size_t start = 0;
+  for (size_t i = wordStart; i > 0; --i) {
+    const size_t n = rssSentenceEndLength(bodyText, i - 1);
+    if (n > 0) {
+      start = i - 1 + n;
+      break;
+    }
+  }
+  size_t end = bodyText.size();
+  for (size_t i = wordEnd; i < bodyText.size(); ++i) {
+    if ((static_cast<unsigned char>(bodyText[i]) & 0xC0) == 0x80) continue;
+    const size_t n = rssSentenceEndLength(bodyText, i);
+    if (n > 0) {
+      end = i + n;
+      break;
+    }
+  }
+  if (end <= start || start >= bodyText.size()) return bodyLines[word.line];
+
+  std::string sentence = bodyText.substr(start, end - start);
+  std::string flat;
+  flat.reserve(sentence.size());
+  bool pendingSpace = false;
+  for (const char ch : sentence) {
+    if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+      pendingSpace = !flat.empty();
+      continue;
+    }
+    if (pendingSpace) {
+      flat.push_back(' ');
+      pendingSpace = false;
+    }
+    flat.push_back(ch);
+  }
+  // VocabularyFile::MAX_SENTENCE_LENGTH is 400; stay just below it.
+  constexpr size_t kMaxSentenceBytes = 380;
+  if (flat.size() > kMaxSentenceBytes) {
+    size_t cut = kMaxSentenceBytes;
+    while (cut > 0 && (static_cast<unsigned char>(flat[cut]) & 0xC0) == 0x80) --cut;
+    flat = flat.substr(0, cut);
+  }
+  return flat;
+}
+
+void RssActivity::lookupBodyWord(const int x, const int y) {
+  const int idx = bodyWordAt(x, y);
+  if (idx < 0) return;
+  if (SETTINGS.dictionaryName[0] == '\0') {
+    showMessage(tr(STR_DICT_NO_DICT_SET));
+    return;
+  }
+
+  const std::string token = bodyWords[idx].text;
+  const std::string context = bodySentenceFor(idx);
+  dictionaryBusy = true;
+  requestUpdateAndWait();
+
+  Dictionary dict;
+  bool ok = dict.open(SETTINGS.dictionaryName);
+  bool needsIndex = ok && dict.needsIndex();
+  Dictionary::IndexResult indexResult = Dictionary::IndexResult::Ok;
+  if (ok && needsIndex) {
+    ok = dict.buildIndex(&rssIndexBuildYield, nullptr, &indexResult);
+  }
+  std::string definition;
+  std::string headword;
+  Dictionary::LookupResult result = Dictionary::LookupResult::NotFound;
+  const bool found = ok && dict.lookup(token.c_str(), definition, headword, &result);
+  dictionaryBusy = false;
+
+  if (found) {
+    std::string book = tr(STR_RSS_TITLE);
+    for (const auto& article : articles) {
+      if (article.guid == openGuid) {
+        if (!article.title.empty()) book = article.title;
+        break;
+      }
+    }
+    requestUpdate();
+    // The definition card already carries "add to vocabulary" and "save as
+    // quote"; reusing it keeps RSS word collection identical to book reading.
+    startActivityForResultWith<DictionaryDefinitionActivity>(
+        [this](const ActivityResult&) { requestUpdate(); }, std::move(headword), std::move(definition),
+        dict.definitionsAreHtml(), std::move(book), std::move(context), /*showQuoteButton=*/true);
+    return;
+  }
+
+  if (!ok) {
+    switch (indexResult) {
+      case Dictionary::IndexResult::LowMemory:
+        showMessage(tr(STR_DICT_LOW_MEMORY));
+        break;
+      case Dictionary::IndexResult::ReadError:
+        showMessage(tr(STR_DICT_READ_FAILED));
+        break;
+      case Dictionary::IndexResult::Ok:
+      default:
+        showMessage(tr(STR_DICT_ERROR));
+        break;
+    }
+    return;
+  }
+  switch (result) {
+    case Dictionary::LookupResult::LowMemory:
+      showMessage(tr(STR_DICT_LOW_MEMORY));
+      break;
+    case Dictionary::LookupResult::Decompress:
+      showMessage(tr(STR_DICT_DECOMPRESS_ERROR));
+      break;
+    case Dictionary::LookupResult::ReadError:
+      showMessage(tr(STR_DICT_READ_FAILED));
+      break;
+    case Dictionary::LookupResult::NotFound:
+    case Dictionary::LookupResult::Found:
+    default:
+      showMessage(tr(STR_DICT_NOT_FOUND));
+      break;
+  }
 }
 
 void RssActivity::scrollBody(int lines) {
@@ -703,7 +951,6 @@ void RssActivity::drawCardRow(const Rect& r, const Row& row, bool selected) {
 void RssActivity::drawArticleList() {
   drawHeaderAndTabs(tr(STR_RSS_TITLE), false);
   drawTabs();
-  drawBottomBar(false);
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int top = listTop();
   const int barY = renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
@@ -713,20 +960,27 @@ void RssActivity::drawArticleList() {
   if (rows.empty()) {
     renderer.drawText(NOTOSANS_18_FONT_ID, SIDE_PAD, listBounds.y + 20,
                       view == View::Favorites ? tr(STR_RSS_NO_FAVORITES) : tr(STR_RSS_NO_ARTICLES));
-    return;
+  } else {
+    const int first = listFirstIndex();
+    const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
+    const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
+    // Clamp the trailing "peek" card to the list band. Without this its lower
+    // edge can paint over the action bar, hiding the refresh button until the
+    // very last page (where rows.size() clips it) -- exactly the reported bug.
+    const int listBottom = listBounds.y + listBounds.height;
+    for (int i = first; i < last; ++i) {
+      Rect r = rowRectFor(i - first, listBounds, rowHeight, rowGap);
+      if (r.y + r.height > listBottom) r.height = listBottom - r.y;
+      if (r.height > 8) drawCardRow(r, rows[i], i == selected);
+    }
   }
-  const int first = listFirstIndex();
-  const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
-  const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
-  for (int i = first; i < last; ++i) {
-    drawCardRow(rowRectFor(i - first, listBounds, rowHeight, rowGap), rows[i], i == selected);
-  }
+  // Paint the fixed action bar last so it can never be covered by a card.
+  drawBottomBar(false);
 }
 
 void RssActivity::drawFeedList() {
   drawHeaderAndTabs(tr(STR_RSS_TITLE), false);
   drawTabs();
-  drawBottomBar(true);
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int top = listTop();
   const int barY = renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
@@ -743,12 +997,16 @@ void RssActivity::drawFeedList() {
     const int first = listFirstIndex();
     const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
     const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
+    const int listBottom = listBounds.y + listBounds.height;
     for (int i = first; i < last; ++i) {
-      Row unnamed = rows[i];
-      drawCardRow(rowRectFor(i - first, listBounds, rowHeight, rowGap), unnamed, i == selected);
+      Rect r = rowRectFor(i - first, listBounds, rowHeight, rowGap);
+      if (r.y + r.height > listBottom) r.height = listBottom - r.y;
+      if (r.height > 8) drawCardRow(r, rows[i], i == selected);
     }
   }
   renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD, barY - hintBand + 2, tr(STR_RSS_TAP_REMOVE));
+  // Fixed action bar painted last, above both the cards and the hint.
+  drawBottomBar(true);
 }
 
 void RssActivity::drawArticleBody() {
@@ -761,9 +1019,11 @@ void RssActivity::drawArticleBody() {
                     renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
   const int lineHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
   const int linesOnScreen = std::max(1, listBounds.height / lineHeight);
-  // loop() uses this to advance roughly one screen per tap. It must be set
-  // from the actual rendered geometry, not a guessed constant.
+  // loop() uses these to advance roughly one screen per tap and to map a
+  // long-press back to the drawn word. Both must come from the real rendered
+  // geometry, not a guessed constant.
   bodyPageLines = linesOnScreen;
+  bodyLineHeight = lineHeight;
   for (int i = 0; i < linesOnScreen && bodyLine + i < static_cast<int>(bodyLines.size()); ++i) {
     renderer.drawText(NOTOSANS_18_FONT_ID, listBounds.x, listBounds.y + i * lineHeight,
                       bodyLines[bodyLine + i].c_str());
@@ -793,6 +1053,7 @@ void RssActivity::render(RenderLock&&) {
   else if (view == View::Feeds) drawFeedList();
   else drawArticleBody();
   drawMessage();
+  if (dictionaryBusy) GUI.drawPopup(renderer, tr(STR_DICT_LOOKING_UP));
 
   renderer.displayBuffer(HalDisplay::FAST_REFRESH);
 }

@@ -2,6 +2,7 @@
 
 #include <I18n.h>
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <vector>
@@ -52,6 +53,18 @@ class RssActivity final : public Activity {
     std::string favoriteGuid;  // article guid, so Favorites rows can be opened
   };
 
+  // One selectable word in the article body. Built once while wrapping the
+  // body, so a long-press only has to hit-test a handful of boxes. `x` is
+  // relative to listBounds.x and `line` indexes bodyLines, so page turns
+  // (which only change bodyLine) do not invalidate the boxes.
+  struct BodyWord {
+    int x = 0;
+    int width = 0;
+    int line = 0;
+    size_t textOffset = 0;  // byte offset of the token inside bodyText
+    std::string text;
+  };
+
   void loadArticles();
   void loadFeeds();
   void rebuildUpdateRows();
@@ -94,6 +107,14 @@ class RssActivity final : public Activity {
   void openArticle(int index);
   void scrollBody(int lines);
   void wrapBodyLines();
+  // Long-press word lookup in the reading view. `rebuildBodyWords()` is part
+  // of wrapping: it records the drawn x position and source offset of every
+  // selectable token. The other helpers hit-test a touch, cut the source
+  // sentence and run the dictionary lookup off the render task.
+  void rebuildBodyWords();
+  int bodyWordAt(int x, int y) const;
+  std::string bodySentenceFor(int wordIndex) const;
+  void lookupBodyWord(int x, int y);
 
   View view = View::Updates;
   Phase phase = Phase::Idle;
@@ -124,7 +145,13 @@ class RssActivity final : public Activity {
   // Currently open article body, wrapped into screen lines.
   std::string bodyText;
   std::vector<std::string> bodyLines;
+  // Byte offset in bodyText of each wrapped line's first character, so a
+  // selected token can be expanded back to its original sentence.
+  std::vector<size_t> bodyLineOffsets;
+  std::vector<BodyWord> bodyWords;
   int bodyLine = 0;
+  int bodyLineHeight = 0;  // measured by the last reading-view render
+  bool dictionaryBusy = false;
   std::string openGuid;  // guid of the article being read, for the star action
 
   Rect tabRects[3]{};
