@@ -50,6 +50,7 @@ constexpr AppEntry kAppEntries[] = {
     {AppId::Quotes, StrId::STR_QUOTES_TITLE, UIIcon::Quotes, &ActivityManager::goToQuotes},
     {AppId::Weather, StrId::STR_WEATHER_TITLE, UIIcon::Weather, &ActivityManager::goToWeather},
     {AppId::Rss, StrId::STR_RSS_TITLE, UIIcon::Rss, &ActivityManager::goToRss},
+    {AppId::Agenda, StrId::STR_AGENDA_TITLE, UIIcon::Agenda, &ActivityManager::goToAgenda},
 #ifndef RICKYOS_PRODUCT
     {AppId::Sudoku, StrId::STR_SUDOKU_TITLE, UIIcon::Sudoku, &ActivityManager::goToSudoku},
 #endif
@@ -168,6 +169,8 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
       return ricky_app_quotes_56;
     case UIIcon::Rss:
       return ricky_app_rss_56;
+    case UIIcon::Agenda:
+      return ricky_app_agenda_56;
     default:
       return nullptr;
   }

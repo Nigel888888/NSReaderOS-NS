@@ -37,7 +37,9 @@ enum class AppId : uint8_t {
   Weather = 20,
   // Offline RSS reader: fetch feeds online, read cached articles offline.
   Rss = 21,
-  Count = 22,
+  // Read-only ICS agenda (TickTick / Dida365 subscription URL, entered locally).
+  Agenda = 22,
+  Count = 23,
 };
 
 constexpr uint32_t appBit(const AppId id) { return uint32_t{1} << static_cast<uint8_t>(id); }

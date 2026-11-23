@@ -170,6 +170,7 @@ class ActivityManager {
   void goToQuotes();
   void goToWeather();
   void goToRss();
+  void goToAgenda();
   void goToAirPage();
   void goToStandby();
 #ifdef RICKYOS_PRODUCT

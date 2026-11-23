@@ -186,7 +186,8 @@ enum UIIcon {
   Weather,
   Vocabulary,
   Quotes,
-  Rss
+  Rss,
+  Agenda
 };
 
 // Default theme implementation (Classic Theme)

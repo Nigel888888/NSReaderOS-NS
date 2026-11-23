@@ -31,6 +31,7 @@
 #include "apps/QuotesActivity.h"
 #include "apps/VocabularyActivity.h"
 #include "apps/RssActivity.h"
+#include "apps/AgendaActivity.h"
 #include "apps/calculator/CalculatorActivity.h"
 #include "apps/weather/WeatherActivity.h"
 #include "components/SubpageLayout.h"
@@ -846,6 +847,8 @@ void ActivityManager::goToQuotes() { replaceActivityWith<QuotesActivity>(); }
 void ActivityManager::goToWeather() { replaceActivityWith<WeatherActivity>(); }
 
 void ActivityManager::goToRss() { replaceActivityWith<RssActivity>(); }
+
+void ActivityManager::goToAgenda() { replaceActivityWith<AgendaActivity>(); }
 
 void ActivityManager::goToAirPage() { replaceActivityWith<AirPageActivity>(); }
 
