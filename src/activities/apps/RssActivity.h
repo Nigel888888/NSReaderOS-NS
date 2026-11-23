@@ -64,6 +64,9 @@ class RssActivity final : public Activity {
   void drawTabs();
   void drawBottomBar(bool onFeeds);
   int listTop() const;
+  // First visible card for the current selected row (keeps the cursor two
+  // cards from the top so there is room to scroll upward).
+  int listFirstIndex() const;
   void drawCardRow(const Rect& r, const Row& row, bool selected);
   void drawMessage();
   void selectTab(View target);

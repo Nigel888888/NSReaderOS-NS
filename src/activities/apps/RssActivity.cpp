@@ -240,8 +240,10 @@ void RssActivity::loop() {
     }
 
     if (view == View::Updates || view == View::Favorites) {
-      if (hit(listBounds, tx, ty)) {
-        int idx = (ty - listBounds.y) / (rowHeight + rowGap);
+      if (hit(listBounds, tx, ty) && rowHeight + rowGap > 0) {
+        // The list draws from listFirstIndex(), so taps must use the same
+        // viewport offset or a scrolled list opens the wrong article.
+        int idx = listFirstIndex() + (ty - listBounds.y) / (rowHeight + rowGap);
         if (idx >= 0 && idx < static_cast<int>(rows.size())) {
           // Updates/Favorites rows map 1:1 to the sorted articles array only
           // for Updates; Favorites is a filtered subset, so resolve by guid.
@@ -259,8 +261,8 @@ void RssActivity::loop() {
         return;
       }
     } else if (view == View::Feeds) {
-      if (hit(listBounds, tx, ty)) {
-        int idx = (ty - listBounds.y) / (rowHeight + rowGap);
+      if (hit(listBounds, tx, ty) && rowHeight + rowGap > 0) {
+        int idx = listFirstIndex() + (ty - listBounds.y) / (rowHeight + rowGap);
         if (idx >= 0 && idx < static_cast<int>(feeds.size())) {
           feedsSelected = idx;
           selected = idx;
@@ -280,6 +282,27 @@ void RssActivity::loop() {
       // Tapping lower half advances a page; upper half goes back a page.
       const int mid = listBounds.y + listBounds.height / 2;
       scrollBody(ty >= mid ? 1 : -1);
+      return;
+    }
+  }
+
+  // Swipe-scroll the card list. RSS used to handle only Up/Down *buttons*,
+  // so after a refresh added new articles the longer list could not be
+  // scrolled by touch at all. One swipe moves about a screenful and keeps
+  // the per-tab cursor in sync.
+  if (phase == Phase::Idle && view != View::Article && rowHeight + rowGap > 0) {
+    const auto swipe = mappedInput.wasSwipe();
+    if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
+      const int perScreen = std::max(1, listBounds.height / (rowHeight + rowGap) - 1);
+      int next = selected + (swipe == MappedInputManager::SwipeDir::Up ? perScreen : -perScreen);
+      next = std::clamp(next, 0, std::max(0, static_cast<int>(rows.size()) - 1));
+      if (next != selected) {
+        selected = next;
+        if (view == View::Updates) updatesSelected = selected;
+        else if (view == View::Feeds) feedsSelected = selected;
+        else if (view == View::Favorites) favoritesSelected = selected;
+        requestUpdate();
+      }
       return;
     }
   }
@@ -475,6 +498,11 @@ int RssActivity::listTop() const {
   return metrics.topPadding + metrics.headerHeight + TAB_TOP + TAB_H + metrics.verticalSpacing;
 }
 
+int RssActivity::listFirstIndex() const {
+  if (rows.empty()) return 0;
+  return std::max(0, std::min(selected - 2, static_cast<int>(rows.size()) - 1));
+}
+
 // Draws one card-style row: white rounded card, bold title, subtle subtitle
 // and a light-gray date pill at the bottom right. The selected card gets a
 // pale gray wash and a dark vertical bar along its left edge (the pressed
@@ -527,7 +555,7 @@ void RssActivity::drawArticleList() {
                       view == View::Favorites ? tr(STR_RSS_NO_FAVORITES) : tr(STR_RSS_NO_ARTICLES));
     return;
   }
-  const int first = std::max(0, std::min(selected - 2, static_cast<int>(rows.size()) - 1));
+  const int first = listFirstIndex();
   const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
   const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
   for (int i = first; i < last; ++i) {
@@ -542,21 +570,25 @@ void RssActivity::drawFeedList() {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int top = listTop();
   const int barY = renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
-  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, barY - CARD_GAP - top};
+  // Reserve a band of its own for the "tap to remove" hint: drawing it at
+  // barY - 2 used to sit on top of the bottom action buttons / tab labels.
+  const int hintLine = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
+  const int hintBand = hintLine + 6;
+  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, barY - CARD_GAP - hintBand - top};
   rowHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID) + renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 28;
   rowGap = CARD_GAP;
   if (rows.empty()) {
     renderer.drawText(NOTOSANS_18_FONT_ID, SIDE_PAD, listBounds.y + 20, tr(STR_RSS_NO_FEEDS));
-    return;
+  } else {
+    const int first = listFirstIndex();
+    const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
+    const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
+    for (int i = first; i < last; ++i) {
+      Row unnamed = rows[i];
+      drawCardRow(rowRectFor(i - first, listBounds, rowHeight, rowGap), unnamed, i == selected);
+    }
   }
-  const int first = std::max(0, std::min(selected - 2, static_cast<int>(rows.size()) - 1));
-  const int visible = std::max(1, listBounds.height / (rowHeight + rowGap));
-  const int last = std::min(static_cast<int>(rows.size()), first + visible + 1);
-  for (int i = first; i < last; ++i) {
-    Row unnamed = rows[i];
-    drawCardRow(rowRectFor(i - first, listBounds, rowHeight, rowGap), unnamed, i == selected);
-  }
-  renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD, barY - 2, tr(STR_RSS_TAP_REMOVE));
+  renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD, barY - hintBand + 2, tr(STR_RSS_TAP_REMOVE));
 }
 
 void RssActivity::drawArticleBody() {
