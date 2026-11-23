@@ -12,7 +12,6 @@
 #include "ReadingStatsStore.h"
 #include "components/RickyPageUi.h"
 #include "components/UITheme.h"
-#include "components/icons/rickyMascotIcons.h"
 #include "util/TimeUtils.h"
 
 namespace {
@@ -112,13 +111,6 @@ std::string dailyFact(const ReadingStatsStore& stats, const uint32_t today) {
   return facts[today % facts.size()];
 }
 
-void drawMascot(const GfxRenderer& renderer, const uint8_t* bits, const int x, const int y) {
-  constexpr int rowBytes = (kRickyMascotSize + 7) / 8;
-  for (int row = 0; row < kRickyMascotSize; ++row)
-    for (int column = 0; column < kRickyMascotSize; ++column)
-      if ((bits[row * rowBytes + column / 8] & (0x80U >> (column % 8))) == 0)
-        renderer.drawPixel(x + column, y + row, true);
-}
 }  // namespace
 
 const char* RickyReadingStatsActivity::headerTitle() const { return tr(STR_READING_STATS); }
@@ -157,16 +149,13 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
   const uint64_t goalMs = std::max<uint64_t>(kMinuteMs, getDailyReadingGoalMs());
   const bool reached = todayMs >= goalMs;
 
-  // Today: the dog reacts to the day's reading.
-  const int heroHeight = std::max(kRickyMascotSize, smallHeight * 2 + titleHeight + gap * 2) + pad * 2;
+  // Today: a text-only card, with all copy flush to the left edge.
+  const int heroHeight = smallHeight * 2 + titleHeight + gap * 2 + pad * 2;
   const auto hero = screen.takeTop(heroHeight, gap);
   RickyPageUi::card(target, hero, false);
-  const uint8_t* mascot =
-      todayMs < kMinuteMs ? ricky_mascot_sleeping : (reached ? ricky_mascot_happy : ricky_mascot_reading);
-  drawMascot(renderer, mascot, hero.x + pad, hero.y + (hero.height - kRickyMascotSize) / 2);
-  const int textX = hero.x + pad + kRickyMascotSize + gap * 2;
+  const int textX = hero.x + pad;
   const int textWidth = hero.right() - pad - textX;
-  int y = hero.y + (hero.height - (smallHeight * 2 + titleHeight + gap * 2)) / 2;
+  int y = hero.y + pad;
   target.text(rect(textX, y, textWidth, smallHeight), tr(STR_RICKY_STATS_TODAY), small);
   y += smallHeight;
   char text[96];
