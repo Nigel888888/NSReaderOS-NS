@@ -32,6 +32,7 @@ class RssActivity final : public Activity {
   ~RssActivity() override;
 
   void onEnter() override;
+  void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
 
@@ -70,6 +71,10 @@ class RssActivity final : public Activity {
   void drawCardRow(const Rect& r, const Row& row, bool selected);
   void drawMessage();
   void selectTab(View target);
+  // Persist / restore the selected tab and each tab's cursor so leaving the
+  // app and coming back lands on the same card.
+  void saveState();
+  void loadState();
 
   void updateAll();
   void beginFetch();
@@ -89,6 +94,10 @@ class RssActivity final : public Activity {
   int updatesSelected = 0;
   int feedsSelected = 0;
   int favoritesSelected = 0;
+  // Select-then-open, mirroring the vocabulary notebook: -1 = nothing armed.
+  int armedIndex = -1;
+  // Lines per body page, measured during the last reading-view render.
+  int bodyPageLines = 1;
 
   std::vector<RssStore::Article> articles;
   std::vector<RssStore::Feed> feeds;

@@ -98,6 +98,9 @@ void VocabularyReviewActivity::loadCurrentCard() {
   sentence.clear();
   definition.clear();
   revealed = false;
+  // The question face carries the original sentence, so load the long text
+  // up front instead of waiting for the flip.
+  loadCardText();
 }
 
 // Reads the current card's sentence and definition from disk. The index only
@@ -120,7 +123,7 @@ void VocabularyReviewActivity::reveal() {
   if (finished || revealed) {
     return;
   }
-  loadCardText();
+  // Text was loaded with the card; flipping only changes what is shown.
   revealed = true;
   requestUpdate();
 }
@@ -212,8 +215,14 @@ void VocabularyReviewActivity::drawRatingCard(const Rect& r, const char* label, 
   const int nameWidth = renderer.getTextWidth(nameFont, label, EpdFontFamily::BOLD);
   renderer.drawText(nameFont, r.x + (r.width - nameWidth) / 2, r.y + (ruleY - r.y - lineH) / 2, label, true,
                     EpdFontFamily::BOLD);
-  // Hairline rule splits the two halves, like the CrossNext rating cells.
-  renderer.drawLine(r.x + 6, ruleY, r.x + r.width - 6, ruleY);
+  // Dashed rule splits the two halves. A solid hairline read as a hard
+  // boundary; the dotted separator keeps the action and interval visually
+  // related but distinct.
+  const int ruleLeft = r.x + 6;
+  const int ruleRight = r.x + r.width - 6;
+  for (int x = ruleLeft; x < ruleRight; x += 8) {
+    renderer.drawLine(x, ruleY, std::min(x + 4, ruleRight), ruleY, 1, true);
+  }
   // Interval, centred in the lower band.
   const int previewWidth = renderer.getTextWidth(UI_10_FONT_ID, preview);
   renderer.drawText(UI_10_FONT_ID, r.x + (r.width - previewWidth) / 2,
@@ -323,29 +332,23 @@ void VocabularyReviewActivity::render(RenderLock&&) {
     UITheme::drawCenteredWrappedText(renderer, Rect{contentX + 20, wordTop, contentWidth - 40, wordHeight}, kWordFontId,
                                      headword.c_str(), 3, true, EpdFontFamily::BOLD);
 
+    const int bodyTop = wordTop + wordHeight + 12;
+    const int bodyBottom = ratingButtonRect(0).y - 16;
     if (!revealed) {
-      // The question face: the word on its own. Tap anywhere to turn it over.
+      // Question face: the word and the sentence it was collected from.
+      if (!sentence.empty() && bodyBottom - bodyTop > 24) {
+        UITheme::drawCenteredWrappedText(
+            renderer, Rect{contentX + 20, bodyTop, contentWidth - 40, bodyBottom - bodyTop - 24}, UI_12_FONT_ID,
+            sentence.c_str(), 6);
+      }
       UITheme::drawCenteredText(renderer, Rect{contentX, 0, contentWidth, renderer.getScreenHeight()}, UI_10_FONT_ID,
-                                wordTop + wordHeight + 40, tr(STR_REVIEW_TAP_TO_ANSWER));
+                                bodyBottom - 20, tr(STR_REVIEW_TAP_TO_ANSWER));
     } else {
-      // The answer face: the definition, the line it was collected from, and
-      // the four buttons that schedule the next time the word comes back.
-      const int definitionTop = wordTop + wordHeight;
-      const int definitionBottom = ratingButtonRect(0).y - 16;
-      const int definitionHeight = definitionBottom - definitionTop;
-      if (definitionHeight > 0) {
-        // The definition takes the upper part, the line it came from the rest.
-        const int textHeight = definitionHeight * 3 / 5;
-        if (!definition.empty()) {
-          UITheme::drawCenteredWrappedText(renderer, Rect{contentX + 20, definitionTop, contentWidth - 40, textHeight},
-                                           UI_12_FONT_ID, definition.c_str(), 10);
-        }
-        if (!sentence.empty()) {
-          UITheme::drawCenteredWrappedText(
-              renderer,
-              Rect{contentX + 20, definitionTop + textHeight, contentWidth - 40, definitionHeight - textHeight},
-              UI_10_FONT_ID, sentence.c_str(), 5);
-        }
+      // Answer face: the definition only; the original sentence stays on the
+      // front so the two sides have one job each.
+      if (!definition.empty() && bodyBottom > bodyTop) {
+        UITheme::drawCenteredWrappedText(renderer, Rect{contentX + 20, bodyTop, contentWidth - 40, bodyBottom - bodyTop},
+                                         UI_12_FONT_ID, definition.c_str(), 10);
       }
       drawRatingButtons();
     }

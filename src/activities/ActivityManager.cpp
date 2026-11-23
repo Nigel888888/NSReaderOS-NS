@@ -121,12 +121,12 @@ constexpr uint32_t kGraySettleDelayMs = 1500;
 // A text-turn settle only drives pixels it believes changed. Re-anchor the panel
 // with a real GC16 clean often enough that differential drift cannot accumulate
 // into a visible second image.
-constexpr uint8_t kGrayCleanEvery = 8;
+constexpr uint8_t kGrayCleanEvery = 24;
 // Non-reader screens normally push FAST frames; sweep a full clean into the
 // cadence so old pages cannot build up a grey floor between settles. Kept
 // deliberately sparse: a full GC16 is visible, and frequent ones read as a
 // blinking screen rather than a clean one.
-constexpr int kUiFullCleanEvery = 40;
+constexpr int kUiFullCleanEvery = 120;
 
 // The earlier "two screens superimposed" failures were traced to stale scan-line
 // queues and a driver state that only a panel restart / full clean resets; both

@@ -12,10 +12,11 @@
 
 // The review session: the words the notebook says are due, one card at a time.
 //
-// The question face shows the word on its own. The answer face shows the
-// definition, the line the word was collected from, and the four buttons that
-// schedule the next time the word comes back, each labelled with the interval
-// it would produce. The scheduling itself is FSRS-5, the engine Anki runs.
+// The question face shows the word together with the original sentence it was
+// collected from. The answer face shows the definition only, plus the four
+// buttons that schedule the next time the word comes back, each labelled with
+// the interval it would produce. The scheduling itself is FSRS-5, the engine
+// Anki runs.
 class VocabularyReviewActivity final : public Activity {
  public:
   explicit VocabularyReviewActivity(GfxRenderer& renderer, MappedInputManager& mappedInput);

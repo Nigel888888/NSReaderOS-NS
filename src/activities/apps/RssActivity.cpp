@@ -3,11 +3,14 @@
 #include <Arduino.h>
 #include <EpdFontFamily.h>
 #include <GfxRenderer.h>
+#include <HalStorage.h>
 #include <I18n.h>
 #include <WiFi.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <variant>
 
 #include "MappedInputManager.h"
@@ -32,6 +35,14 @@ constexpr int BAR_TOP = 8;
 constexpr int CARD_GAP = 10;
 constexpr int CARD_RADIUS = 8;
 constexpr unsigned long MESSAGE_MS = 3000;
+constexpr const char* UI_STATE_PATH = "/.crosspoint/rss/ui-state.txt";
+// Re-entering the app used to re-read and re-parse the whole article index
+// from SD (the main reason the entry felt slow). The RSS data is already
+// process-wide, so keep a cache for the lifetime of the firmware.
+std::vector<RssStore::Feed> gFeedsCache;
+std::vector<RssStore::Article> gArticlesCache;
+bool gFeedsCached = false;
+bool gArticlesCached = false;
 // A single feed request is bounded well above the HTTP library's own 15 s
 // per-read timeout; this is only a last-resort backstop (see weather app).
 constexpr unsigned long NETWORK_DEADLINE_MS = 60000;
@@ -51,26 +62,70 @@ RssActivity::RssActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
 
 RssActivity::~RssActivity() = default;
 
+void RssActivity::saveState() {
+  if (!Storage.exists("/.crosspoint/rss")) Storage.mkdir("/.crosspoint/rss");
+  const View persisted = view == View::Article ? View::Updates : view;
+  char buf[160];
+  std::snprintf(buf, sizeof(buf), "view=%d\nupdates=%d\nfeeds=%d\nfavorites=%d\n", static_cast<int>(persisted),
+                updatesSelected, feedsSelected, favoritesSelected);
+  Storage.writeFile(UI_STATE_PATH, String(buf));
+}
+
+void RssActivity::loadState() {
+  std::string text;
+  if (!Storage.readFileToString("RSS", UI_STATE_PATH, 1024, text)) return;
+  const auto readInt = [&text](const char* key, const int fallback) {
+    const char* p = std::strstr(text.c_str(), key);
+    return p ? std::atoi(p + std::strlen(key)) : fallback;
+  };
+  const int v = std::clamp(readInt("view=", 0), 0, static_cast<int>(View::Favorites));
+  view = static_cast<View>(v);
+  updatesSelected = std::max(0, readInt("updates=", 0));
+  feedsSelected = std::max(0, readInt("feeds=", 0));
+  favoritesSelected = std::max(0, readInt("favorites=", 0));
+}
+
 void RssActivity::onEnter() {
   Activity::onEnter();
   renderer.setOrientation(GfxRenderer::Orientation::Portrait);
-  view = View::Updates;
   phase = Phase::Idle;
-  selected = 0;
-  updatesSelected = 0;
-  feedsSelected = 0;
-  favoritesSelected = 0;
   message.clear();
   messageUntil = 0;
   fetchFeedIndex = -1;
   bodyLine = 0;
-  loadFeeds();
-  loadArticles();
-  // loadFeeds() rebuilds rows for the Feeds tab. Without this rebuild the app
-  // opened on Updates but showed the subscription list, and only switching
-  // tabs away and back populated the cached articles.
-  rebuildUpdateRows();
+  armedIndex = -1;
+  loadState();
+  // The article index is large; re-reading it on every entry made the app feel
+  // sluggish. Reuse the process-wide cache unless this is the first entry.
+  if (gFeedsCached) {
+    feeds = gFeedsCache;
+    rebuildFeedRows();
+  } else {
+    loadFeeds();
+  }
+  if (gArticlesCached) {
+    articles = gArticlesCache;
+  } else {
+    loadArticles();
+  }
+  // Rebuild exactly the view we restored so tab and rows can never disagree.
+  if (view == View::Feeds) {
+    selected = feedsSelected;
+  } else if (view == View::Favorites) {
+    rebuildFavoriteRows();
+    selected = favoritesSelected;
+  } else {
+    view = View::Updates;
+    rebuildUpdateRows();
+    selected = updatesSelected;
+  }
+  if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
   requestUpdate();
+}
+
+void RssActivity::onExit() {
+  saveState();
+  Activity::onExit();
 }
 
 void RssActivity::showMessage(const std::string& text) {
@@ -83,10 +138,14 @@ void RssActivity::loadArticles() {
   RssStore::loadArticles(articles);
   std::sort(articles.begin(), articles.end(),
             [](const RssStore::Article& a, const RssStore::Article& b) { return a.timestamp > b.timestamp; });
+  gArticlesCache = articles;
+  gArticlesCached = true;
 }
 
 void RssActivity::loadFeeds() {
   RssStore::loadFeeds(feeds);
+  gFeedsCache = feeds;
+  gFeedsCached = true;
   rebuildFeedRows();
 }
 
@@ -195,6 +254,8 @@ void RssActivity::selectTab(View target) {
   else if (target == View::Feeds) { rebuildFeedRows(); selected = feedsSelected; }
   else if (target == View::Favorites) { rebuildFavoriteRows(); selected = favoritesSelected; }
   if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
+  armedIndex = -1;
+  saveState();
   requestUpdate();
 }
 
@@ -249,8 +310,19 @@ void RssActivity::loop() {
         // viewport offset or a scrolled list opens the wrong article.
         int idx = listFirstIndex() + (ty - listBounds.y) / (rowHeight + rowGap);
         if (idx >= 0 && idx < static_cast<int>(rows.size())) {
-          // Updates/Favorites rows map 1:1 to the sorted articles array only
-          // for Updates; Favorites is a filtered subset, so resolve by guid.
+          selected = idx;
+          if (view == View::Updates) updatesSelected = idx;
+          else favoritesSelected = idx;
+          // Same two-step rule as the vocabulary notebook: first touch only
+          // selects the card, the second touch on it opens the article.
+          if (armedIndex != idx) {
+            armedIndex = idx;
+            saveState();
+            requestUpdate();
+            return;
+          }
+          armedIndex = -1;
+          saveState();
           if (view == View::Updates) {
             openArticle(idx);
           } else {
@@ -270,7 +342,14 @@ void RssActivity::loop() {
         if (idx >= 0 && idx < static_cast<int>(feeds.size())) {
           feedsSelected = idx;
           selected = idx;
-          removeSelectedFeed();
+          if (armedIndex != idx) {
+            armedIndex = idx;  // first tap selects; a second tap removes
+            saveState();
+            requestUpdate();
+          } else {
+            armedIndex = -1;
+            removeSelectedFeed();
+          }
         }
         return;
       }
@@ -283,9 +362,11 @@ void RssActivity::loop() {
         requestUpdate();
         return;
       }
-      // Tapping lower half advances a page; upper half goes back a page.
+      // Tapping lower half advances a whole screen of text; upper half goes
+      // back one screen (with one line of overlap for continuity).
       const int mid = listBounds.y + listBounds.height / 2;
-      scrollBody(ty >= mid ? 1 : -1);
+      const int step = std::max(1, bodyPageLines - 1);
+      scrollBody(ty >= mid ? step : -step);
       return;
     }
   }
@@ -350,6 +431,9 @@ void RssActivity::openArticle(int index) {
 void RssActivity::toggleCurrentFavorite() {
   if (openGuid.empty()) return;
   if (RssStore::toggleFavorite(articles, openGuid)) {
+    // Keep the process-wide cache coherent so the star state survives a
+    // leave/enter cycle without re-reading the index from SD.
+    gArticlesCache = articles;
     if (view == View::Favorites) rebuildFavoriteRows();
     else if (view == View::Updates) rebuildUpdateRows();
     showMessage(tr(STR_RSS_FAV_TOGGLED));
@@ -605,6 +689,9 @@ void RssActivity::drawArticleBody() {
                     renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
   const int lineHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
   const int linesOnScreen = std::max(1, listBounds.height / lineHeight);
+  // loop() uses this to advance roughly one screen per tap. It must be set
+  // from the actual rendered geometry, not a guessed constant.
+  bodyPageLines = linesOnScreen;
   for (int i = 0; i < linesOnScreen && bodyLine + i < static_cast<int>(bodyLines.size()); ++i) {
     renderer.drawText(NOTOSANS_18_FONT_ID, listBounds.x, listBounds.y + i * lineHeight,
                       bodyLines[bodyLine + i].c_str());

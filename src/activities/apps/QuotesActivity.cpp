@@ -222,6 +222,9 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   // Same minimal card treatment as the vocabulary screen: white rounded card,
   // bold sentence, gray source and a dark bar on the pressed card's left.
   applyCardListStyle(props, screen.theme());
+  // A saved sentence is the headline of this screen: one step up from the
+  // default body font so it reads comfortably on e-paper.
+  props.labelText.font = UI_12_FONT_ID;
   syncTabListViewport(screen, props);
   const fui::Rect body = screen.body();
   listRect = Rect{body.x, body.y, body.width, body.height};
