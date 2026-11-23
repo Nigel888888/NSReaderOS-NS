@@ -62,12 +62,32 @@ RssActivity::RssActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
 
 RssActivity::~RssActivity() = default;
 
+void RssActivity::rememberCursor() {
+  // The article view owns no list cursor; keep the last list tab's values.
+  if (view == View::Article) return;
+  if (view == View::Feeds) {
+    feedsSelected = selected;
+    feedsScroll = scrollTop;
+  } else if (view == View::Favorites) {
+    favoritesSelected = selected;
+    favoritesScroll = scrollTop;
+  } else {
+    updatesSelected = selected;
+    updatesScroll = scrollTop;
+  }
+}
+
 void RssActivity::saveState() {
+  // Persist the live cursor into whichever tab is showing (the article view
+  // keeps the Updates cursor), so a leave/enter cycle restores the same card.
+  rememberCursor();
   if (!Storage.exists("/.crosspoint/rss")) Storage.mkdir("/.crosspoint/rss");
   const View persisted = view == View::Article ? View::Updates : view;
-  char buf[160];
-  std::snprintf(buf, sizeof(buf), "view=%d\nupdates=%d\nfeeds=%d\nfavorites=%d\n", static_cast<int>(persisted),
-                updatesSelected, feedsSelected, favoritesSelected);
+  char buf[256];
+  std::snprintf(buf, sizeof(buf),
+                "view=%d\nupdates=%d\nupdatesScroll=%d\nfeeds=%d\nfeedsScroll=%d\nfavorites=%d\nfavoritesScroll=%d\n",
+                static_cast<int>(persisted), updatesSelected, updatesScroll, feedsSelected, feedsScroll,
+                favoritesSelected, favoritesScroll);
   Storage.writeFile(UI_STATE_PATH, String(buf));
 }
 
@@ -81,8 +101,11 @@ void RssActivity::loadState() {
   const int v = std::clamp(readInt("view=", 0), 0, static_cast<int>(View::Favorites));
   view = static_cast<View>(v);
   updatesSelected = std::max(0, readInt("updates=", 0));
+  updatesScroll = std::max(0, readInt("updatesScroll=", 0));
   feedsSelected = std::max(0, readInt("feeds=", 0));
+  feedsScroll = std::max(0, readInt("feedsScroll=", 0));
   favoritesSelected = std::max(0, readInt("favorites=", 0));
+  favoritesScroll = std::max(0, readInt("favoritesScroll=", 0));
 }
 
 void RssActivity::onEnter() {
@@ -111,14 +134,20 @@ void RssActivity::onEnter() {
   // Rebuild exactly the view we restored so tab and rows can never disagree.
   if (view == View::Feeds) {
     selected = feedsSelected;
+    scrollTop = feedsScroll;
   } else if (view == View::Favorites) {
     rebuildFavoriteRows();
     selected = favoritesSelected;
+    scrollTop = favoritesScroll;
   } else {
     view = View::Updates;
     rebuildUpdateRows();
     selected = updatesSelected;
+    scrollTop = updatesScroll;
   }
+  // Geometry is not measured until the first render; the draw functions clamp
+  // the viewport once rowHeight/listBounds are valid. Here only bound the
+  // cursor so a shrunken list cannot leave it pointing past the end.
   if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
   requestUpdate();
 }
@@ -236,7 +265,8 @@ void RssActivity::queueNextFetch() {
     loadArticles();
     if (view == View::Updates) rebuildUpdateRows();
     else if (view == View::Favorites) rebuildFavoriteRows();
-    if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
+    clampScroll();
+    ensureCursorVisible();
     return;
   }
   phase = Phase::Fetching;
@@ -246,14 +276,13 @@ void RssActivity::queueNextFetch() {
 // Switch to one of the three list tabs and restore that tab's cursor.
 void RssActivity::selectTab(View target) {
   if (view == target) return;
-  if (view == View::Updates) updatesSelected = selected;
-  else if (view == View::Feeds) feedsSelected = selected;
-  else if (view == View::Favorites) favoritesSelected = selected;
+  rememberCursor();
   view = target;
-  if (target == View::Updates) { rebuildUpdateRows(); selected = updatesSelected; }
-  else if (target == View::Feeds) { rebuildFeedRows(); selected = feedsSelected; }
-  else if (target == View::Favorites) { rebuildFavoriteRows(); selected = favoritesSelected; }
-  if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
+  if (target == View::Updates) { rebuildUpdateRows(); selected = updatesSelected; scrollTop = updatesScroll; }
+  else if (target == View::Feeds) { rebuildFeedRows(); selected = feedsSelected; scrollTop = feedsScroll; }
+  else if (target == View::Favorites) { rebuildFavoriteRows(); selected = favoritesSelected; scrollTop = favoritesScroll; }
+  clampScroll();
+  ensureCursorVisible();
   armedIndex = -1;
   saveState();
   requestUpdate();
@@ -283,6 +312,9 @@ void RssActivity::loop() {
       view = View::Updates;
       rebuildUpdateRows();
       selected = updatesSelected;
+      scrollTop = updatesScroll;
+      clampScroll();
+      ensureCursorVisible();
       requestUpdate();
     } else {
       activityManager.goToApps();
@@ -310,9 +342,10 @@ void RssActivity::loop() {
         // viewport offset or a scrolled list opens the wrong article.
         int idx = listFirstIndex() + (ty - listBounds.y) / (rowHeight + rowGap);
         if (idx >= 0 && idx < static_cast<int>(rows.size())) {
+          // A tap only moves the cursor. The viewport (`scrollTop`) is left
+          // untouched, so the list never drags itself to keep two cards on top.
           selected = idx;
-          if (view == View::Updates) updatesSelected = idx;
-          else favoritesSelected = idx;
+          rememberCursor();
           // Same two-step rule as the vocabulary notebook: first touch only
           // selects the card, the second touch on it opens the article.
           if (armedIndex != idx) {
@@ -340,8 +373,8 @@ void RssActivity::loop() {
       if (hit(listBounds, tx, ty) && rowHeight + rowGap > 0) {
         int idx = listFirstIndex() + (ty - listBounds.y) / (rowHeight + rowGap);
         if (idx >= 0 && idx < static_cast<int>(feeds.size())) {
-          feedsSelected = idx;
-          selected = idx;
+          selected = idx;  // tap moves cursor only; viewport stays put
+          rememberCursor();
           if (armedIndex != idx) {
             armedIndex = idx;  // first tap selects; a second tap removes
             saveState();
@@ -359,6 +392,9 @@ void RssActivity::loop() {
         view = View::Updates;
         rebuildUpdateRows();
         selected = updatesSelected;
+        scrollTop = updatesScroll;
+        clampScroll();
+        ensureCursorVisible();
         requestUpdate();
         return;
       }
@@ -371,21 +407,22 @@ void RssActivity::loop() {
     }
   }
 
-  // Swipe-scroll the card list. RSS used to handle only Up/Down *buttons*,
-  // so after a refresh added new articles the longer list could not be
-  // scrolled by touch at all. One swipe moves about a screenful and keeps
-  // the per-tab cursor in sync.
+  // A swipe pages the viewport. The cursor follows to the first row of the
+  // new page so the highlight stays on screen; the cursor is never the thing
+  // that drives scrolling (a tap moves only the cursor).
   if (phase == Phase::Idle && view != View::Article && rowHeight + rowGap > 0) {
     const auto swipe = mappedInput.wasSwipe();
     if (swipe == MappedInputManager::SwipeDir::Up || swipe == MappedInputManager::SwipeDir::Down) {
-      const int perScreen = std::max(1, listBounds.height / (rowHeight + rowGap) - 1);
-      int next = selected + (swipe == MappedInputManager::SwipeDir::Up ? perScreen : -perScreen);
-      next = std::clamp(next, 0, std::max(0, static_cast<int>(rows.size()) - 1));
-      if (next != selected) {
-        selected = next;
-        if (view == View::Updates) updatesSelected = selected;
-        else if (view == View::Feeds) feedsSelected = selected;
-        else if (view == View::Favorites) favoritesSelected = selected;
+      const int perScreen = visibleRows();
+      const int maxScroll = std::max(0, static_cast<int>(rows.size()) - perScreen);
+      int next = scrollTop + (swipe == MappedInputManager::SwipeDir::Up ? perScreen : -perScreen);
+      next = std::clamp(next, 0, maxScroll);
+      if (next != scrollTop) {
+        scrollTop = next;
+        selected = scrollTop;  // keep the cursor visible at the top of the page
+        armedIndex = -1;
+        rememberCursor();
+        saveState();
         requestUpdate();
       }
       return;
@@ -408,9 +445,10 @@ void RssActivity::loop() {
     if (next >= count) next = count - 1;
     if (next != selected && count > 0) {
       selected = next;
-      if (view == View::Updates) updatesSelected = selected;
-      else if (view == View::Feeds) feedsSelected = selected;
-      else if (view == View::Favorites) favoritesSelected = selected;
+      ensureCursorVisible();  // drag the viewport only if the cursor left the band
+      armedIndex = -1;
+      rememberCursor();
+      saveState();
       requestUpdate();
     }
   }
@@ -519,6 +557,10 @@ void RssActivity::removeSelectedFeed() {
   else if (view == View::Favorites) rebuildFavoriteRows();
   if (feedsSelected >= static_cast<int>(feeds.size())) feedsSelected = static_cast<int>(feeds.size()) - 1;
   selected = feedsSelected;
+  // loadFeeds() rebuilt rows for the Feeds tab; re-clamp the viewport to it.
+  clampScroll();
+  ensureCursorVisible();
+  rememberCursor();
   showMessage(tr(STR_RSS_REMOVED));
 }
 
@@ -586,9 +628,39 @@ int RssActivity::listTop() const {
   return metrics.topPadding + metrics.headerHeight + TAB_TOP + TAB_H + metrics.verticalSpacing;
 }
 
+int RssActivity::visibleRows() const {
+  if (rowHeight + rowGap <= 0) return 1;
+  return std::max(1, listBounds.height / (rowHeight + rowGap));
+}
+
+void RssActivity::clampScroll() {
+  const int maxScroll = std::max(0, static_cast<int>(rows.size()) - visibleRows());
+  scrollTop = std::clamp(scrollTop, 0, maxScroll);
+}
+
+void RssActivity::ensureCursorVisible() {
+  clampScroll();
+  if (rows.empty()) {
+    selected = 0;
+    scrollTop = 0;
+    return;
+  }
+  if (selected < scrollTop) {
+    scrollTop = selected;
+  } else if (selected >= scrollTop + visibleRows()) {
+    scrollTop = selected - visibleRows() + 1;
+  }
+  clampScroll();
+}
+
+// Viewport top row. Independent of `selected`: tapping a card moves only the
+// cursor, while swiping / arrow paging moves `scrollTop`. Previously this was
+// `selected - 2`, which made every tap yank the list so two cards stayed on top.
+// Clamp here (read-only) so a restored offset can never show a blank screen.
 int RssActivity::listFirstIndex() const {
   if (rows.empty()) return 0;
-  return std::max(0, std::min(selected - 2, static_cast<int>(rows.size()) - 1));
+  const int maxScroll = std::max(0, static_cast<int>(rows.size()) - visibleRows());
+  return std::clamp(scrollTop, 0, maxScroll);
 }
 
 // Draws one card-style row: white rounded card, bold title, subtle subtitle

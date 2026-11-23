@@ -65,14 +65,21 @@ class RssActivity final : public Activity {
   void drawTabs();
   void drawBottomBar(bool onFeeds);
   int listTop() const;
-  // First visible card for the current selected row (keeps the cursor two
-  // cards from the top so there is room to scroll upward).
+  // Rows that fit in the list band, from the last rendered geometry.
+  int visibleRows() const;
+  // Viewport top row. Kept independent of `selected` so a tap only moves the
+  // cursor and never drags the list along with it.
   int listFirstIndex() const;
+  void clampScroll();
+  // Pull the viewport just enough to bring the cursor back on screen (used by
+  // button navigation and restore, never by a tap).
+  void ensureCursorVisible();
   void drawCardRow(const Rect& r, const Row& row, bool selected);
   void drawMessage();
   void selectTab(View target);
-  // Persist / restore the selected tab and each tab's cursor so leaving the
-  // app and coming back lands on the same card.
+  // Persist / restore the selected tab and each tab's cursor + scroll offset
+  // so leaving the app and coming back lands on the same card.
+  void rememberCursor();
   void saveState();
   void loadState();
 
@@ -91,9 +98,15 @@ class RssActivity final : public Activity {
   View view = View::Updates;
   Phase phase = Phase::Idle;
   int selected = 0;
+  // Viewport top row, independent of the cursor. A tap moves only `selected`;
+  // swiping moves `scrollTop` to page the list.
+  int scrollTop = 0;
   int updatesSelected = 0;
   int feedsSelected = 0;
   int favoritesSelected = 0;
+  int updatesScroll = 0;
+  int feedsScroll = 0;
+  int favoritesScroll = 0;
   // Select-then-open, mirroring the vocabulary notebook: -1 = nothing armed.
   int armedIndex = -1;
   // Lines per body page, measured during the last reading-view render.

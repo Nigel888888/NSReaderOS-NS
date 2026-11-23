@@ -118,15 +118,21 @@ namespace {
 // reader's anti-aliased text. The next touch goes back to the fast B/W refresh; the panel
 // keeps the 16-level state, so its gray edge pixels are driven back cleanly.
 constexpr uint32_t kGraySettleDelayMs = 1500;
+// UI gray-settle made every interactive screen flip between a B/W FAST frame
+// and a 16-gray frame: after 1.5 s idle it settled to gray, and the next touch
+// jumped back to B/W. Icon edges carry the most gray pixels, so that state
+// switch flashed worst exactly where icons sit. Keep UI screens on a stable
+// B/W FAST frame instead. Reader pages run their own refresh cadence and are
+// never settled, so they are unaffected.
+constexpr bool kEnableUiGraySettle = false;
 // A text-turn settle only drives pixels it believes changed. Re-anchor the panel
 // with a real GC16 clean often enough that differential drift cannot accumulate
 // into a visible second image.
 constexpr uint8_t kGrayCleanEvery = 24;
 // Non-reader screens normally push FAST frames; sweep a full clean into the
-// cadence so old pages cannot build up a grey floor between settles. Kept
-// deliberately sparse: a full GC16 is visible, and frequent ones read as a
-// blinking screen rather than a clean one.
-constexpr int kUiFullCleanEvery = 120;
+// cadence so old pages cannot build up a grey floor. Each GC16 clean is a
+// visible flash, so keep it deliberately sparse.
+constexpr int kUiFullCleanEvery = 300;
 
 // The earlier "two screens superimposed" failures were traced to stale scan-line
 // queues and a driver state that only a panel restart / full clean resets; both
@@ -190,7 +196,8 @@ void ActivityManager::renderTaskLoop() {
         // before calling them. Input during the render also cancels its idle pass.
         auto delayMs = currentActivity->idleRenderDelayMs();
 #if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
-        graySettlePending = delayMs == 0 && currentActivity->wantsGraySettle() && graySettleAllowed();
+        graySettlePending = kEnableUiGraySettle && delayMs == 0 && currentActivity->wantsGraySettle() &&
+                            graySettleAllowed();
         if (graySettlePending) delayMs = kGraySettleDelayMs;
 #endif
         idleGeneration = idleRenderGeneration.load(std::memory_order_relaxed);
