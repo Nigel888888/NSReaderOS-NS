@@ -14,6 +14,7 @@
 #include <cstring>
 
 #include "PluginHttp.h"
+#include "util/TimeUtils.h"
 
 namespace {
 
@@ -79,6 +80,19 @@ std::string formatRfc822(const std::string& raw) {
 }
 
 // Timestamp from RFC822 for sorting; 0 when it cannot be parsed.
+// Today expressed in the same day-count as rfc822Timestamp() (2000-01-01 base).
+// Returns 0 when the device clock is not trustworthy, so callers can skip the
+// age filter instead of wrongly dropping every article.
+uint32_t currentArticleDay() {
+  const uint32_t now = TimeUtils::getCurrentValidTimestamp();
+  if (now == 0) return 0;
+  const uint32_t localDay = TimeUtils::getLocalDayOrdinal(now);
+  const uint32_t base = TimeUtils::getDayOrdinalForDate(2000, 1, 1);
+  // rfc822Timestamp() counts 2000-01-01 as day 1 (it adds +d), so shift by one
+  // to share that exact base; otherwise the 7-day cutoff would span 8 days.
+  return localDay > base ? localDay - base + 1 : 0;
+}
+
 uint32_t rfc822Timestamp(const std::string& raw) {
   const std::string formatted = formatRfc822(raw);
   if (formatted.size() < 10) return 0;
@@ -372,9 +386,19 @@ bool RssStore::loadArticles(std::vector<Article>& articles) {
     a.timestamp = static_cast<uint32_t>(v["ts"] | 0);
     a.feedIndex = static_cast<int>(v["fi"] | -1);
     a.favorite = static_cast<bool>(v["fav"] | false);
+    a.read = static_cast<bool>(v["read"] | false);
     if (a.guid.empty() || a.bodyFile.empty()) continue;
     articles.push_back(std::move(a));
-    if (articles.size() >= MAX_ARTICLES) break;
+  }
+  // A previous firmware kept up to 200. Trim legacy indexes down and delete
+  // the orphaned body files so the SD card does not accumulate dead articles.
+  if (articles.size() > MAX_ARTICLES) {
+    std::sort(articles.begin(), articles.end(),
+              [](const Article& x, const Article& y) { return x.timestamp > y.timestamp; });
+    for (size_t i = MAX_ARTICLES; i < articles.size(); ++i) {
+      Storage.remove(bodyPath(articles[i].bodyFile).c_str());
+    }
+    articles.resize(MAX_ARTICLES);
   }
   return true;
 }
@@ -393,6 +417,7 @@ bool RssStore::saveArticles(const std::vector<Article>& articles) {
     o["ts"] = a.timestamp;
     o["fi"] = a.feedIndex;
     o["fav"] = a.favorite;
+    o["read"] = a.read;
   }
   String out;
   serializeJson(doc, out);
@@ -403,6 +428,16 @@ bool RssStore::toggleFavorite(std::vector<Article>& articles, const std::string&
   for (Article& a : articles) {
     if (a.guid == guid) {
       a.favorite = !a.favorite;
+      return saveArticles(articles);
+    }
+  }
+  return false;
+}
+
+bool RssStore::markRead(std::vector<Article>& articles, const std::string& guid) {
+  for (Article& a : articles) {
+    if (a.guid == guid && !a.read) {
+      a.read = true;
       return saveArticles(articles);
     }
   }
@@ -451,9 +486,18 @@ int RssStore::fetchFeed(const Feed& feed, int feedIndex, std::vector<Article>& a
   // Ensure the bodies directory exists once.
   if (!Storage.exists(bodiesDir().c_str())) Storage.mkdir(bodiesDir().c_str());
 
+  // Only import items published within the last week. If the device clock is
+  // not yet synced, currentArticleDay() returns 0 and the filter is skipped,
+  // so a fresh device still imports its feeds instead of losing everything.
+  const uint32_t today = currentArticleDay();
+  const uint32_t cutoff = today > RssStore::REFRESH_WINDOW_DAYS ? today - RssStore::REFRESH_WINDOW_DAYS : 0;
+
   int added = 0;
   for (auto& a : parser.parsed) {
     if (shouldAbort && shouldAbort()) break;
+    // Undated items (timestamp 0) are kept: feeds without pubDate should still
+    // import. A known date older than a week is skipped before any file write.
+    if (cutoff > 0 && a.timestamp != 0 && a.timestamp < cutoff) continue;
     // De-duplicate against the existing index by guid.
     bool exists = false;
     for (const Article& old : articles) {
@@ -476,10 +520,14 @@ int RssStore::fetchFeed(const Feed& feed, int feedIndex, std::vector<Article>& a
     if (articles.size() >= MAX_ARTICLES) break;
   }
   if (added > 0) {
-    // Trim to the newest N by timestamp so the index stays bounded.
+    // Trim to the newest N by timestamp so the index stays bounded. Delete
+    // each dropped article's body file too -- resize() alone left them on SD.
     if (articles.size() > MAX_ARTICLES) {
       std::sort(articles.begin(), articles.end(),
                 [](const Article& x, const Article& y) { return x.timestamp > y.timestamp; });
+      for (size_t i = MAX_ARTICLES; i < articles.size(); ++i) {
+        Storage.remove(bodyPath(articles[i].bodyFile).c_str());
+      }
       articles.resize(MAX_ARTICLES);
     }
     saveArticles(articles);

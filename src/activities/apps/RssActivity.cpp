@@ -247,6 +247,7 @@ void RssActivity::rebuildUpdateRows() {
     r.subtitle = a.feed;
     r.date = a.date;
     r.favorite = a.favorite;
+    r.read = a.read;
     r.favoriteGuid = a.guid;
     rows.push_back(std::move(r));
   }
@@ -261,6 +262,7 @@ void RssActivity::rebuildFavoriteRows() {
     r.subtitle = a.feed;
     r.date = a.date;
     r.favorite = a.favorite;
+    r.read = a.read;
     r.favoriteGuid = a.guid;
     rows.push_back(std::move(r));
   }
@@ -529,6 +531,12 @@ void RssActivity::loop() {
 void RssActivity::openArticle(int index) {
   if (index < 0 || index >= static_cast<int>(articles.size())) return;
   openGuid = articles[index].guid;
+  // Opening an article marks it read; the list rebuild picks up the new flag
+  // so its title returns in regular weight instead of bold.
+  if (RssStore::markRead(articles, openGuid)) {
+    rebuildUpdateRows();
+    rebuildFavoriteRows();
+  }
   if (!RssStore::loadBody(articles[index], bodyText)) {
     bodyText = tr(STR_RSS_NO_BODY);
   }
@@ -957,15 +965,17 @@ void RssActivity::drawCardRow(const Rect& r, const Row& row, bool selected) {
   const int innerX = r.x + 14;
   const int dateW = row.date.empty() ? 0 : renderer.getTextWidth(UI_10_FONT_ID, row.date.c_str()) + 16;
   const int maxTitleW = r.width - 24 - dateW - 8;
-  // Clip/measure the title to the space left of the date pill.
+  // Clip/measure the title to the space left of the date pill. Unread items
+  // are bold; once opened the same title is drawn in regular weight.
+  const EpdFontFamily::Style titleStyle = row.read ? EpdFontFamily::REGULAR : EpdFontFamily::BOLD;
   std::string title = row.title;
-  while (!title.empty() && renderer.getTextWidth(NOTOSANS_18_FONT_ID, title.c_str(), EpdFontFamily::BOLD) > maxTitleW) {
+  while (!title.empty() && renderer.getTextWidth(NOTOSANS_18_FONT_ID, title.c_str(), titleStyle) > maxTitleW) {
     size_t n = title.size() - 1;
     while (n > 0 && (static_cast<unsigned char>(title[n]) & 0xC0) == 0x80) --n;
     title.erase(n);
   }
   const int textTop = r.y + (r.height - titleLine - subLine) / 2;
-  renderer.drawText(NOTOSANS_18_FONT_ID, innerX, textTop, title.c_str(), true, EpdFontFamily::BOLD);
+  renderer.drawText(NOTOSANS_18_FONT_ID, innerX, textTop, title.c_str(), true, titleStyle);
   renderer.drawText(NOTOSANS_16_FONT_ID, innerX, textTop + titleLine, row.subtitle.c_str(), true);
   if (!row.date.empty() && dateW > 0) {
     // Date capsule: pale gray on a white card, white on the selected wash --

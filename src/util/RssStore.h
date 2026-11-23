@@ -25,8 +25,10 @@ class RssStore {
   static constexpr size_t MAX_BODY_LENGTH = 8192;
   // Longest title kept (bytes).
   static constexpr size_t MAX_TITLE_LENGTH = 160;
-  // Maximum articles retained in the index across all feeds.
-  static constexpr size_t MAX_ARTICLES = 200;
+  // Maximum articles retained in the index across all feeds. Lowered from 200
+  // to 100: the whole index is parsed into RAM on entry, so every extra row
+  // costs heap and slows the first paint on this device.
+  static constexpr size_t MAX_ARTICLES = 100;
   // Maximum number of subscriptions.
   static constexpr size_t MAX_FEEDS = 24;
 
@@ -44,6 +46,7 @@ class RssStore {
     uint32_t timestamp = 0;  // for newest-first sorting
     int feedIndex = -1;      // index into the feeds array, filled on load
     bool favorite = false;   // starred by the user, shown under the Favorites tab
+    bool read = false;       // opened at least once; drawn in regular weight
     // In-memory only: the parsed body text, consumed by fetchFeed when writing
     // the body file. Never serialized into articles.json.
     std::string bodyText;
@@ -66,6 +69,11 @@ class RssStore {
   // Toggles the star flag on one article (matched by guid) and persists the
   // index. Returns true when a matching article was found and saved.
   static bool toggleFavorite(std::vector<Article>& articles, const std::string& guid);
+  // Marks one article as read (matched by guid) and persists the index.
+  static bool markRead(std::vector<Article>& articles, const std::string& guid);
+  // How many days back a refresh is allowed to import. Older feed items are
+  // skipped so the cache stays current and bounded.
+  static constexpr uint32_t REFRESH_WINDOW_DAYS = 7;
 
   // ---- fetching & parsing ----------------------------------------------
   // Downloads `url`, parses the RSS/Atom feed and appends new articles to

@@ -50,6 +50,7 @@ class RssActivity final : public Activity {
     std::string subtitle;
     std::string date;  // date pill, empty hides the pill
     bool favorite = false;
+    bool read = false;         // opened before; drawn in regular weight
     std::string favoriteGuid;  // article guid, so Favorites rows can be opened
   };
 
