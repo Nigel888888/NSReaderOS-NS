@@ -89,9 +89,11 @@ inline freeink::ui::GfxRendererTarget makeUiTarget(const GfxRenderer& renderer, 
 // TextStyle slots, so the row style's foreground is deliberately left unset.
 inline void applyCardListStyle(freeink::ui::ListProps& props, const freeink::ui::ThemeTokens& theme) {
   using namespace freeink::ui;
-  // 4x64 1-bpp mask, all bits cleared = all pixels inked (Icon convention).
+  // 8x64 1-bpp mask, all bits cleared = all pixels inked (Icon convention).
+  // Visually heavier than the original 4px hairline so the pressed card reads
+  // at a glance on e-paper.
   static const uint8_t kBarBits[64] = {0};
-  static const freeink::Icon kBarIcon{4, 64, 32, kBarBits};
+  static const freeink::Icon kBarIcon{8, 64, 32, kBarBits};
 
   // GfxRenderer also declares a global `enum Color`; qualify the SDK enum
   // everywhere here or the two names collide in translation units that
@@ -110,6 +112,12 @@ inline void applyCardListStyle(freeink::ui::ListProps& props, const freeink::ui:
   props.rowStyles = styles;
 
   props.rowRadius = 10;
+  // Cards span exactly the same width as the control panel above them: no
+  // theme row inset, no scroll strip, and the selected row must not grow
+  // across a reserved indicator area.
+  props.rowInset = 0;
+  props.scrollIndicator = false;
+  props.selectionCoversScrollReservation = 0;
   props.selectionMarker = SelectionMarker::Bitmap;
   props.markerBitmap = bitmapFromIcon(kBarIcon);
   props.markerPaint = Paint::solid(freeink::ui::Color::Black);

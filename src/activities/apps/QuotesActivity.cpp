@@ -49,6 +49,7 @@ void QuotesActivity::onEnter() {
 }
 
 void QuotesActivity::reload() {
+  armedIndex = -1;
   QuotesFile::load(quotes);
   // Newest first: the last saved sentence is the one on the reader's mind.
   std::reverse(quotes.begin(), quotes.end());
@@ -71,6 +72,7 @@ void QuotesActivity::onTabAction(const int index) {
     return;
   }
   if (tab_ != index) {
+    armedIndex = -1;
     tab_ = index;
     bookFilter_ = -1;  // switching tabs leaves a drilled-in book
     rebuildRows();
@@ -235,14 +237,15 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
     const int first = std::max(0, activeNav().top);
     const int visible = body.height / rowStep + 1;
     const int last = std::min<int>(static_cast<int>(rows.size()), first + visible);
-    const int pillHeight = renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 4;
+    // 8px UI font: the date is a secondary cue, not a competing headline.
+    const int pillHeight = renderer.getLineHeight(SMALL_FONT_ID) + 4;
     for (int i = first; i < last; ++i) {
       if (rows[i].date.empty()) continue;
-      const int dateW = renderer.getTextWidth(UI_10_FONT_ID, rows[i].date.c_str()) + 16;
+      const int dateW = renderer.getTextWidth(SMALL_FONT_ID, rows[i].date.c_str()) + 12;
       const Rect pill{body.x + body.width - dateW - 10,
                       body.y + (i - first) * rowStep + props.rowHeight - pillHeight - 8, dateW, pillHeight};
       renderer.fillRoundedRect(pill.x, pill.y, pill.width, pill.height, pill.height / 2, Color::LightGray);
-      renderer.drawText(UI_10_FONT_ID, pill.x + 8, pill.y + 2, rows[i].date.c_str(), true);
+      renderer.drawText(SMALL_FONT_ID, pill.x + 6, pill.y + 2, rows[i].date.c_str(), true);
     }
   }
 }
@@ -252,6 +255,14 @@ void QuotesActivity::activateIndex(const int index) {
     return;
   }
   app.clearTapFlash();
+  // Select first, open on the second tap of the same card. A single stray
+  // touch should not throw the reader straight into a sentence.
+  if (armedIndex != index) {
+    armedIndex = index;
+    requestUpdate();
+    return;
+  }
+  armedIndex = -1;
   const Row& row = rows[index];
   if (row.kind == RowKind::Book) {
     // Drill into this book's quotes via the ALL tab.
@@ -272,6 +283,7 @@ void QuotesActivity::onRowLongPress(const int index) {
   if (dialog.isActive() || index < 0 || index >= static_cast<int>(rows.size())) {
     return;
   }
+  armedIndex = -1;
   if (rows[index].kind == RowKind::Quote) {
     openQuote(index);
   }
@@ -300,6 +312,7 @@ void QuotesActivity::openQuote(int index) {
 }
 
 void QuotesActivity::deleteQuoteAt(const int index) {
+  armedIndex = -1;
   if (index < 0 || index >= static_cast<int>(rows.size())) return;
   const Row& row = rows[index];
   if (row.kind != RowKind::Quote || row.index < 0 || row.index >= static_cast<int>(quotes.size())) return;
@@ -324,6 +337,7 @@ bool QuotesActivity::handleSwipeDelete() {
   if (rowStep <= 0) return false;
   const int index = n.top + (sy - listRect.y) / rowStep;
   if (index < 0 || index >= static_cast<int>(rows.size()) || rows[index].kind != RowKind::Quote) return false;
+  armedIndex = -1;
   const char* options[] = {tr(STR_CANCEL), tr(STR_QUOTES_DELETE)};
   dialog.show(tr(STR_QUOTES_DELETE_CONFIRM), options, 2, 0, [this, index](int choice) {
     if (choice == 1) deleteQuoteAt(index);

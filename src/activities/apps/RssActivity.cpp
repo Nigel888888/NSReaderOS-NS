@@ -66,6 +66,10 @@ void RssActivity::onEnter() {
   bodyLine = 0;
   loadFeeds();
   loadArticles();
+  // loadFeeds() rebuilds rows for the Feeds tab. Without this rebuild the app
+  // opened on Updates but showed the subscription list, and only switching
+  // tabs away and back populated the cached articles.
+  rebuildUpdateRows();
   requestUpdate();
 }
 
@@ -510,7 +514,7 @@ int RssActivity::listFirstIndex() const {
 void RssActivity::drawCardRow(const Rect& r, const Row& row, bool selected) {
   if (selected) {
     renderer.fillRoundedRect(r.x, r.y, r.width, r.height, CARD_RADIUS, Color::LightGray);
-    renderer.fillRect(r.x, r.y + 6, 4, r.height - 12);
+    renderer.fillRect(r.x, r.y + 6, 8, r.height - 12);
   } else {
     renderer.fillRoundedRect(r.x, r.y, r.width, r.height, CARD_RADIUS, Color::White);
   }

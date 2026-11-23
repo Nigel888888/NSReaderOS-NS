@@ -64,6 +64,7 @@ void VocabularyActivity::onEnter() {
 
 // Reads the notebook and the counters back from disk.
 void VocabularyActivity::reload() {
+  armedIndex = -1;
   VocabularyFile::load(entries);
   sortEntries();
   rebuildRowItems();
@@ -84,6 +85,7 @@ void VocabularyActivity::sortEntries() {
 }
 
 void VocabularyActivity::toggleSort() {
+  armedIndex = -1;
   sortOrder = static_cast<uint8_t>(sortOrder == 0 ? 1 : 0);
   sortEntries();
   rebuildRowItems();
@@ -96,6 +98,7 @@ void VocabularyActivity::toggleSort() {
 void VocabularyActivity::setDueOnly(const bool next) {
   if (dueOnly == next) return;
   dueOnly = next;
+  armedIndex = -1;
   nav.selected = 0;
   nav.followOnBuild = true;
   rebuildRowItems();
@@ -173,6 +176,7 @@ void VocabularyActivity::activateIndex(const int index) {
   nav.selected = index;
 
   if (manageMode) {
+    armedIndex = -1;
     // Checkbox flags are indexed by the full notebook, not by visible rows.
     if (index >= 0 && index < static_cast<int>(rowEntryIndex.size())) {
       const int entryIndex = rowEntryIndex.at(index);
@@ -184,6 +188,16 @@ void VocabularyActivity::activateIndex(const int index) {
     }
     return;
   }
+
+  // Select-then-open: a single touch only arms/highlights the card. The
+  // second touch on the same card is the deliberate "open" action, so a
+  // passing finger can no longer drop straight into a definition.
+  if (armedIndex != index) {
+    armedIndex = index;
+    requestUpdate();
+    return;
+  }
+  armedIndex = -1;
 
   // Map the visible row to its word, and navigate within the visible list.
   const int entryIndex = rowEntryIndex.at(index);
@@ -216,6 +230,7 @@ void VocabularyActivity::onRowLongPress(const int index) {
   }
   app.clearTapFlash();
   nav.selected = index;
+  armedIndex = -1;
   if (manageMode) {
     if (index >= 0 && index < static_cast<int>(rowEntryIndex.size())) {
       const int entryIndex = rowEntryIndex.at(index);
@@ -254,6 +269,7 @@ bool VocabularyActivity::handleSwipeDelete() {
   if (index < 0 || index >= listCount()) return false;
   app.clearTapFlash();
   n.selected = index;
+  armedIndex = -1;
   showDeleteConfirmation();
   return true;
 }
@@ -371,6 +387,7 @@ void VocabularyActivity::showDeleteConfirmation() {
 }
 
 void VocabularyActivity::deleteSelected() {
+  armedIndex = -1;
   if (nav.selected < 0 || nav.selected >= listCount()) {
     return;
   }
@@ -399,6 +416,7 @@ void VocabularyActivity::deleteSelected() {
 
 void VocabularyActivity::toggleManageMode() {
   app.clearTapFlash();
+  armedIndex = -1;
   manageMode = !manageMode;
   if (manageMode) {
     selectedFlags.assign(entries.size(), false);
@@ -427,6 +445,7 @@ void VocabularyActivity::deleteSelectedWords() {
     }
   }
   manageMode = false;
+  armedIndex = -1;
   selectedFlags.clear();
   sortEntries();
   rebuildRowItems();

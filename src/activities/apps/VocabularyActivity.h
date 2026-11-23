@@ -89,6 +89,9 @@ class VocabularyActivity final : public UiListActivity {
   // Counter capsule segment: false = collected (all words), true = to review
   // (only due words). Both halves are tappable.
   bool dueOnly = false;
+  // Two-step activation: the first tap only selects the visible card, the
+  // second tap on that same card opens the full definition. -1 = nothing armed.
+  int armedIndex = -1;
   Rect collectedSegment{0, 0, 0, 0};
   Rect dueSegment{0, 0, 0, 0};
   // How many words are due for review right now.

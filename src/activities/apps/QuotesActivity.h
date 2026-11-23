@@ -73,6 +73,9 @@ class QuotesActivity final : public UiTabListActivity {
   std::vector<freeink::ui::ListItem> rowItems;
   std::vector<std::string> rowSubtitles;
   int tab_ = AllTab;
+  // Two-step activation: first tap selects the card, second tap on the same
+  // card opens the sentence / drills into the book. -1 = nothing armed.
+  int armedIndex = -1;
   // When >= 0, the Books tab is drilled into this source title.
   int bookFilter_ = -1;
   std::string filteredBook;
