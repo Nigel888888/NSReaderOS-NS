@@ -1529,19 +1529,23 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       target.text(screen.takeTop(target.lineHeight(theme.titleText.font), gap * 2), tr(STR_SETTINGS_TITLE), pageTitle);
     }
     // Profile card, then two card grids drawn to the same spec: the six
-    // categories and the five storage shortcuts. Both rows share one card
-    // height, one icon padding and one icon-to-label gap, so every icon reads
-    // at exactly the same size and spacing on this "Other" page.
+    // categories and the five storage shortcuts. Both use the SAME column
+    // count, so each card (and its 40px icon) is exactly the same width and
+    // visual size. A clear band separates the two groups.
     const int profileHeight = bodyHeight + smallHeight + gap + pad * 2;
     const int columns = content.width > content.height ? 3 : 2;
     const int rows = (categoryCount + columns - 1) / columns;
-    const int storageCols = content.width > content.height ? 5 : 3;
+    const int storageCols = columns;
     const int storageRows = (5 + storageCols - 1) / storageCols;
     const int totalRows = rows + storageRows;
     const int baseCell = std::max(48, bodyHeight) + pad * 2;
-    const int roomy = (screen.body().height - profileHeight - gap * totalRows) / totalRows;
+    // Generous band between the category grid and the storage grid; the old
+    // tiny gap made the storage row look glued to the categories above it.
+    const int groupGap = std::max<int>(gap * 2, 24);
+    const int fixedGaps = groupGap + gap * (totalRows - 1);
+    const int roomy = (screen.body().height - profileHeight - fixedGaps - gap) / totalRows;
     const int cellHeight = std::clamp(roomy, baseCell, baseCell * 13 / 10);
-    const int needed = profileHeight + cellHeight * totalRows + gap * totalRows;
+    const int needed = profileHeight + cellHeight * totalRows + fixedGaps + gap;
     const int section = gap + std::clamp((screen.body().height - needed) / 4, 0, gap);
     RickyProfile::drawCard(screen, renderer, screen.takeTop(profileHeight, section), ACTION_TAB_USER + 20);
     const int selected = RickyPageUi::syncNav(nav, categoryCount);
@@ -1573,7 +1577,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
                                    StrId::STR_RICKY_IMAGES, StrId::STR_RICKY_DOWNLOADS};
     static_assert(sizeof(storageIcons) / sizeof(storageIcons[0]) == 5);
     const auto storageGrid =
-        screen.takeTop(cellHeight * storageRows + gap * (storageRows - 1), section);
+        screen.takeTop(cellHeight * storageRows + gap * (storageRows - 1), groupGap);
     for (int i = 0; i < 5; ++i) {
       const auto rect = RickyPageUi::uiRect(
           RickyPageLayout::cell(Rect{storageGrid.x, storageGrid.y, storageGrid.width, storageGrid.height}, i, 5, gap,
