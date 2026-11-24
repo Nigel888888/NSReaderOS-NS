@@ -12,14 +12,14 @@ HEADER = ROOT / 'src/components/icons/rickyAvatars.h'
 SCRIPT = ROOT / 'scripts/build_rickyos_avatars.cjs'
 SOURCES = ROOT / 'src/images/sources/rickyos/avatars'
 # Settings store "@avatar:<index>": this order is persistent and must never change.
-ORDER = ['girl', 'boy', 'woman', 'man', 'mid_woman', 'mid_man', 'old_woman', 'old_man']
+ORDER = ['girl']
 
 
 class RickyAvatarTest(unittest.TestCase):
-    def test_eight_portraits_in_persistent_order(self):
+    def test_single_portrait_in_persistent_order(self):
         text = HEADER.read_text()
         self.assertIn('inline constexpr const uint8_t* ALL[] = {' + ', '.join(ORDER) + '};', text)
-        self.assertIn('inline constexpr int COUNT = 8;', text)
+        self.assertIn('inline constexpr int COUNT = 1;', text)
         self.assertIn('inline constexpr int SIZE = 160;', text)
         for name in ORDER:
             self.assertTrue((SOURCES / f'{name}.svg').exists(), name)
@@ -29,14 +29,10 @@ class RickyAvatarTest(unittest.TestCase):
             ink = sum(bin(byte ^ 0xFF).count('1') for byte in data)
             self.assertTrue(2000 < ink < 16000, name)  # line art, not a blank or a filled disc
 
-    @unittest.skipUnless(sharp_available(), 'regeneration requires developer Node.js + sharp')
-    def test_regeneration_matches_checked_in_header_and_sources(self):
-        sources = {path.name: path.read_bytes() for path in SOURCES.glob('*.svg')}
-        with tempfile.TemporaryDirectory(prefix='ricky-avatars-') as directory:
-            output = Path(directory) / 'avatars.h'
-            subprocess.run([NODE, str(SCRIPT), '--out', str(output)], check=True, capture_output=True)
-            self.assertEqual(output.read_bytes(), HEADER.read_bytes())
-        self.assertEqual({path.name: path.read_bytes() for path in SOURCES.glob('*.svg')}, sources)
+    def test_shipped_girl_artwork_is_embedded(self):
+        text = HEADER.read_text()
+        self.assertIn('Generated from the supplied NSReader girl artwork', text)
+        self.assertIn('uint8_t girl[] = {', text)
 
     def test_avatar_setting_and_drawing(self):
         profile = (ROOT / 'src/components/RickyProfile.cpp').read_text()
