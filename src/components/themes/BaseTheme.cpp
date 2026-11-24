@@ -39,6 +39,7 @@
 #endif
 #include "fontIds.h"
 #include "images/Logo120.h"
+#include "images/NsReaderPowerLogo.h"
 #include "util/TimeUtils.h"
 
 freeink::ui::BitmapRef BaseTheme::checkboxIcon(const bool checked) {
@@ -104,8 +105,17 @@ void BaseTheme::drawRickyPowerScreen(const GfxRenderer& renderer, const bool sle
   const auto layout = RickyPowerLayout::fit(safe, renderer.getLineHeight(UI_10_FONT_ID), UiHighDpiProfile::controlGap);
   (void)version;
   (void)reveal;
-  constexpr uint8_t phase = 3;
-  RickyBrandMark::draw(renderer, layout.mark, phase);
+  // The supplied NSReader artwork is the whole boot/power-off picture.
+  for (int y = 0; y < layout.mark.height; ++y) {
+    const int sourceY = y * NsReaderPowerLogo::height / layout.mark.height;
+    for (int x = 0; x < layout.mark.width; ++x) {
+      const int sourceX = x * NsReaderPowerLogo::width / layout.mark.width;
+      const int index = sourceY * (NsReaderPowerLogo::width / 8) + sourceX / 8;
+      const uint8_t mask = 0x80U >> (sourceX % 8);
+      if ((NsReaderPowerLogo::bits[index] & mask) == 0)
+        renderer.drawPixel(layout.mark.x + x, layout.mark.y + y, true);
+    }
+  }
   // A powered-down display must not imply that a clock keeps updating.
   if (sleeping && layout.mark.y - safe.y > renderer.getLineHeight(UI_10_FONT_ID) * 3) {
     Rect eyebrow{safe.x, safe.y + (layout.mark.y - safe.y) / 3, safe.width, renderer.getLineHeight(UI_10_FONT_ID)};

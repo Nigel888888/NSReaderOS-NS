@@ -17,6 +17,7 @@
 #include "UITheme.h"
 #include "icons/rickyAvatars.h"
 #include "icons/rickyHomeBanner.h"
+#include "images/NsReaderAvatar.h"
 #include "util/TimeUtils.h"
 
 namespace RickyProfile {
@@ -199,13 +200,29 @@ bool setAvatar(const char* value) {
 }
 
 void drawBrandAvatar(const GfxRenderer& renderer, const Rect& rect) {
-  // Approved portrait/dog badge as the initial avatar; changing this personal
-  // image never replaces the immutable full boot/standby brand mark. The
-  // badge's own ring is the avatar edge, so no second outline is drawn.
+  // Built-in NSReader boy as the default avatar. User-imported avatars still
+  // win; changing this built-in image never alters the boot/standby artwork.
   const int size = std::max(0, std::min(rect.width, rect.height));
   if (!size) return;
-  RickyBrandMark::drawBadge(renderer, Rect{rect.x, rect.y, size, size});
+  constexpr int SOURCE = NsReaderAvatar::width;
+  const int drawn = std::min(size, SOURCE);
+  const int x0 = rect.x + (size - drawn) / 2, y0 = rect.y + (size - drawn) / 2;
+  const uint8_t* bits = NsReaderAvatar::bits;
+  const auto ink = [bits](const int x, const int y) {
+    return (bits[y * (SOURCE / 8) + x / 8] & (0x80 >> (x % 8))) == 0;
+  };
+  for (int y = 0; y < drawn; ++y) {
+    const int sy0 = y * SOURCE / drawn, sy1 = std::max(sy0 + 1, (y + 1) * SOURCE / drawn);
+    for (int x = 0; x < drawn; ++x) {
+      const int sx0 = x * SOURCE / drawn, sx1 = std::max(sx0 + 1, (x + 1) * SOURCE / drawn);
+      int covered = 0;
+      for (int sy = sy0; sy < sy1; ++sy)
+        for (int sx = sx0; sx < sx1; ++sx) covered += ink(sx, sy) ? 1 : 0;
+      if (covered * 16 >= 7 * (sy1 - sy0) * (sx1 - sx0)) renderer.drawPixel(x0 + x, y0 + y, true);
+    }
+  }
   renderer.maskRoundedRectOutsideCorners(rect.x, rect.y, size, size, size / 2);
+  renderer.drawRoundedRect(rect.x, rect.y, size, size, std::max(2, size / 48), size / 2, true);
 }
 
 void drawAvatar(const GfxRenderer& renderer, const Rect& rect) {
