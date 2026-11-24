@@ -460,16 +460,25 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
                                  static_cast<int16_t>(footer.height)}, OPEN_BOOK, LIBRARY, fui::InputTouch);
   } else {
     const int boxW = dividerX - footer.x - gap;
-    const int barHeight = 6;
-    const int inGap = std::max(2, gap / 3);
-    // Reserve one line for the title plus the bar beneath the cover; the
-    // cover still gets the rest of the column and keeps its 3:4 book shape.
-    const int coverAreaH = std::max<int>(0, listHeight - smallHeight - barHeight - inGap * 2);
-    const int coverH = std::min<int>(coverAreaH, boxW * 4 / 3);
+    // The cover now occupies the whole left column: its top lines up with the
+    // first "recently read" title, and its bottom lines up with the last
+    // recent book's progress bar. The bar is drawn ON the cover artwork, with
+    // a small dark backing strip so it stays legible over any cover image.
+    // No separate title line — the artwork is the focus.
+    const int recentRows = std::max<int>(1, RickyHomeLayout::PAGE_BOOKS);
+    const int recentRowHeight = listHeight / recentRows;
+    const int recentBarH = std::max<int>(4, smallHeight / 4);
+    // Bottom edge of the last recent row's progress bar (row index recentRows-1).
+    const int lastRowY = listTop + (recentRows - 1) * recentRowHeight;
+    const int lastBarBottom =
+        lastRowY + smallHeight + (smallHeight - recentBarH) / 2 + recentBarH;
+    const int coverTop = listTop;
+    const int coverH = std::max<int>(0, std::min<int>(lastBarBottom, footer.bottom()) - coverTop);
     const int coverW = coverH * 3 / 4;
-    const fui::Rect cover{static_cast<int16_t>(footer.x + (boxW - coverW) / 2), static_cast<int16_t>(listTop),
-                          static_cast<int16_t>(coverW), static_cast<int16_t>(coverH)};
-    if (coverH > 0) {
+    if (coverH > 0 && coverW > 0) {
+      const fui::Rect cover{static_cast<int16_t>(footer.x + (boxW - coverW) / 2),
+                            static_cast<int16_t>(coverTop), static_cast<int16_t>(coverW),
+                            static_cast<int16_t>(coverH)};
       // Bind the real cover height BEFORE painting. paint() -> painter lambda
       // calls activity.setThumbnailHeight(rickyHome->coverHeight()); a freshly
       // constructed host still holds 0 here, which reset the activity height
@@ -477,15 +486,23 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       // until a later redraw (swipe) happened to re-bind the height.
       thumbnailHeight = coverH;
       paint(cover, 0, false);  // no hairline frame — artwork only
+
+      // Progress bar overlaid on the cover, sitting just above its bottom edge.
+      // A small solid dark backing strip forms the track; the read portion is
+      // filled light so it stays legible over any cover artwork.
+      const int barH = std::max<int>(6, smallHeight / 3);
+      const int barInset = std::max<int>(6, coverW / 12);
+      const int barBottom = cover.bottom() - barInset;
+      const fui::Rect bar{static_cast<int16_t>(cover.x + barInset),
+                          static_cast<int16_t>(barBottom - barH),
+                          static_cast<int16_t>(std::max<int>(8, coverW - barInset * 2)),
+                          static_cast<int16_t>(barH)};
+      target.fill(bar, fui::Paint::solid(fui::Color::DarkGray));
+      const int filled = bar.width * std::clamp(progress, 0, 100) / 100;
+      if (filled > 0)
+        target.fill(fui::Rect{bar.x, bar.y, static_cast<int16_t>(filled), bar.height},
+                    fui::Paint::solid(fui::Color::White));
     }
-    const int textY = listTop + coverH + inGap;
-    const auto& book = (*books)[0];
-    target.text(fui::Rect{footer.x, static_cast<int16_t>(textY), static_cast<int16_t>(boxW),
-                          static_cast<int16_t>(smallHeight)},
-                titleOf(book), strong);
-    RickyPageUi::progressBar(
-        target, fui::Rect{footer.x, static_cast<int16_t>(textY + smallHeight + inGap), static_cast<int16_t>(boxW),
-                          static_cast<int16_t>(barHeight)}, progress);
     screen.frame().hit(fui::Rect{footer.x, static_cast<int16_t>(listTop), static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(listHeight)}, OPEN_BOOK, 0, fui::InputTouch);
   }
