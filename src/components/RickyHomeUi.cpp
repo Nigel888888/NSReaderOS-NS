@@ -460,11 +460,10 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
                                  static_cast<int16_t>(footer.height)}, OPEN_BOOK, LIBRARY, fui::InputTouch);
   } else {
     const int boxW = dividerX - footer.x - gap;
-    // The cover now occupies the whole left column: its top lines up with the
-    // first "recently read" title, and its bottom lines up with the last
-    // recent book's progress bar. The bar is drawn ON the cover artwork, with
-    // a small dark backing strip so it stays legible over any cover image.
-    // No separate title line — the artwork is the focus.
+    // The cover sits in the left column, nudged down a little, with a
+    // "reading progress NN%" caption on the line beneath it. The bar stays
+    // overlaid on the cover artwork. The whole block still ends in line with
+    // the last recent book's progress bar.
     const int recentRows = std::max<int>(1, RickyHomeLayout::PAGE_BOOKS);
     const int recentRowHeight = listHeight / recentRows;
     const int recentBarH = std::max<int>(4, smallHeight / 4);
@@ -472,8 +471,11 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     const int lastRowY = listTop + (recentRows - 1) * recentRowHeight;
     const int lastBarBottom =
         lastRowY + smallHeight + (smallHeight - recentBarH) / 2 + recentBarH;
-    const int coverTop = listTop;
-    const int availH = std::max<int>(0, std::min<int>(lastBarBottom, footer.bottom()) - coverTop);
+    const int blockBottom = std::min<int>(lastBarBottom, footer.bottom());
+    const int textH = smallHeight;
+    const int inGap = std::max(4, gap / 3);
+    const int coverTop = listTop + std::max(4, gap / 2);
+    const int availH = std::max<int>(0, blockBottom - coverTop - inGap - textH);
     // Fit a 3:4 cover inside BOTH the column width and the available height,
     // with a small margin, so it can never cross the centre divider.
     const int maxW = std::max<int>(0, boxW - gap * 2);
@@ -510,6 +512,16 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       if (filled > 0)
         target.fill(fui::Rect{bar.x, bar.y, static_cast<int16_t>(filled), bar.height},
                     fui::Paint::solid(fui::Color::White));
+
+      // "Reading progress NN%" caption centered below the cover.
+      char progressLabel[24];
+      snprintf(progressLabel, sizeof(progressLabel), tr(STR_RICKY_COVER_PROGRESS),
+               static_cast<unsigned>(progress));
+      auto progressStyle = small;
+      progressStyle.align = fui::TextAlign::Center;
+      target.text(fui::Rect{cover.x, static_cast<int16_t>(cover.bottom() + inGap), cover.width,
+                            static_cast<int16_t>(textH)},
+                  progressLabel, progressStyle);
     }
     screen.frame().hit(fui::Rect{footer.x, static_cast<int16_t>(listTop), static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(listHeight)}, OPEN_BOOK, 0, fui::InputTouch);
