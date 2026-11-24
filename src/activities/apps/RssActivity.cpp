@@ -407,7 +407,7 @@ void RssActivity::loop() {
       // Bottom action bar.
       if (hit(updateButton, tx, ty)) { updateAll(); return; }
       if (hit(addButton, tx, ty)) { addFeed(); return; }
-      if (hit(manageButton, tx, ty)) { selectTab(View::Feeds); return; }
+      if (hit(manageButton, tx, ty)) { clearReadArticles(); return; }
     }
 
     if (view == View::Updates || view == View::Favorites) {
@@ -584,6 +584,32 @@ void RssActivity::deleteCurrentArticle() {
     ensureCursorVisible();
     showMessage(tr(STR_RSS_DELETED));
   }
+  requestUpdate();
+}
+
+void RssActivity::clearReadArticles() {
+  // Two-step confirm so a stray tap never wipes the whole read history.
+  const unsigned long now = millis();
+  if (!clearReadArmed || now >= clearReadArmedUntil) {
+    clearReadArmed = true;
+    clearReadArmedUntil = now + MESSAGE_MS;
+    showMessage(tr(STR_RSS_CLEAR_READ_CONFIRM));
+    requestUpdate();
+    return;
+  }
+  clearReadArmed = false;
+  const size_t cleared = RssStore::clearReadArticles(articles);
+  view = View::Updates;
+  rebuildUpdateRows();
+  rebuildFavoriteRows();
+  selected = updatesSelected;
+  if (selected >= static_cast<int>(rows.size())) selected = rows.empty() ? 0 : static_cast<int>(rows.size()) - 1;
+  scrollTop = updatesScroll;
+  clampScroll();
+  ensureCursorVisible();
+  char msg[48];
+  snprintf(msg, sizeof(msg), tr(STR_RSS_CLEAR_READ_DONE), static_cast<unsigned>(cleared));
+  showMessage(msg);
   requestUpdate();
 }
 
@@ -898,14 +924,14 @@ void RssActivity::drawHeaderAndTabs(const char* title, bool showStar) {
                                 metrics.headerHeight},
                  title);
   if (showStar) {
-    // Star and Delete share the right of the title band. Both are two short
-    // CJK labels so a fixed 96px capsule is enough and leaves the title room.
-    constexpr int BTN_W = 96;
+    // Compact capsules on the right of the title band: short CJK labels, so
+    // keep them small and vertically centred instead of filling the header.
+    constexpr int BTN_W = 64;
     constexpr int BTN_GAP = 8;
-    deleteButton = Rect{renderer.getScreenWidth() - SIDE_PAD - BTN_W, metrics.topPadding + 4, BTN_W,
-                        metrics.headerHeight - 8};
-    starButton = Rect{deleteButton.x - BTN_GAP - BTN_W, metrics.topPadding + 4, BTN_W,
-                      metrics.headerHeight - 8};
+    constexpr int BTN_H = 28;
+    const int btnY = metrics.topPadding + (metrics.headerHeight - BTN_H) / 2;
+    deleteButton = Rect{renderer.getScreenWidth() - SIDE_PAD - BTN_W, btnY, BTN_W, BTN_H};
+    starButton = Rect{deleteButton.x - BTN_GAP - BTN_W, btnY, BTN_W, BTN_H};
     const bool starred = [this]() {
       for (const auto& a : articles) if (a.guid == openGuid) return a.favorite;
       return false;
@@ -943,8 +969,8 @@ void RssActivity::drawTabs() {
   }
 }
 
-// Bottom action bar: Update / Add feed / Manage, three equal buttons.
-void RssActivity::drawBottomBar(bool onFeeds) {
+// Bottom action bar: Update / Add feed / Clear-read, three equal buttons.
+void RssActivity::drawBottomBar(bool /*onFeeds*/) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int barY = renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
   const int width = renderer.getScreenWidth() - 2 * SIDE_PAD;
@@ -954,7 +980,8 @@ void RssActivity::drawBottomBar(bool onFeeds) {
   manageButton = Rect{SIDE_PAD + 2 * (btnW + BAR_GAP), barY, btnW, BAR_H};
   GUI.drawActionButton(renderer, updateButton, tr(STR_RSS_UPDATE_NOW), false);
   GUI.drawActionButton(renderer, addButton, tr(STR_RSS_ADD_FEED), false);
-  GUI.drawActionButton(renderer, manageButton, tr(STR_RSS_MANAGE), onFeeds);
+  const bool clearArmed = clearReadArmed && millis() < clearReadArmedUntil;
+  GUI.drawActionButton(renderer, manageButton, tr(STR_RSS_CLEAR_READ), clearArmed);
 }
 
 // Top y of the card list, sitting below the tabs and above the bottom bar.
@@ -1100,7 +1127,9 @@ void RssActivity::drawFeedList() {
 void RssActivity::drawArticleBody() {
   drawHeaderAndTabs(tr(STR_RSS_READING), true);
   const auto& metrics = UITheme::getInstance().getMetrics();
-  backButton = Rect{SIDE_PAD, metrics.topPadding + 4, 120, metrics.headerHeight - 8};
+  constexpr int BACK_W = 64;
+  constexpr int BACK_H = 28;
+  backButton = Rect{SIDE_PAD, metrics.topPadding + (metrics.headerHeight - BACK_H) / 2, BACK_W, BACK_H};
   GUI.drawActionButton(renderer, backButton, tr(STR_RSS_BACK), false);
   const int top = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
   listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD,

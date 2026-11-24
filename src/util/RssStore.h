@@ -66,6 +66,8 @@ class RssStore {
   static bool loadBody(const Article& article, std::string& body);
   // Removes cached articles that belong to a removed feed index.
   static size_t dropArticlesForFeed(std::vector<Article>& articles, int feedIndex);
+  // Loads the guid dismissal list (one guid per line) into `out`.
+  static void loadDismissed(std::vector<std::string>& out);
   // Toggles the star flag on one article (matched by guid) and persists the
   // index. Returns true when a matching article was found and saved.
   static bool toggleFavorite(std::vector<Article>& articles, const std::string& guid);
@@ -74,6 +76,10 @@ class RssStore {
   // Deletes one article by guid: removes its body file, drops it from the
   // index and persists. Returns true when a matching article was removed.
   static bool deleteArticle(std::vector<Article>& articles, const std::string& guid);
+  // Clears every read article: removes its body file, drops it from the index
+  // and adds its guid to a persistent dismissal list so a later refresh no
+  // longer re-downloads it. Returns the number of articles cleared.
+  static size_t clearReadArticles(std::vector<Article>& articles);
   // How many days back a refresh is allowed to import. Older feed items are
   // skipped so the cache stays current and bounded.
   static constexpr uint32_t REFRESH_WINDOW_DAYS = 7;
@@ -94,4 +100,5 @@ class RssStore {
   static std::string bodiesDir();
   static std::string bodyPath(const std::string& bodyFile);
   static std::string bodyFileName(const std::string& guid);
+  static std::string dismissedPath();
 };

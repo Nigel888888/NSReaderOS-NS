@@ -781,14 +781,16 @@ void WeatherActivity::render(RenderLock&&) {
     divider(y);
     y += lineGap + 2;
 
-    // Five-day strip: weekday / line-art icon / condition / high-low.
-    renderer.drawText(bigFont, card.x + pad, y, tr(STR_WEATHER_NEXT_FIVE), true, EpdFontFamily::BOLD);
+    // Multi-day strip: weekday / line-art icon / condition / high-low.
+    renderer.drawText(bigFont, card.x + pad, y, tr(STR_WEATHER_FORECAST), true, EpdFontFamily::BOLD);
     y += bigLine + lineGap;
     divider(y);
     y += lineGap + 2;
 
     const int dayW = innerW / kForecastDays;
-    const int dayIcon = 40;
+    // Ten columns are narrow in portrait: use a smaller icon and drop the
+    // per-day condition text, keeping weekday / icon / high-low for a clean strip.
+    const int dayIcon = 30;
     int todayWday = weekdayFromIso(cache_.days[0].date);
     if (todayWday < 0) {
       const time_t now = time(nullptr);
@@ -800,15 +802,12 @@ void WeatherActivity::render(RenderLock&&) {
       const int center = left + dayW / 2;
       int wday = weekdayFromIso(cache_.days[i].date);
       if (wday < 0) wday = (todayWday + i) % 7;
-      drawCenteredFitted(renderer, bigFont, center, y, dayW - 8, weekdayName(wday), true, EpdFontFamily::BOLD);
-      drawWeatherIcon(renderer, cache_.days[i].code, center - dayIcon / 2, y + bigLine + 6, dayIcon);
-      drawCenteredFitted(renderer, smallFont, center, y + bigLine + 6 + dayIcon + 4, dayW - 8,
-                         weatherDescription(cache_.days[i].code));
+      drawCenteredFitted(renderer, bigFont, center, y, dayW - 4, weekdayName(wday), true, EpdFontFamily::BOLD);
+      drawWeatherIcon(renderer, cache_.days[i].code, center - dayIcon / 2, y + bigLine + 4, dayIcon);
       char dayRange[32];
       snprintf(dayRange, sizeof(dayRange), "%.0f°/%.0f°", cache_.days[i].high, cache_.days[i].low);
-      drawCenteredFitted(renderer, smallFont, center, y + bigLine + 6 + dayIcon + 4 + smallLine + 2, dayW - 8,
-                         dayRange);
-      if (i > 0) renderer.fillRect(left, y, 1, bigLine + 6 + dayIcon + 4 + smallLine + smallLine + 8, true);
+      drawCenteredFitted(renderer, smallFont, center, y + bigLine + 4 + dayIcon + 4, dayW - 2, dayRange);
+      if (i > 0) renderer.fillRect(left, y, 1, bigLine + 4 + dayIcon + 4 + smallLine + 6, true);
     }
   } else {
     const char* noData = tr(STR_WEATHER_NO_DATA);

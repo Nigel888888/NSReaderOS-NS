@@ -92,7 +92,7 @@ constexpr size_t kMainTabCount = 2;
 constexpr int kDetailCoverWidth = 96;
 constexpr int kDetailCoverHeight = 140;
 constexpr int kPortraitShelfColumns = 3;
-constexpr int kPortraitShelfRows = 3;
+constexpr int kPortraitShelfRows = 2;
 constexpr int kLandscapeShelfColumns = 5;
 constexpr int kLandscapeShelfRows = 2;
 constexpr unsigned long kShelfPageHoldMs = 700;
@@ -2208,29 +2208,29 @@ void WeReadActivity::drawShelfGrid(const Rect& content, const int selectedIndex,
   const auto drawItem = [&](const int index, const bool selected) {
     const auto geometry = weReadShelfItemGeometry(content, layout, pageStart, pageEnd, index);
     const Rect cover = geometry.cover;
-    const Rect itemBounds = geometry.hit;
     const bool focused = selected && contentFocused;
-    bool foregroundBlack = true;
-    if (focused) {
-      foregroundBlack = GUI.drawSelectionBackground(renderer, itemBounds);
-      renderer.fillRect(cover.x, cover.y, cover.width, cover.height, false);
-    } else if (incrementalFrame) {
-      renderer.fillRect(itemBounds.x, itemBounds.y, itemBounds.width, itemBounds.height, false);
-    }
 
     WeReadStore::ShelfRecord book;
     if (!readShelf(index, book)) return;
 
+    // Match the local library's cover-grid look: the artwork is the card, with
+    // no heavy box around it. A selected book is marked by a frame on the cover
+    // (CoverFrame style) instead of inverting the artwork or a gray backdrop.
     const bool coverDrawn = drawCachedCover(renderer, WeReadStore::bookDirectory(book.bookId), cover);
-    renderer.drawRect(cover.x, cover.y, cover.width, cover.height);
     if (!coverDrawn) {
+      renderer.fillRect(cover.x, cover.y, cover.width, cover.height, false);
       renderer.drawIcon(CoverIcon, cover.x + (cover.width - 32) / 2, cover.y + (cover.height - 32) / 2, 32);
+    }
+    renderer.drawRect(cover.x, cover.y, cover.width, cover.height);
+    if (focused) {
+      renderer.drawRect(cover.x - 2, cover.y - 2, cover.width + 4, cover.height + 4);
+      renderer.drawRect(cover.x - 3, cover.y - 3, cover.width + 6, cover.height + 6);
     }
 
     const std::string title = renderer.truncatedText(SMALL_FONT_ID, book.title, layout.coverWidth);
     const int titleWidth = renderer.getTextAdvanceX(SMALL_FONT_ID, title.c_str(), EpdFontFamily::REGULAR);
     renderer.drawText(SMALL_FONT_ID, cover.x + std::max(0, (cover.width - titleWidth) / 2),
-                      cover.y + cover.height + layout.titleGap, title.c_str(), foregroundBlack);
+                      cover.y + cover.height + layout.titleGap, title.c_str(), true);
   };
 
   if (incrementalFrame) {

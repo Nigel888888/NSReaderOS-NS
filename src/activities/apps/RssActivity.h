@@ -108,6 +108,7 @@ class RssActivity final : public Activity {
   void removeSelectedFeed();
   void toggleCurrentFavorite();
   void deleteCurrentArticle();
+  void clearReadArticles();
   void openArticle(int index);
   void scrollBody(int lines);
   void wrapBodyLines();
@@ -160,6 +161,9 @@ class RssActivity final : public Activity {
   // Two-step delete: first tap arms, second tap on Delete removes the article.
   bool deleteArmed = false;
   unsigned long deleteArmedUntil = 0;
+  // Two-step "clear read": first tap arms, second tap clears all read articles.
+  bool clearReadArmed = false;
+  unsigned long clearReadArmedUntil = 0;
 
   Rect tabRects[3]{};
   Rect starButton{0, 0, 0, 0};

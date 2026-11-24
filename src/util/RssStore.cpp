@@ -21,6 +21,10 @@ namespace {
 constexpr const char* RSS_DIR = "/.crosspoint/rss";
 constexpr const char* FEEDS_PATH = "/.crosspoint/rss/feeds.json";
 constexpr const char* ARTICLES_PATH = "/.crosspoint/rss/articles.json";
+// Persistent list of guids cleared by "clear read", one guid per line. Kept
+// bounded (FIFO) so the file cannot grow without limit on a busy feed.
+constexpr const char* DISMISSED_PATH = "/.crosspoint/rss/dismissed.txt";
+constexpr size_t MAX_DISMISSED = 512;
 // A generous cap; feeds stay a few KB in practice. Keeps a corrupt feed from
 // driving an unbounded allocation on this memory-constrained device.
 constexpr size_t MAX_FEED_RESPONSE = 256 * 1024;
@@ -455,6 +459,52 @@ bool RssStore::deleteArticle(std::vector<Article>& articles, const std::string& 
   return false;
 }
 
+std::string RssStore::dismissedPath() { return std::string(DISMISSED_PATH); }
+
+void RssStore::loadDismissed(std::vector<std::string>& out) {
+  out.clear();
+  std::string text;
+  if (!Storage.readFileToString("RSS", dismissedPath(), INDEX_READ_CAP, text) || text.empty()) return;
+  size_t start = 0;
+  while (start <= text.size()) {
+    const size_t end = text.find('\n', start);
+    const size_t len = (end == std::string::npos) ? text.size() - start : end - start;
+    if (len > 0) out.push_back(text.substr(start, len));
+    if (end == std::string::npos) break;
+    start = end + 1;
+  }
+}
+
+size_t RssStore::clearReadArticles(std::vector<Article>& articles) {
+  std::vector<std::string> dismissed;
+  loadDismissed(dismissed);
+  size_t cleared = 0;
+  for (size_t i = 0; i < articles.size();) {
+    if (!articles[i].read) {
+      ++i;
+      continue;
+    }
+    // Remember the guid before dropping the article so the next refresh skips it.
+    dismissed.push_back(articles[i].guid);
+    Storage.remove(bodyPath(articles[i].bodyFile).c_str());
+    articles.erase(articles.begin() + static_cast<long>(i));
+    ++cleared;
+  }
+  if (cleared == 0) return 0;
+  // Keep the dismissal list FIFO-bounded.
+  if (dismissed.size() > MAX_DISMISSED)
+    dismissed.erase(dismissed.begin(), dismissed.begin() + static_cast<long>(dismissed.size() - MAX_DISMISSED));
+  String out;
+  for (const std::string& guid : dismissed) {
+    out += guid.c_str();
+    out += '\n';
+  }
+  ensureRssDir();
+  Storage.writeFile(dismissedPath().c_str(), out);
+  saveArticles(articles);
+  return cleared;
+}
+
 bool RssStore::loadBody(const Article& article, std::string& body) {
   body.clear();
   return Storage.readFileToString("RSS", bodyPath(article.bodyFile).c_str(), MAX_BODY_LENGTH + 1, body);
@@ -503,6 +553,11 @@ int RssStore::fetchFeed(const Feed& feed, int feedIndex, std::vector<Article>& a
   const uint32_t today = currentArticleDay();
   const uint32_t cutoff = today > RssStore::REFRESH_WINDOW_DAYS ? today - RssStore::REFRESH_WINDOW_DAYS : 0;
 
+  // Guids cleared by "clear read" stay dismissed so a later refresh does not
+  // download them again. Load once per fetch (this runs off the render task).
+  std::vector<std::string> dismissed;
+  RssStore::loadDismissed(dismissed);
+
   int added = 0;
   for (auto& a : parser.parsed) {
     if (shouldAbort && shouldAbort()) break;
@@ -513,6 +568,12 @@ int RssStore::fetchFeed(const Feed& feed, int feedIndex, std::vector<Article>& a
     bool exists = false;
     for (const Article& old : articles) {
       if (old.guid == a.guid) { exists = true; break; }
+    }
+    // Skip guids previously cleared as read.
+    if (!exists) {
+      for (const std::string& guid : dismissed) {
+        if (guid == a.guid) { exists = true; break; }
+      }
     }
     if (exists) continue;
     a.feedIndex = feedIndex;

@@ -32,7 +32,7 @@ class WeatherActivity final : public Activity {
   void render(RenderLock&&) override;
 
  private:
-  static constexpr int kForecastDays = 5;
+  static constexpr int kForecastDays = 10;
 
   struct Location {
     std::string name;
