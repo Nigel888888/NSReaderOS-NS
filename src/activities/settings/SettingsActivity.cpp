@@ -464,9 +464,6 @@ void SettingsActivity::rebuildSettingsLists() {
   controlsSettings.push_back(SettingInfo::Action(StrId::STR_BLUETOOTH, SettingAction::Bluetooth));
 #endif
   systemSettings.push_back(SettingInfo::Action(StrId::STR_APP_VISIBILITY, SettingAction::AppVisibility));
-  // Storage moved out of the bottom navigation; it now lives here as a
-  // short-card grid (SD summary + books/fonts/images/downloads folders).
-  systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_STORAGE, SettingAction::RickyStorage));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_DATE_AND_TIME, SettingAction::ClockSettings));
   if (BoardConfig::hasHomeKey()) {
     controlsSettings.insert(controlsSettings.begin(),
@@ -565,6 +562,28 @@ void SettingsActivity::onEnter() {
         self.startActivityForResultWith<RickyProfileActivity>([](const ActivityResult&) {});
       },
       this);
+  // Five storage short-cards directly on this "Other" page. Each opens its
+  // own destination; fonts go to Font Management (where families live).
+  for (int i = 0; i < 5; ++i) {
+    app.on(
+        ACTION_TAB_USER + 30 + i,
+        [i](const fui::ActionEvent&, void* user) {
+          auto& self = *static_cast<SettingsActivity*>(user);
+          self.app.clearTapFlash();
+          if (i == 2) {
+            self.startActivityForResultWith<FontLibraryActivity>(
+                [](const ActivityResult&) {});
+            return;
+          }
+          const char* path = i == 0 ? "/" : i == 1 ? RickyStorageLayout::BOOKS
+                             : i == 3 ? RickyStorageLayout::IMAGES
+                                      : RickyStorageLayout::DOWNLOADS;
+          self.startActivityForResultWith<FileBrowserActivity>(
+              [](const ActivityResult&) {}, path, FileBrowserActivity::Mode::Books,
+              /*scoped=*/i != 0);
+        },
+        this);
+  }
 #endif
   dictionariesLoaded = !usesAccordion();
   preserveQuickResumeTimeoutOn =
@@ -1510,15 +1529,23 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       RickyPageUi::Bold heading(renderer, 2);
       target.text(screen.takeTop(target.lineHeight(theme.titleText.font), gap * 2), tr(STR_SETTINGS_TITLE), pageTitle);
     }
-    // Profile card, then the categories as Boox-style icon cards in two columns.
+    // Profile card, then the categories as Boox-style icon cards. A final row
+    // of five short storage cards (SD/books/fonts/images/downloads) keeps those
+    // icons directly on this "Other" page.
     const int profileHeight = bodyHeight + smallHeight + gap + pad * 2;
     const int columns = content.width > content.height ? 3 : 2;
     const int rows = (categoryCount + columns - 1) / columns;
     const int baseCell = std::max(48, bodyHeight) + pad * 2;
-    const int roomy = (screen.body().height - profileHeight - gap * 2 * (rows + 1)) / rows;
+    // Reserve one short row for the five storage cards.
+    const int storageCols = content.width > content.height ? 5 : 3;
+    const int storageRows = (5 + storageCols - 1) / storageCols;
+    // 40px icons plus a little inset need >= 46px of card height.
+    const int shortCell = std::max(48, smallHeight + 12);
+    const int reserved = shortCell * storageRows + gap * (storageRows + 1);
+    const int roomy = (screen.body().height - profileHeight - reserved - gap * 2 * (rows + 1)) / rows;
     const int cellHeight = std::clamp(roomy, baseCell, baseCell * 13 / 10);
-    const int needed = profileHeight + cellHeight * rows + gap * rows;
-    const int section = gap + std::clamp((screen.body().height - needed) / 3, 0, gap * 2);
+    const int needed = profileHeight + cellHeight * rows + gap * rows + reserved;
+    const int section = gap + std::clamp((screen.body().height - needed) / 4, 0, gap);
     RickyProfile::drawCard(screen, renderer, screen.takeTop(profileHeight, section), ACTION_TAB_USER + 20);
     const int selected = RickyPageUi::syncNav(nav, categoryCount);
     const bool focus = showMainTabContentSelection();
@@ -1539,6 +1566,32 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - bodyHeight / 2),
                             static_cast<int16_t>(rect.right() - x - pad), static_cast<int16_t>(bodyHeight)},
                   I18N.get(categoryNames[i]), label);
+    }
+
+    // Storage shortcuts as short cards (SD card + four folders), directly on
+    // this page. Each opens its own folder (fonts open Font Management).
+    const freeink::Icon* storageIcons[] = {&icon_ricky_folder_40, &icon_ricky_books_40, &icon_ricky_fonts_40,
+                                           &icon_ricky_images_40, &icon_ricky_downloads_40};
+    const StrId storageLabels[] = {StrId::STR_RICKY_STORAGE, StrId::STR_RICKY_BOOK_FILES, StrId::STR_FONT,
+                                   StrId::STR_RICKY_IMAGES, StrId::STR_RICKY_DOWNLOADS};
+    static_assert(sizeof(storageIcons) / sizeof(storageIcons[0]) == 5);
+    auto shortLabel = theme.smallText;
+    shortLabel.maxLines = 1;
+    const auto storageGrid =
+        screen.takeTop(shortCell * storageRows + gap * (storageRows - 1), section);
+    for (int i = 0; i < 5; ++i) {
+      const auto rect = RickyPageUi::uiRect(
+          RickyPageLayout::cell(Rect{storageGrid.x, storageGrid.y, storageGrid.width, storageGrid.height}, i, 5, gap,
+                                storageCols));
+      RickyPageUi::card(target, rect, false);
+      screen.frame().hit(rect, ACTION_TAB_USER + 30 + i, fui::InputTouch);
+      const int middle = rect.y + rect.height / 2;
+      RickyPageUi::pageIcon(target, renderer, rect.x + pad / 2, middle, *storageIcons[i]);
+      const int textX = rect.x + pad / 2 + storageIcons[i]->w + gap / 2;
+      target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(middle - smallHeight / 2),
+                            static_cast<int16_t>(std::max(1, rect.right() - textX - pad / 2)),
+                            static_cast<int16_t>(smallHeight)},
+                  I18N.get(storageLabels[i]), shortLabel);
     }
     return;
   }
