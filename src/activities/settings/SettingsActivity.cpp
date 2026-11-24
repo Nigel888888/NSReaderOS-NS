@@ -1528,22 +1528,20 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       RickyPageUi::Bold heading(renderer, 2);
       target.text(screen.takeTop(target.lineHeight(theme.titleText.font), gap * 2), tr(STR_SETTINGS_TITLE), pageTitle);
     }
-    // Profile card, then the categories as Boox-style icon cards. A final row
-    // of five short storage cards (SD/books/fonts/images/downloads) keeps those
-    // icons directly on this "Other" page.
+    // Profile card, then two card grids drawn to the same spec: the six
+    // categories and the five storage shortcuts. Both rows share one card
+    // height, one icon padding and one icon-to-label gap, so every icon reads
+    // at exactly the same size and spacing on this "Other" page.
     const int profileHeight = bodyHeight + smallHeight + gap + pad * 2;
     const int columns = content.width > content.height ? 3 : 2;
     const int rows = (categoryCount + columns - 1) / columns;
-    const int baseCell = std::max(48, bodyHeight) + pad * 2;
-    // Reserve one short row for the five storage cards.
     const int storageCols = content.width > content.height ? 5 : 3;
     const int storageRows = (5 + storageCols - 1) / storageCols;
-    // 40px icons plus a little inset need >= 46px of card height.
-    const int shortCell = std::max(48, smallHeight + 12);
-    const int reserved = shortCell * storageRows + gap * (storageRows + 1);
-    const int roomy = (screen.body().height - profileHeight - reserved - gap * 2 * (rows + 1)) / rows;
+    const int totalRows = rows + storageRows;
+    const int baseCell = std::max(48, bodyHeight) + pad * 2;
+    const int roomy = (screen.body().height - profileHeight - gap * totalRows) / totalRows;
     const int cellHeight = std::clamp(roomy, baseCell, baseCell * 13 / 10);
-    const int needed = profileHeight + cellHeight * rows + gap * rows + reserved;
+    const int needed = profileHeight + cellHeight * totalRows + gap * totalRows;
     const int section = gap + std::clamp((screen.body().height - needed) / 4, 0, gap);
     RickyProfile::drawCard(screen, renderer, screen.takeTop(profileHeight, section), ACTION_TAB_USER + 20);
     const int selected = RickyPageUi::syncNav(nav, categoryCount);
@@ -1567,17 +1565,15 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
                   I18N.get(categoryNames[i]), label);
     }
 
-    // Storage shortcuts as short cards (SD card + four folders), directly on
-    // this page. Each opens its own folder (fonts open Font Management).
+    // Storage shortcuts use the very same card spec as the categories above:
+    // identical height, icon padding, icon-to-label gap and label style.
     const freeink::Icon* storageIcons[] = {&icon_ricky_folder_40, &icon_ricky_books_40, &icon_ricky_fonts_40,
                                            &icon_ricky_images_40, &icon_ricky_downloads_40};
     const StrId storageLabels[] = {StrId::STR_RICKY_STORAGE, StrId::STR_RICKY_BOOK_FILES, StrId::STR_FONT,
                                    StrId::STR_RICKY_IMAGES, StrId::STR_RICKY_DOWNLOADS};
     static_assert(sizeof(storageIcons) / sizeof(storageIcons[0]) == 5);
-    auto shortLabel = theme.smallText;
-    shortLabel.maxLines = 1;
     const auto storageGrid =
-        screen.takeTop(shortCell * storageRows + gap * (storageRows - 1), section);
+        screen.takeTop(cellHeight * storageRows + gap * (storageRows - 1), section);
     for (int i = 0; i < 5; ++i) {
       const auto rect = RickyPageUi::uiRect(
           RickyPageLayout::cell(Rect{storageGrid.x, storageGrid.y, storageGrid.width, storageGrid.height}, i, 5, gap,
@@ -1585,12 +1581,11 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
       RickyPageUi::card(target, rect, false);
       screen.frame().hit(rect, ACTION_TAB_USER + 30, i, fui::InputTouch);
       const int middle = rect.y + rect.height / 2;
-      RickyPageUi::pageIcon(target, renderer, rect.x + pad / 2, middle, *storageIcons[i]);
-      const int textX = rect.x + pad / 2 + storageIcons[i]->w + gap / 2;
-      target.text(fui::Rect{static_cast<int16_t>(textX), static_cast<int16_t>(middle - smallHeight / 2),
-                            static_cast<int16_t>(std::max(1, rect.right() - textX - pad / 2)),
-                            static_cast<int16_t>(smallHeight)},
-                  I18N.get(storageLabels[i]), shortLabel);
+      RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *storageIcons[i]);
+      const int x = rect.x + pad + storageIcons[i]->w + gap;
+      target.text(fui::Rect{static_cast<int16_t>(x), static_cast<int16_t>(middle - bodyHeight / 2),
+                            static_cast<int16_t>(std::max(1, rect.right() - x - pad)), static_cast<int16_t>(bodyHeight)},
+                  I18N.get(storageLabels[i]), label);
     }
     return;
   }
