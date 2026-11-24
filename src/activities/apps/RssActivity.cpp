@@ -39,6 +39,11 @@ constexpr int TAB_GAP = 8;
 constexpr int BAR_H = 56;
 constexpr int BAR_GAP = 12;
 constexpr int BAR_TOP = 8;
+// Reading view bottom action row: Back / Favorite / Delete, slightly larger
+// than the old header capsules, sitting on a hairline at the page bottom.
+constexpr int READ_BTN_H = 36;
+constexpr int READ_BTN_GAP = 14;
+constexpr int READ_BTN_BOTTOM_PAD = 8;
 constexpr int CARD_GAP = 10;
 constexpr int CARD_RADIUS = 8;
 constexpr unsigned long MESSAGE_MS = 3000;
@@ -916,32 +921,14 @@ void RssActivity::removeSelectedFeed() {
   showMessage(tr(STR_RSS_REMOVED));
 }
 
-// Header plus the three-way segmented tab bar. When `showStar` is set (the
-// reading view) a small star button occupies the right of the title band.
+// Header plus the three-way segmented tab bar. The reading view draws its own
+// Back capsule in the bottom action row, so the header's back arrow is hidden
+// there to avoid a duplicate control.
 void RssActivity::drawHeaderAndTabs(const char* title, bool showStar) {
   const auto& metrics = UITheme::getInstance().getMetrics();
   GUI.drawHeader(renderer, Rect{SIDE_PAD, metrics.topPadding, renderer.getScreenWidth() - 2 * SIDE_PAD,
                                 metrics.headerHeight},
-                 title);
-  if (showStar) {
-    // Compact capsules on the right of the title band: short CJK labels, so
-    // keep them small and vertically centred instead of filling the header.
-    constexpr int BTN_W = 64;
-    constexpr int BTN_GAP = 8;
-    constexpr int BTN_H = 28;
-    const int btnY = metrics.topPadding + (metrics.headerHeight - BTN_H) / 2;
-    deleteButton = Rect{renderer.getScreenWidth() - SIDE_PAD - BTN_W, btnY, BTN_W, BTN_H};
-    starButton = Rect{deleteButton.x - BTN_GAP - BTN_W, btnY, BTN_W, BTN_H};
-    const bool starred = [this]() {
-      for (const auto& a : articles) if (a.guid == openGuid) return a.favorite;
-      return false;
-    }();
-    GUI.drawActionButton(renderer, starButton,
-                         starred ? tr(STR_RSS_STARRED) : tr(STR_RSS_STAR), starred);
-    const bool armed = deleteArmed && millis() < deleteArmedUntil;
-    // Keep the capsule label short; the armed hint is shown in the message band.
-    GUI.drawActionButton(renderer, deleteButton, tr(STR_RSS_DELETE), armed);
-  }
+                 title, nullptr, !showStar);
 }
 
 // Draws the three segmented tabs (Updates / Feeds / Favorites) as one
@@ -1127,13 +1114,27 @@ void RssActivity::drawFeedList() {
 void RssActivity::drawArticleBody() {
   drawHeaderAndTabs(tr(STR_RSS_READING), true);
   const auto& metrics = UITheme::getInstance().getMetrics();
-  constexpr int BACK_W = 64;
-  constexpr int BACK_H = 28;
-  backButton = Rect{SIDE_PAD, metrics.topPadding + (metrics.headerHeight - BACK_H) / 2, BACK_W, BACK_H};
-  GUI.drawActionButton(renderer, backButton, tr(STR_RSS_BACK), false);
   const int top = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD,
-                    renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
+  // Bottom action row: Back / Favorite / Delete, on a hairline at the page
+  // bottom. Keep the article body clear of both the row and the hint band.
+  const int actionY = renderer.getScreenHeight() - metrics.buttonHintsHeight - READ_BTN_H - READ_BTN_BOTTOM_PAD;
+  renderer.fillRect(SIDE_PAD, actionY - BAR_GAP, renderer.getScreenWidth() - 2 * SIDE_PAD, 1, Color::LightGray);
+  const int rowW = renderer.getScreenWidth() - 2 * SIDE_PAD;
+  const int btnW = (rowW - READ_BTN_GAP * 2) / 3;
+  backButton = Rect{SIDE_PAD, actionY, btnW, READ_BTN_H};
+  starButton = Rect{SIDE_PAD + btnW + READ_BTN_GAP, actionY, btnW, READ_BTN_H};
+  deleteButton = Rect{SIDE_PAD + 2 * (btnW + READ_BTN_GAP), actionY, btnW, READ_BTN_H};
+  const bool starred = [this]() {
+    for (const auto& a : articles) if (a.guid == openGuid) return a.favorite;
+    return false;
+  }();
+  GUI.drawActionButton(renderer, backButton, tr(STR_RSS_BACK), false);
+  GUI.drawActionButton(renderer, starButton,
+                       starred ? tr(STR_RSS_STARRED) : tr(STR_RSS_STAR), starred);
+  const bool armed = deleteArmed && millis() < deleteArmedUntil;
+  GUI.drawActionButton(renderer, deleteButton, tr(STR_RSS_DELETE), armed);
+  const int bodyBottom = actionY - BAR_GAP - metrics.verticalSpacing;
+  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, bodyBottom - top};
   const int lineHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
   const int linesOnScreen = std::max(1, listBounds.height / lineHeight);
   // loop() uses these to advance roughly one screen per tap and to map a
@@ -1149,7 +1150,18 @@ void RssActivity::drawArticleBody() {
 
 void RssActivity::drawMessage() {
   if (message.empty() || static_cast<long>(millis() - messageUntil) >= 0) return;
-  renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD, renderer.getScreenHeight() - 40, message.c_str());
+  // Show transient notices just above the Add-feed button (list/feed views)
+  // or the bottom action row (reading view), never in the bottom-left corner.
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int barTop = view == View::Article
+                         ? renderer.getScreenHeight() - metrics.buttonHintsHeight - READ_BTN_H - READ_BTN_BOTTOM_PAD
+                         : renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
+  const int lineH = renderer.getLineHeight(UI_10_FONT_ID);
+  int msgY = barTop - lineH - 6;
+  // The Feeds view keeps a "tap to remove" line directly above the bar; put
+  // the notice one line higher so the two never overlap.
+  if (view == View::Feeds) msgY -= renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 6;
+  renderer.drawText(UI_10_FONT_ID, SIDE_PAD, msgY, message.c_str());
 }
 
 void RssActivity::render(RenderLock&&) {
