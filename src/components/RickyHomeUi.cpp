@@ -474,8 +474,11 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     const int blockBottom = std::min<int>(lastBarBottom, footer.bottom());
     const int textH = smallHeight;
     const int inGap = std::max(4, gap / 3);
+    // Two lines below the cover: the book title, then a smaller progress line.
+    const int lineGap = std::max(2, inGap / 2);
     const int coverTop = listTop + std::max(4, gap / 2);
-    const int availH = std::max<int>(0, blockBottom - coverTop - inGap - textH);
+    const int availH =
+        std::max<int>(0, blockBottom - coverTop - inGap - textH - lineGap - textH);
     // Fit a 3:4 cover inside BOTH the column width and the available height,
     // with a small margin, so it can never cross the centre divider.
     const int maxW = std::max<int>(0, boxW - gap * 2);
@@ -513,15 +516,31 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
         target.fill(fui::Rect{bar.x, bar.y, static_cast<int16_t>(filled), bar.height},
                     fui::Paint::solid(fui::Color::White));
 
-      // "Reading progress NN%" caption centered below the cover.
+      // Book title, then a smaller "reading progress NN%" line, both centered
+      // below the cover.
+      const auto& currentBook = (*books)[0];
+      auto titleStyle = small;
+      titleStyle.bold = true;
+      titleStyle.align = fui::TextAlign::Center;
+      target.text(fui::Rect{cover.x, static_cast<int16_t>(cover.bottom() + inGap), cover.width,
+                            static_cast<int16_t>(textH)},
+                  titleOf(currentBook), titleStyle);
+
       char progressLabel[24];
       snprintf(progressLabel, sizeof(progressLabel), tr(STR_RICKY_COVER_PROGRESS),
                static_cast<unsigned>(progress));
+      // Bind a smaller real font to the LABEL slot just for this line, then
+      // restore the theme default (smallFontId) so the rest of the page keeps
+      // its normal chrome.
+      auto* coverTarget = static_cast<fui::GfxRendererTarget*>(&target);
+      coverTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, UI_10_FONT_ID);
       auto progressStyle = small;
+      progressStyle.font = fui::GfxRendererTarget::FONT_LABEL;
       progressStyle.align = fui::TextAlign::Center;
-      target.text(fui::Rect{cover.x, static_cast<int16_t>(cover.bottom() + inGap), cover.width,
+      target.text(fui::Rect{cover.x, static_cast<int16_t>(cover.bottom() + inGap + textH + lineGap), cover.width,
                             static_cast<int16_t>(textH)},
                   progressLabel, progressStyle);
+      coverTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
     }
     screen.frame().hit(fui::Rect{footer.x, static_cast<int16_t>(listTop), static_cast<int16_t>(dividerX - footer.x),
                                  static_cast<int16_t>(listHeight)}, OPEN_BOOK, 0, fui::InputTouch);
