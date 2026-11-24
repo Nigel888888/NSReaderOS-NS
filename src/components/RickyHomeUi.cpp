@@ -432,11 +432,19 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const fui::Rect footer{footerRect.x, static_cast<int16_t>(footerRect.y + footerGap), footerRect.width,
                          static_cast<int16_t>(footerRect.height - footerGap)};
   const int dividerX = footer.x + footer.width * 38 / 100;
-  // A bold, solid black rule makes the two columns read as distinct sections.
   constexpr int kDividerWidth = 3;
+  const int headerRuleY = footer.y + smallHeight + gap / 4;
+  // The centre vertical rule is broken around the light-gray header rule so
+  // the two never cross. Draw it as two segments with a small gap straddling
+  // the horizontal rule, which itself stays continuous across both columns.
+  const int ruleBreakHalf = 5;
   target.fill(fui::Rect{static_cast<int16_t>(dividerX - kDividerWidth / 2), footer.y, kDividerWidth,
-                        static_cast<int16_t>(footer.height)},
+                        static_cast<int16_t>(headerRuleY - ruleBreakHalf - footer.y)},
               black);
+  target.fill(
+      fui::Rect{static_cast<int16_t>(dividerX - kDividerWidth / 2), static_cast<int16_t>(headerRuleY + ruleBreakHalf),
+                kDividerWidth, static_cast<int16_t>(footer.bottom() - headerRuleY - ruleBreakHalf)},
+      black);
   // Give the right column extra breathing room from the divider so the two
   // sections never look crowded against the rule.
   const int recentInset = gap + std::max<int>(4, gap / 2);
@@ -447,21 +455,14 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       fui::Rect{static_cast<int16_t>(dividerX + recentInset), footer.y,
                 static_cast<int16_t>(footer.right() - dividerX - recentInset), static_cast<int16_t>(smallHeight)},
       tr(STR_RICKY_RECENT_READ), strong);
-  // Light-gray rules under both section headers, matching the calendar divider.
-  // Each stops short of the centre vertical rule so the two never intersect.
-  const int headerRuleY = footer.y + smallHeight + gap / 4;
-  const int ruleClearance = kDividerWidth / 2 + 3;
-  target.fill(fui::Rect{footer.x, static_cast<int16_t>(headerRuleY),
-                        static_cast<int16_t>(dividerX - ruleClearance - footer.x), 1},
-              rule);
-  target.fill(fui::Rect{static_cast<int16_t>(dividerX + ruleClearance), static_cast<int16_t>(headerRuleY),
-                        static_cast<int16_t>(footer.right() - dividerX - ruleClearance), 1},
-              rule);
+  // One continuous light-gray rule under both headers, matching the calendar
+  // divider. The vertical rule above is broken here, so they never intersect.
+  target.fill(fui::Rect{footer.x, static_cast<int16_t>(headerRuleY), footer.width, 1}, rule);
   const int listTop = footer.y + smallHeight + gap / 2;
   const int listHeight = footer.bottom() - listTop;
 
-  // Left column: an enlarged cover on top, then the book title and a progress
-  // bar below it. No percentage text — the bar alone conveys reading progress.
+  // Left column: an enlarged cover, the book title, then a progress bar and
+  // percentage on one row. Nothing is drawn over the cover artwork.
   if (!books || books->empty()) {
     target.text(fui::Rect{footer.x, static_cast<int16_t>(listTop + listHeight / 2),
                           static_cast<int16_t>(dividerX - footer.x - gap), static_cast<int16_t>(smallHeight)},
@@ -471,9 +472,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
         OPEN_BOOK, LIBRARY, fui::InputTouch);
   } else {
     const int boxW = dividerX - footer.x - gap;
-    // iFink-style "now reading" card: a large cover on top, then a slim
-    // progress track, a bold centred title and a smaller progress caption,
-    // all stacked BELOW the cover — nothing is drawn over the artwork.
+    // iFink-style "now reading" card: a large cover, then a bold centred
+    // title, then one row holding a slim progress bar and its percentage.
+    // Nothing is drawn over the cover artwork.
     const int recentRows = std::max<int>(1, RickyHomeLayout::PAGE_BOOKS);
     const int recentRowHeight = listHeight / recentRows;
     const int recentBarH = std::max<int>(4, smallHeight / 4);
@@ -483,12 +484,11 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     const int blockBottom = std::min<int>(lastBarBottom, footer.bottom());
     const int textH = smallHeight;
     const int barH = std::max<int>(4, smallHeight / 4);  // slim track, like the recent list
-    const int coverGap = std::max(3, gap / 4);
     const int titleGap = std::max(3, gap / 3);
     const int lineGap = std::max(2, gap / 6);
     const int coverTop = listTop + std::max(4, gap / 3);
-    // Reserve one row each for the bar, the title and the progress caption.
-    const int reserved = coverGap + barH + titleGap + textH + lineGap + textH;
+    // Reserve one row for the title and one for the bar + percentage pair.
+    const int reserved = titleGap + textH + lineGap + textH;
     const int availH = std::max<int>(0, blockBottom - coverTop - reserved);
     // Fit a 3:4 cover inside BOTH the column width and the available height,
     // with a small margin, so it can never cross the centre divider.
@@ -510,31 +510,34 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       thumbnailHeight = coverH;
       paint(cover, 0, false);  // no hairline frame — artwork only
 
-      // Slim progress track directly below the cover: dark fill on a light
-      // background, exactly like the iFink "currently reading" card.
-      const fui::Rect bar{static_cast<int16_t>(cover.x), static_cast<int16_t>(cover.bottom() + coverGap), cover.width,
-                          static_cast<int16_t>(barH)};
-      RickyPageUi::progressBar(target, bar, progress);
-
       const auto& currentBook = (*books)[0];
       auto titleStyle = strong;
       titleStyle.align = fui::TextAlign::Center;
-      target.text(
-          fui::Rect{cover.x, static_cast<int16_t>(bar.bottom() + titleGap), cover.width, static_cast<int16_t>(textH)},
-          titleOf(currentBook), titleStyle);
+      const int titleY = cover.bottom() + titleGap;
+      target.text(fui::Rect{cover.x, static_cast<int16_t>(titleY), cover.width, static_cast<int16_t>(textH)},
+                  titleOf(currentBook), titleStyle);
 
-      char progressLabel[24];
-      snprintf(progressLabel, sizeof(progressLabel), tr(STR_RICKY_COVER_PROGRESS), static_cast<unsigned>(progress));
-      // Bind a smaller real font to the LABEL slot just for this line, then
-      // restore the theme default (smallFontId) so the rest of the page keeps
-      // its normal chrome.
-      auto* coverTarget = static_cast<fui::GfxRendererTarget*>(&target);
-      coverTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, UI_10_FONT_ID);
+      // One row below the title: a slim progress bar plus the percentage.
+      // Bind a small real font to the LABEL slot for the muted percentage,
+      // then restore the theme default so the rest of the page keeps its chrome.
+      char progressLabel[8];
+      snprintf(progressLabel, sizeof(progressLabel), "%u%%", static_cast<unsigned>(progress));
       auto progressStyle = small;
       progressStyle.font = fui::GfxRendererTarget::FONT_LABEL;
-      progressStyle.align = fui::TextAlign::Center;
-      progressStyle.color = fui::Color::DarkGray;  // muted caption, matches iFink's grey caption
-      target.text(fui::Rect{cover.x, static_cast<int16_t>(bar.bottom() + titleGap + textH + lineGap), cover.width,
+      progressStyle.align = fui::TextAlign::Right;
+      progressStyle.color = fui::Color::DarkGray;  // muted percentage, not eye-catching
+      auto* coverTarget = static_cast<fui::GfxRendererTarget*>(&target);
+      coverTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, UI_10_FONT_ID);
+      const int pctWidth =
+          coverTarget->measureText(fui::GfxRendererTarget::FONT_LABEL, progressLabel, progressStyle).width;
+      const int rowY = titleY + textH + lineGap;
+      const int barWidth = std::max<int>(8, cover.width - pctWidth - gap / 2);
+      const int barY = rowY + (textH - barH) / 2;
+      RickyPageUi::progressBar(
+          target,
+          fui::Rect{cover.x, static_cast<int16_t>(barY), static_cast<int16_t>(barWidth), static_cast<int16_t>(barH)},
+          progress);
+      target.text(fui::Rect{static_cast<int16_t>(cover.right() - pctWidth), rowY, static_cast<int16_t>(pctWidth),
                             static_cast<int16_t>(textH)},
                   progressLabel, progressStyle);
       coverTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);

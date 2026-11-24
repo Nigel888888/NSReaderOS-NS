@@ -926,7 +926,7 @@ void RssActivity::drawTabs() {
   const int y = metrics.topPadding + metrics.headerHeight + TAB_TOP;
   const int width = renderer.getScreenWidth() - 2 * SIDE_PAD;
   const int segW = (width - TAB_GAP * 2) / 3;
-  const char* labels[3] = {tr(STR_RSS_UPDATE), tr(STR_RSS_FEEDS), tr(STR_RSS_FAVORITES)};
+  const char* labels[3] = {tr(STR_RSS_INFO), tr(STR_RSS_FEEDS), tr(STR_RSS_FAVORITES)};
   const View views[3] = {View::Updates, View::Feeds, View::Favorites};
   renderer.fillRoundedRect(SIDE_PAD, y, width, TAB_H, TAB_H / 2, Color::LightGray);
   for (int i = 0; i < 3; ++i) {
@@ -952,7 +952,7 @@ void RssActivity::drawBottomBar(bool onFeeds) {
   updateButton = Rect{SIDE_PAD, barY, btnW, BAR_H};
   addButton = Rect{SIDE_PAD + btnW + BAR_GAP, barY, btnW, BAR_H};
   manageButton = Rect{SIDE_PAD + 2 * (btnW + BAR_GAP), barY, btnW, BAR_H};
-  GUI.drawActionButton(renderer, updateButton, tr(STR_RSS_UPDATE), false);
+  GUI.drawActionButton(renderer, updateButton, tr(STR_RSS_UPDATE_NOW), false);
   GUI.drawActionButton(renderer, addButton, tr(STR_RSS_ADD_FEED), false);
   GUI.drawActionButton(renderer, manageButton, tr(STR_RSS_MANAGE), onFeeds);
 }
