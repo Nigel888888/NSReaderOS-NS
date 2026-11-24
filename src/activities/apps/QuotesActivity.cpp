@@ -1,6 +1,5 @@
 #include "QuotesActivity.h"
 
-#include <EpdFontFamily.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -30,12 +29,12 @@ std::string quoteDate(const uint32_t epochSeconds) {
   std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", local.tm_year + 1900, local.tm_mon + 1, local.tm_mday);
   return std::string(buf);
 }
-constexpr int COUNTER_HEIGHT = 34;
-// Export-to-Clippings button under the counter band. High-DPI friendly size,
-// matching the secondary button treatment in VocabularyActivity.
+// Export-to-Clippings button directly under the tabs. High-DPI friendly size,
+// matching the secondary button treatment in VocabularyActivity. The former
+// counter band (book name + count) was a mostly empty row the reader asked to
+// remove, so the export button now sits flush under the tab bar.
 constexpr int EXPORT_BUTTON_HEIGHT = 60;
-constexpr int EXPORT_BUTTON_GAP = 10;
-constexpr int EXPORT_BAND_EXTRA = EXPORT_BUTTON_GAP + EXPORT_BUTTON_HEIGHT;
+constexpr int EXPORT_BAND_EXTRA = EXPORT_BUTTON_HEIGHT;
 // How long the export result stays on the button.
 constexpr unsigned long EXPORT_MESSAGE_MS = 3000;
 }  // namespace
@@ -173,26 +172,15 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
 
   buildTabBar(screen);
 
-  // Section band under the tabs: the "highlighted sentences" caption is gone
-  // (this is the 好句集 screen); when drilled into a book the title still shows
-  // so the reader knows which source they are browsing. Count sits on the right.
+  // Export button flush under the tabs. The old counter band (book name +
+  // count on an otherwise empty row) has been removed at the reader's request;
+  // the reclaimed height goes into more generous sentence row spacing below.
   renderer.clearClipRect();
-  const fui::Rect band = screen.takeTop(static_cast<int16_t>(COUNTER_HEIGHT + EXPORT_BAND_EXTRA));
-  const bool drilled = tab_ == AllTab && bookFilter_ >= 0;
-  if (drilled) {
-    const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-    renderer.drawText(UI_10_FONT_ID, band.x, baseline, filteredBook.c_str(), true, EpdFontFamily::BOLD);
-  }
-  char count[24];
-  std::snprintf(count, sizeof(count), "%d", static_cast<int>(rows.size()));
-  const int countWidth = renderer.getTextWidth(UI_10_FONT_ID, count);
-  const int baseline = band.y + (band.height - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-  renderer.drawText(UI_10_FONT_ID, band.x + band.width - countWidth, baseline, count);
-  renderer.drawLine(band.x, band.y + COUNTER_HEIGHT - 1, band.x + band.width, band.y + COUNTER_HEIGHT - 1);
+  const fui::Rect band = screen.takeTop(static_cast<int16_t>(EXPORT_BAND_EXTRA));
 
   // Export button: outlined secondary action. Its label is replaced by the
   // transient result message for a few seconds after a tap.
-  const Rect exportRect{band.x, band.y + COUNTER_HEIGHT + EXPORT_BUTTON_GAP, band.width, EXPORT_BUTTON_HEIGHT};
+  const Rect exportRect{band.x, band.y, band.width, EXPORT_BUTTON_HEIGHT};
   exportButton = exportRect;
   const char* exportText = tab_ == BooksTab ? tr(STR_QUOTES_EXPORT_BY_BOOK) : tr(STR_QUOTES_EXPORT_CLIPPINGS);
   if (!exportMessage.empty() && static_cast<long>(millis() - exportMessageUntil) >= 0) {
@@ -216,9 +204,10 @@ void QuotesActivity::buildScreen(UiScreen& screen) {
   props.inputMask = fui::InputTouch | fui::InputLongPress;
   // Taller rows with more breathing room between saved sentences: the source
   // sits in the gray subtitle under the bold sentence, with the date painted
-  // as a separate capsule at the card's bottom right.
-  props.rowHeight = static_cast<int16_t>(std::max<int>(72, renderer.getLineHeight(UI_12_FONT_ID) * 3));
-  props.rowGap = static_cast<int16_t>(std::max<int>(8, metrics.verticalSpacing));
+  // as a separate capsule at the card's bottom right. The removed counter band
+  // is given back here as extra line spacing, as the reader requested.
+  props.rowHeight = static_cast<int16_t>(std::max<int>(84, renderer.getLineHeight(UI_12_FONT_ID) * 3 + 12));
+  props.rowGap = static_cast<int16_t>(std::max<int>(12, metrics.verticalSpacing + 4));
   // Same minimal card treatment as the vocabulary screen: white rounded card,
   // bold sentence, gray source and a dark bar on the pressed card's left.
   applyCardListStyle(props, screen.theme());

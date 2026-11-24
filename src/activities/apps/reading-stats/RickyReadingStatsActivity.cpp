@@ -12,6 +12,7 @@
 #include "ReadingStatsStore.h"
 #include "components/RickyPageUi.h"
 #include "components/UITheme.h"
+#include "util/QuotesFile.h"
 #include "util/TimeUtils.h"
 
 namespace {
@@ -114,6 +115,36 @@ std::string dailyFact(const ReadingStatsStore& stats, const uint32_t today) {
 }  // namespace
 
 const char* RickyReadingStatsActivity::headerTitle() const { return tr(STR_READING_STATS); }
+
+void RickyReadingStatsActivity::onEnter() {
+  UiListActivity::onEnter();
+  app.on(ACTION_QUOTE_STAR, &RickyReadingStatsActivity::onQuoteStar, this);
+  loadQuotes();
+}
+
+void RickyReadingStatsActivity::loadQuotes() {
+  std::vector<QuotesFile::Quote> saved;
+  QuotesFile::load(saved);
+  quotes_.clear();
+  quotes_.reserve(saved.size());
+  for (const auto& quote : saved) {
+    if (!quote.sentence.empty()) quotes_.push_back(quote.sentence);
+  }
+  // Start from a stable pseudo-random point so the card differs across visits.
+  quoteIndex_ = quotes_.empty() ? 0 : static_cast<size_t>(millis() / 1000) % quotes_.size();
+}
+
+void RickyReadingStatsActivity::nextQuote() {
+  if (quotes_.empty()) return;
+  quoteIndex_ = (quoteIndex_ + 1) % quotes_.size();
+}
+
+void RickyReadingStatsActivity::onQuoteStar(const fui::ActionEvent&, void* user) {
+  auto* self = static_cast<RickyReadingStatsActivity*>(user);
+  self->app.clearTapFlash();
+  self->nextQuote();
+  self->requestUpdate();
+}
 
 void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
   const auto bounds = pageContentRect();
@@ -257,5 +288,29 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
   const int factY = factCard.y + (twoLines ? pad : (factCard.height - bodyHeight) / 2);
   target.text(rect(factCard.x + pad, factY, factCard.width - pad * 2, bodyHeight * (twoLines ? 2 : 1)),
               factText.c_str(), fact);
+
+  // A random sentence from the quotes notebook, in a rounded card at the foot
+  // of the page. The star on the left is a touch target: tap it to draw another
+  // sentence without leaving this screen.
+  const int quoteHeight = std::min<int>(factHeight, std::max<int>(0, screen.body().height - gap));
+  if (quoteHeight >= bodyHeight + pad) {
+    const auto quoteCard = screen.takeTop(quoteHeight, gap);
+    RickyPageUi::card(target, quoteCard, false);
+
+    const int starSize = std::min<int>(bodyHeight + 4, quoteCard.height - pad);
+    starRect_ = Rect{quoteCard.x + pad, quoteCard.y + (quoteCard.height - starSize) / 2, starSize, starSize};
+    RickyPageUi::motif(target, starRect_, RickyPageUi::Motif::Star);
+
+    auto quoteText = body;
+    quoteText.maxLines = 2;
+    const int textX = starRect_.x + starSize + gap / 2;
+    const int textWidth = quoteCard.right() - pad - textX;
+    const char* line = (!quotes_.empty() && quoteIndex_ < quotes_.size())
+                           ? quotes_[quoteIndex_].c_str()
+                           : tr(STR_QUOTES_EMPTY);
+    target.text(rect(textX, quoteCard.y + pad / 2, textWidth, quoteCard.height - pad), line, quoteText);
+
+    screen.frame().hit(RickyPageUi::uiRect(starRect_), ACTION_QUOTE_STAR, 0, fui::InputTouch);
+  }
 }
 #endif

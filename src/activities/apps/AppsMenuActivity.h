@@ -40,7 +40,8 @@ class AppsMenuActivity final : public UiListActivity {
   int iconIndexFromPoint(int x, int y) const;
   void rebuildRowItems();
   void openSelected();
-  void drawIconGrid(const Rect& rect, int visibleCount, bool showSelection) const;
+  void drawIconGrid(const Rect& rect, int visibleCount, bool showSelection,
+                    freeink::ui::DrawTarget& target) const;
 
   // Allocated once on entry and reused for every repaint. The app catalog is
   // bounded to 32 entries; dynamic storage avoids pinning the maximum in every

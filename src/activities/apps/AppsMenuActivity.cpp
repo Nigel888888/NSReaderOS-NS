@@ -9,6 +9,7 @@
 #include "CrossPointSettings.h"
 #include "InxItemLayout.h"
 #include "OpdsServerStore.h"
+#include "components/RickyPageUi.h"
 #include "components/SubpageLayout.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
@@ -195,18 +196,27 @@ void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const in
 // Draw the ruled 3x4 grid: one thin outer frame plus internal dividers,
 // matching the reference's plain table (no gaps, no rounded tiles). A 1px ink
 // line is the cleanest divider on e-paper and reads like the reference's hairline.
-void drawAppGridRules(const GfxRenderer& renderer, const Rect& rect) {
+void drawAppGridRules(fui::DrawTarget& target, const Rect& rect) {
+  const auto faint = fui::Paint::dither(fui::Color::DarkGray);
+  const auto line = [&](const Rect& r) {
+    target.fill(fui::Rect{static_cast<int16_t>(r.x), static_cast<int16_t>(r.y),
+                          static_cast<int16_t>(r.width), static_cast<int16_t>(r.height)},
+                faint, 0);
+  };
   const int right = rect.x + rect.width;
   const int bottom = rect.y + rect.height;
-  renderer.drawRect(rect.x, rect.y, rect.width, rect.height, 1, true);
+  line(Rect{rect.x, rect.y, rect.width, 1});
+  line(Rect{rect.x, bottom - 1, rect.width, 1});
+  line(Rect{rect.x, rect.y, 1, rect.height});
+  line(Rect{right - 1, rect.y, 1, rect.height});
   for (int c = 1; c < InxGridGeometry::columns; ++c) {
     const int x = rect.x + c * rect.width / InxGridGeometry::columns;
-    renderer.drawLine(x, rect.y, x, bottom, 1, true);
+    line(Rect{x, rect.y, 1, rect.height});
   }
   const int rowsDrawn = std::min(InxGridGeometry::rows, 4);
   for (int r = 1; r < rowsDrawn; ++r) {
     const int y = rect.y + r * rect.height / rowsDrawn;
-    renderer.drawLine(rect.x, y, right, y, 1, true);
+    line(Rect{rect.x, y, rect.width, 1});
   }
 }
 }  // namespace
@@ -285,7 +295,9 @@ Rect AppsMenuActivity::appContentRect() const {
   const int spacing = UITheme::getInstance().getMetrics().verticalSpacing;
   Rect content = pageContentRect();
   content.y += spacing;
-  content.height -= spacing * 2;
+  // Only the top inset is kept: the grid's bottom edge now sits directly on
+  // the navigation-bar rule instead of floating above it with a blank strip.
+  content.height -= spacing;
   return content;
 }
 
@@ -344,12 +356,13 @@ bool AppsMenuActivity::handleCustomInput() {
   return false;
 }
 
-void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, const bool showSelection) const {
+void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, const bool showSelection,
+                                    fui::DrawTarget& target) const {
   const int start = InxGridGeometry::pageStart(nav.selected, visibleCount);
   const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
 #ifdef RICKYOS_PRODUCT
   // Reference style: a plain ruled 3x4 table drawn behind the icons.
-  drawAppGridRules(renderer, rect);
+  drawAppGridRules(target, rect);
 #endif
 
   for (int slot = 0; slot < InxGridGeometry::itemsPerPage && start + slot < visibleCount; ++slot) {
@@ -399,7 +412,7 @@ void AppsMenuActivity::buildScreen(UiScreen& screen) {
   if (visibleCount == 0) {
     UITheme::drawCenteredWrappedText(renderer, content, UI_12_FONT_ID, tr(STR_NO_APPS_ENABLED), 2);
   } else if (usesIconLayout()) {
-    drawIconGrid(content, visibleCount, showSelection);
+    drawIconGrid(content, visibleCount, showSelection, screen.target());
   } else {
     screen.setContentMarginFromScreen(
         fui::Insets{static_cast<int16_t>(content.y), static_cast<int16_t>(sw - content.x - content.width),

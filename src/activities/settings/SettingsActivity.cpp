@@ -1526,7 +1526,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     pageTitle.bold = true;
     {
       RickyPageUi::Bold heading(renderer, 2);
-      target.text(screen.takeTop(target.lineHeight(theme.titleText.font), gap * 2), tr(STR_SETTINGS_TITLE), pageTitle);
+      target.text(screen.takeTop(target.lineHeight(theme.titleText.font), gap * 2), tr(STR_RICKY_NAV_OTHER), pageTitle);
     }
     // Profile card, then two card grids drawn to the same spec: the six
     // categories and the five storage shortcuts. Both use the SAME column
@@ -1707,7 +1707,7 @@ void SettingsActivity::drawChrome() {
   // conflicts with button hints on non-touch devices.
   drawPageHeader(Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
 #ifdef RICKYOS_PRODUCT
-                 categoryRoot_ ? tr(STR_SETTINGS_TITLE) : I18N.get(categoryNames[selectedCategoryIndex]),
+                 categoryRoot_ ? tr(STR_RICKY_NAV_OTHER) : I18N.get(categoryNames[selectedCategoryIndex]),
                  categoryRoot_ ? CROSSPOINT_VERSION : nullptr);
 #else
                  tr(STR_SETTINGS_TITLE), CROSSPOINT_VERSION);
