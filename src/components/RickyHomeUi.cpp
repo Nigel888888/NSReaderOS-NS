@@ -473,10 +473,18 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     const int lastBarBottom =
         lastRowY + smallHeight + (smallHeight - recentBarH) / 2 + recentBarH;
     const int coverTop = listTop;
-    const int coverH = std::max<int>(0, std::min<int>(lastBarBottom, footer.bottom()) - coverTop);
-    const int coverW = coverH * 3 / 4;
+    const int availH = std::max<int>(0, std::min<int>(lastBarBottom, footer.bottom()) - coverTop);
+    // Fit a 3:4 cover inside BOTH the column width and the available height,
+    // with a small margin, so it can never cross the centre divider.
+    const int maxW = std::max<int>(0, boxW - gap * 2);
+    int coverW = std::min<int>(maxW, availH * 3 / 4);
+    int coverH = coverW * 4 / 3;
+    if (coverH > availH) {
+      coverH = availH;
+      coverW = coverH * 3 / 4;
+    }
     if (coverH > 0 && coverW > 0) {
-      const fui::Rect cover{static_cast<int16_t>(footer.x + (boxW - coverW) / 2),
+      const fui::Rect cover{static_cast<int16_t>(footer.x + gap + (maxW - coverW) / 2),
                             static_cast<int16_t>(coverTop), static_cast<int16_t>(coverW),
                             static_cast<int16_t>(coverH)};
       // Bind the real cover height BEFORE painting. paint() -> painter lambda
