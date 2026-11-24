@@ -21,20 +21,6 @@ constexpr uint64_t kMinuteMs = 60ULL * 1000ULL;
 
 uint32_t minutesOf(const uint64_t ms) { return static_cast<uint32_t>(ms / kMinuteMs); }
 
-// "25 分钟" or "1 小时 12 分钟".
-std::string duration(const uint64_t ms) {
-  const uint32_t minutes = minutesOf(ms);
-  char text[48];
-  if (minutes < 60)
-    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_MINUTES), static_cast<unsigned>(minutes));
-  else if (minutes % 60 == 0)
-    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_HOURS), static_cast<unsigned>(minutes / 60));
-  else
-    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_HOURS_MINUTES), static_cast<unsigned>(minutes / 60),
-             static_cast<unsigned>(minutes % 60));
-  return text;
-}
-
 // Compact total for a small tile: whole hours once past an hour.
 std::string compactDuration(const uint64_t ms) {
   const uint32_t minutes = minutesOf(ms);
@@ -64,52 +50,6 @@ std::string nthLabel(const char* labels, const int index) {
     if (i == index) return std::string(reinterpret_cast<const char*>(start), p - start);
   }
   return "";
-}
-
-// One fact per day, from what the store really holds.
-std::string dailyFact(const ReadingStatsStore& stats, const uint32_t today) {
-  std::vector<std::string> facts;
-  char text[192];
-  uint32_t longest = 0;
-  for (const auto& session : stats.getSessionLog()) longest = std::max(longest, session.sessionMs);
-  if (longest >= kMinuteMs) {
-    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_LONGEST), duration(longest).c_str());
-    facts.emplace_back(text);
-  }
-  const ReadingDayStats* best = nullptr;
-  for (const auto& day : stats.getReadingDays())
-    if (!best || day.readingMs > best->readingMs) best = &day;
-  int year = 0;
-  unsigned month = 0, dayOfMonth = 0;
-  if (best && best->readingMs >= kMinuteMs &&
-      TimeUtils::getDateFromDayOrdinal(best->dayOrdinal, year, month, dayOfMonth)) {
-    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_BEST_DAY), month, dayOfMonth,
-             duration(best->readingMs).c_str());
-    facts.emplace_back(text);
-  }
-  const ReadingBookStats* top = nullptr;
-  for (const auto& book : stats.getBooks())
-    if (!top || book.totalReadingMs > top->totalReadingMs) top = &book;
-  if (top && top->totalReadingMs >= kMinuteMs && !top->title.empty()) {
-    std::string title = top->title;
-    // Long titles keep their first dozen characters so the fact fits two lines.
-    size_t cut = 0;
-    int characters = 0;
-    for (; cut < title.size() && characters < 12; ++characters) {
-      const auto lead = static_cast<unsigned char>(title[cut]);
-      cut += lead < 0x80 ? 1 : (lead < 0xE0 ? 2 : (lead < 0xF0 ? 3 : 4));
-    }
-    if (cut < title.size()) title = title.substr(0, cut) + "…";
-    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_TOP_BOOK), title.c_str(),
-             duration(top->totalReadingMs).c_str());
-    facts.emplace_back(text);
-  }
-  if (const uint32_t finished = stats.getBooksFinishedCount()) {
-    snprintf(text, sizeof(text), tr(STR_RICKY_STATS_FACT_FINISHED), static_cast<unsigned>(finished));
-    facts.emplace_back(text);
-  }
-  if (facts.empty()) return tr(STR_RICKY_STATS_FACT_EMPTY);
-  return facts[today % facts.size()];
 }
 
 }  // namespace
@@ -277,22 +217,11 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
     target.text(rect(tile.x, tile.y + pad + titleHeight, tile.width, smallHeight), I18N.get(names[i]), centered);
   }
 
-  // One fact a day.
-  const auto factCard = screen.takeTop(factHeight, 0);
-  RickyPageUi::card(target, factCard, false);
-  auto fact = body;
-  fact.maxLines = 2;
-  const std::string factText = dailyFact(stats, today);
-  // One line sits in the middle of the card; a long fact wraps to two.
-  const bool twoLines = target.measureText(fact.font, factText.c_str(), fact).width > factCard.width - pad * 2;
-  const int factY = factCard.y + (twoLines ? pad : (factCard.height - bodyHeight) / 2);
-  target.text(rect(factCard.x + pad, factY, factCard.width - pad * 2, bodyHeight * (twoLines ? 2 : 1)),
-              factText.c_str(), fact);
-
   // A random sentence from the quotes notebook, in a rounded card at the foot
   // of the page. The star on the left is a touch target: tap it to draw another
-  // sentence without leaving this screen.
-  const int quoteHeight = std::min<int>(factHeight, std::max<int>(0, screen.body().height - gap));
+  // sentence without leaving this screen. With the daily-fact card removed the
+  // sentence gets its space back, so the card grows noticeably taller.
+  const int quoteHeight = std::min<int>(factHeight * 2 + gap, std::max<int>(0, screen.body().height - gap));
   if (quoteHeight >= bodyHeight + pad) {
     const auto quoteCard = screen.takeTop(quoteHeight, gap);
     RickyPageUi::card(target, quoteCard, false);
@@ -308,7 +237,11 @@ void RickyReadingStatsActivity::buildScreen(UiScreen& screen) {
     const char* line = (!quotes_.empty() && quoteIndex_ < quotes_.size())
                            ? quotes_[quoteIndex_].c_str()
                            : tr(STR_QUOTES_EMPTY);
-    target.text(rect(textX, quoteCard.y + pad / 2, textWidth, quoteCard.height - pad), line, quoteText);
+    // Centre the one- or two-line sentence vertically inside the taller card.
+    const bool twoLines = target.measureText(quoteText.font, line, quoteText).width > textWidth;
+    const int textHeight = bodyHeight * (twoLines ? 2 : 1);
+    const int textY = quoteCard.y + (quoteCard.height - textHeight) / 2;
+    target.text(rect(textX, textY, textWidth, textHeight), line, quoteText);
 
     screen.frame().hit(RickyPageUi::uiRect(starRect_), ACTION_QUOTE_STAR, 0, fui::InputTouch);
   }

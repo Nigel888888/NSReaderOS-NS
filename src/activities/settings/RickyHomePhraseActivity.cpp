@@ -54,10 +54,12 @@ void RickyHomePhraseActivity::buildScreen(UiScreen& screen) {
   phrase.maxLines = 4;
   {
     RickyPageUi::Bold bold(renderer, 2);
+    // Preview the raw value so a cleared phrase stays blank here as it does
+    // on the home banner; homePhrase() would show the localized default.
     RickyPageUi::justifiedWrappedText(
         uiTarget, renderer, bannerFontId,
         fui::Rect{panel.x, panel.y, panel.width, static_cast<int16_t>(panel.height)},
-        RickyProfile::homePhrase(), phrase);
+        SETTINGS.rickyHomePhrase, phrase);
   }
   gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
 
@@ -113,7 +115,7 @@ void RickyHomePhraseActivity::activateIndex(int index) {
           failed = !RickyProfile::setHomePhrase(entry->text);
           requestUpdate();
         },
-        tr(STR_RICKY_PHRASE_TITLE), std::string(RickyProfile::homePhrase()), sizeof(SETTINGS.rickyHomePhrase) - 1);
+        tr(STR_RICKY_PHRASE_TITLE), std::string(SETTINGS.rickyHomePhrase), sizeof(SETTINGS.rickyHomePhrase) - 1);
   } else if (index == 1) {
     // Pick an image from /images; the file browser filters to PNG/JPG/BMP.
     startActivityForResultWith<FileBrowserActivity>(

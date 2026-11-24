@@ -142,7 +142,7 @@ void RickyHomeUi::draw(UiScreen& screen) {
     auto phrase = theme.smallText;
     phrase.align = fui::TextAlign::Center;
     phrase.maxLines = 2;
-    screen.target().text(screen.takeBottom(labelHeight * 2, gap * 2), RickyProfile::homePhrase(), phrase);
+    screen.target().text(screen.takeBottom(labelHeight * 2, gap * 2), SETTINGS.rickyHomePhrase, phrase);
   }
   const auto statsRect = screen.takeBottom(labelHeight + gap * 2, gap * 2);
   snprintf(statsText, sizeof(statsText), tr(STR_RICKY_HOME_STATS),
@@ -315,7 +315,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   phraseStyle.maxLines = 4;
   {
     RickyPageUi::Bold quote(renderer, 2);
-    RickyPageUi::wrappedText(target, panel, RickyProfile::homePhrase(), phraseStyle);
+    // Draw the raw persisted phrase so an intentionally empty value stays
+    // blank; homePhrase() would substitute the localized default instead.
+    RickyPageUi::wrappedText(target, panel, SETTINGS.rickyHomePhrase, phraseStyle);
   }
   gfxTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
   target.fill(fui::Rect{banner.x, static_cast<int16_t>(banner.bottom() - 1), banner.width, 1}, black);
@@ -461,7 +463,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   target.fill(fui::Rect{footer.x, static_cast<int16_t>(headerRuleY), footer.width, 1}, rule);
   // Push the content block (cover/title/progress on the left, book list on the
   // right) further below the header rule so it does not hug the gray line.
-  const int listTop = footer.y + smallHeight + gap;
+  const int listTop = footer.y + smallHeight + gap + gap / 2;
   const int listHeight = footer.bottom() - listTop;
 
   // Left column: an enlarged cover, the book title, then a progress bar and
@@ -492,18 +494,25 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
     const int coverTop = listTop + std::max(4, gap / 3);
     // Reserve one row for the title and one for the bar + percentage pair.
     const int reserved = titleGap + textH + lineGap + textH;
-    const int availH = std::max<int>(0, blockBottom - coverTop - reserved);
-    // Fit a 3:4 cover inside BOTH the column width and the available height,
-    // with a small margin, so it can never cross the centre divider.
+    // Reference geometry (the previous centred 3:4 cover) pins the LEFT edge,
+    // so enlarging the cover only grows it to the right and downward.
+    const int refAvailH = std::max<int>(0, blockBottom - coverTop - reserved);
     const int maxW = std::max<int>(0, boxW - gap * 2);
-    int coverW = std::min<int>(maxW, availH * 3 / 4);
-    int coverH = coverW * 4 / 3;
-    if (coverH > availH) {
-      coverH = availH;
-      coverW = coverH * 3 / 4;
+    int refW = std::min<int>(maxW, refAvailH * 3 / 4);
+    int refH = refW * 4 / 3;
+    if (refH > refAvailH) {
+      refH = refAvailH;
+      refW = refH * 3 / 4;
     }
+    const int coverLeft = footer.x + gap + (maxW - refW) / 2;
+    // Grow the frame a little to the right and use a lower bottom budget, so
+    // the title and progress row follow the taller cover downward.
+    const int growW = std::max<int>(4, gap * 2);
+    int coverW = std::min<int>(dividerX - gap - coverLeft, refW + growW);
+    const int coverAvailH = std::max<int>(0, footer.bottom() - coverTop - reserved);
+    int coverH = std::min<int>(coverAvailH, coverW * 4 / 3);
     if (coverH > 0 && coverW > 0) {
-      const fui::Rect cover{static_cast<int16_t>(footer.x + gap + (maxW - coverW) / 2), static_cast<int16_t>(coverTop),
+      const fui::Rect cover{static_cast<int16_t>(coverLeft), static_cast<int16_t>(coverTop),
                             static_cast<int16_t>(coverW), static_cast<int16_t>(coverH)};
       // Bind the real cover height BEFORE painting. paint() -> painter lambda
       // calls activity.setThumbnailHeight(rickyHome->coverHeight()); a freshly

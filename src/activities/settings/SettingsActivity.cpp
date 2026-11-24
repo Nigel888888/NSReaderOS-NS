@@ -1581,6 +1581,12 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     static_assert(sizeof(storageIcons) / sizeof(storageIcons[0]) == 5);
     const auto storageGrid =
         screen.takeTop(cellHeight * storageRows + gap * (storageRows - 1), 0);
+    // A faint gray rule rests in the middle of the band that separates the
+    // category cards (ending with library & files / system) from the storage
+    // shortcuts (starting with storage / books).
+    const int dividerY = grid.bottom() + groupGap / 2;
+    target.fill(fui::Rect{grid.x, static_cast<int16_t>(dividerY), grid.width, 1},
+                fui::Paint::dither(fui::Color::DarkGray));
     for (int i = 0; i < 5; ++i) {
       const auto rect = RickyPageUi::uiRect(
           RickyPageLayout::cell(Rect{storageGrid.x, storageGrid.y, storageGrid.width, storageGrid.height}, i, 5, gap,
