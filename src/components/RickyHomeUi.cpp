@@ -539,7 +539,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       progressStyle.align = fui::TextAlign::Right;
       progressStyle.color = fui::Color::DarkGray;  // muted percentage, not eye-catching
       auto* coverTarget = static_cast<fui::GfxRendererTarget*>(&target);
-      coverTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, UI_10_FONT_ID);
+      coverTarget->setFont(fui::GfxRendererTarget::FONT_LABEL, SMALL_FONT_ID);
       const int pctWidth =
           coverTarget->measureText(fui::GfxRendererTarget::FONT_LABEL, progressLabel, progressStyle).width;
       const int rowY = titleY + textH + lineGap;
