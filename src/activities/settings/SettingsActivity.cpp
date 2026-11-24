@@ -564,26 +564,25 @@ void SettingsActivity::onEnter() {
       this);
   // Five storage short-cards directly on this "Other" page. Each opens its
   // own destination; fonts go to Font Management (where families live).
-  for (int i = 0; i < 5; ++i) {
-    app.on(
-        ACTION_TAB_USER + 30 + i,
-        [i](const fui::ActionEvent&, void* user) {
-          auto& self = *static_cast<SettingsActivity*>(user);
-          self.app.clearTapFlash();
-          if (i == 2) {
-            self.startActivityForResultWith<FontLibraryActivity>(
-                [](const ActivityResult&) {});
-            return;
-          }
-          const char* path = i == 0 ? "/" : i == 1 ? RickyStorageLayout::BOOKS
-                             : i == 3 ? RickyStorageLayout::IMAGES
-                                      : RickyStorageLayout::DOWNLOADS;
-          self.startActivityForResultWith<FileBrowserActivity>(
-              [](const ActivityResult&) {}, path, FileBrowserActivity::Mode::Books,
-              /*scoped=*/i != 0);
-        },
-        this);
-  }
+  app.on(
+      ACTION_TAB_USER + 30,
+      [](const fui::ActionEvent& event, void* user) {
+        auto& self = *static_cast<SettingsActivity*>(user);
+        self.app.clearTapFlash();
+        const int i = event.value;
+        if (i == 2) {
+          self.startActivityForResultWith<FontLibraryActivity>(
+              [](const ActivityResult&) {});
+          return;
+        }
+        const char* path = i == 0 ? "/" : i == 1 ? RickyStorageLayout::BOOKS
+                           : i == 3 ? RickyStorageLayout::IMAGES
+                                    : RickyStorageLayout::DOWNLOADS;
+        self.startActivityForResultWith<FileBrowserActivity>(
+            [](const ActivityResult&) {}, path, FileBrowserActivity::Mode::Books,
+            /*scoped=*/i != 0);
+      },
+      this);
 #endif
   dictionariesLoaded = !usesAccordion();
   preserveQuickResumeTimeoutOn =
@@ -1584,7 +1583,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
           RickyPageLayout::cell(Rect{storageGrid.x, storageGrid.y, storageGrid.width, storageGrid.height}, i, 5, gap,
                                 storageCols));
       RickyPageUi::card(target, rect, false);
-      screen.frame().hit(rect, ACTION_TAB_USER + 30 + i, fui::InputTouch);
+      screen.frame().hit(rect, ACTION_TAB_USER + 30, i, fui::InputTouch);
       const int middle = rect.y + rect.height / 2;
       RickyPageUi::pageIcon(target, renderer, rect.x + pad / 2, middle, *storageIcons[i]);
       const int textX = rect.x + pad / 2 + storageIcons[i]->w + gap / 2;
