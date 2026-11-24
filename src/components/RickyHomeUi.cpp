@@ -459,7 +459,9 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   // One continuous light-gray rule under both headers, matching the calendar
   // divider. The vertical rule above is broken here, so they never intersect.
   target.fill(fui::Rect{footer.x, static_cast<int16_t>(headerRuleY), footer.width, 1}, rule);
-  const int listTop = footer.y + smallHeight + gap / 2;
+  // Push the content block (cover/title/progress on the left, book list on the
+  // right) further below the header rule so it does not hug the gray line.
+  const int listTop = footer.y + smallHeight + gap;
   const int listHeight = footer.bottom() - listTop;
 
   // Left column: an enlarged cover, the book title, then a progress bar and
