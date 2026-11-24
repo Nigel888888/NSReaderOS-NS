@@ -1539,9 +1539,10 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     const int storageRows = (5 + storageCols - 1) / storageCols;
     const int totalRows = rows + storageRows;
     const int baseCell = std::max(48, bodyHeight) + pad * 2;
-    // Generous band between the category grid and the storage grid; the old
-    // tiny gap made the storage row look glued to the categories above it.
-    const int groupGap = std::max<int>(gap * 2, 24);
+    // Generous band between the category grid and the storage grid. The first
+    // storage row (storage/books) must sit clearly below the last category row
+    // (library & files/system), not glued to it.
+    const int groupGap = std::max<int>(gap * 4, 48);
     const int fixedGaps = groupGap + gap * (totalRows - 1);
     const int roomy = (screen.body().height - profileHeight - fixedGaps - gap) / totalRows;
     const int cellHeight = std::clamp(roomy, baseCell, baseCell * 13 / 10);
