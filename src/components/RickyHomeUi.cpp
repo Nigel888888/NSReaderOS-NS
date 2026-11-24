@@ -434,17 +434,18 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
   const int dividerX = footer.x + footer.width * 38 / 100;
   constexpr int kDividerWidth = 3;
   const int headerRuleY = footer.y + smallHeight + gap / 4;
-  // The centre vertical rule is broken around the light-gray header rule so
-  // the two never cross. Draw it as two segments with a small gap straddling
-  // the horizontal rule, which itself stays continuous across both columns.
+  // The vertical rule now lives only below the header rule: the short segment
+  // between the two column headings ("now reading" / "recently read") has been
+  // removed. What remains separates the cover from the recent-book list, drawn
+  // in a lighter gray and stopping short of the very bottom.
   const int ruleBreakHalf = 5;
-  target.fill(fui::Rect{static_cast<int16_t>(dividerX - kDividerWidth / 2), footer.y, kDividerWidth,
-                        static_cast<int16_t>(headerRuleY - ruleBreakHalf - footer.y)},
-              black);
-  target.fill(
-      fui::Rect{static_cast<int16_t>(dividerX - kDividerWidth / 2), static_cast<int16_t>(headerRuleY + ruleBreakHalf),
-                kDividerWidth, static_cast<int16_t>(footer.bottom() - headerRuleY - ruleBreakHalf)},
-      black);
+  const int dividerBottom = footer.bottom() - gap;
+  if (dividerBottom > headerRuleY + ruleBreakHalf) {
+    target.fill(
+        fui::Rect{static_cast<int16_t>(dividerX - kDividerWidth / 2), static_cast<int16_t>(headerRuleY + ruleBreakHalf),
+                  kDividerWidth, static_cast<int16_t>(dividerBottom - headerRuleY - ruleBreakHalf)},
+        rule);
+  }
   // Give the right column extra breathing room from the divider so the two
   // sections never look crowded against the rule.
   const int recentInset = gap + std::max<int>(4, gap / 2);
