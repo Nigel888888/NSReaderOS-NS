@@ -543,14 +543,14 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       const int pctWidth =
           coverTarget->measureText(fui::GfxRendererTarget::FONT_LABEL, progressLabel, progressStyle).width;
       const int rowY = titleY + textH + lineGap;
-      // Wrap the progress bar and percentage in one light-gray pill so the two
+      // Wrap the progress bar and percentage in one light-gray rectangle so the two
       // read as a single, tidy progress chip beneath the cover.
       const int pillInsetX = std::max(4, gap / 2);
       const int pillH = std::max(textH, barH + std::max(6, gap / 2));
       const int pillY = rowY + (textH - pillH) / 2;
       target.fill(fui::Rect{cover.x, static_cast<int16_t>(pillY), static_cast<int16_t>(cover.width),
                             static_cast<int16_t>(pillH)},
-                  fui::Paint::dither(fui::Color::LightGray), pillH / 2);
+                  fui::Paint::dither(fui::Color::LightGray), 0);
       const int barWidth = std::max<int>(8, cover.width - pctWidth - pillInsetX * 2 - gap / 2);
       const int barY = pillY + (pillH - barH) / 2;
       RickyPageUi::progressBar(
