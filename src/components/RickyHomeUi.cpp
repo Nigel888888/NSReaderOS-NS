@@ -447,6 +447,16 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       fui::Rect{static_cast<int16_t>(dividerX + recentInset), footer.y,
                 static_cast<int16_t>(footer.right() - dividerX - recentInset), static_cast<int16_t>(smallHeight)},
       tr(STR_RICKY_RECENT_READ), strong);
+  // Light-gray rules under both section headers, matching the calendar divider.
+  // Each stops short of the centre vertical rule so the two never intersect.
+  const int headerRuleY = footer.y + smallHeight + gap / 4;
+  const int ruleClearance = kDividerWidth / 2 + 3;
+  target.fill(fui::Rect{footer.x, static_cast<int16_t>(headerRuleY),
+                        static_cast<int16_t>(dividerX - ruleClearance - footer.x), 1},
+              rule);
+  target.fill(fui::Rect{static_cast<int16_t>(dividerX + ruleClearance), static_cast<int16_t>(headerRuleY),
+                        static_cast<int16_t>(footer.right() - dividerX - ruleClearance), 1},
+              rule);
   const int listTop = footer.y + smallHeight + gap / 2;
   const int listHeight = footer.bottom() - listTop;
 
@@ -523,6 +533,7 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
       auto progressStyle = small;
       progressStyle.font = fui::GfxRendererTarget::FONT_LABEL;
       progressStyle.align = fui::TextAlign::Center;
+      progressStyle.color = fui::Color::DarkGray;  // muted caption, matches iFink's grey caption
       target.text(fui::Rect{cover.x, static_cast<int16_t>(bar.bottom() + titleGap + textH + lineGap), cover.width,
                             static_cast<int16_t>(textH)},
                   progressLabel, progressStyle);
