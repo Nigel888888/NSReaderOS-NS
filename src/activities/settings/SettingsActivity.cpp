@@ -1554,7 +1554,9 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     const freeink::Icon* icons[] = {&icon_ricky_display_40, &icon_ricky_reader_40, &icon_ricky_network_40,
                                     &icon_ricky_fonts_40,   &icon_ricky_folder_40, &icon_ricky_system_40};
     static_assert(sizeof(icons) / sizeof(icons[0]) == categoryCount);
-    const auto grid = screen.takeTop(cellHeight * rows + gap * (rows - 1), 0);
+    // takeTop's gap is consumed AFTER the returned rect, so attach groupGap to
+    // the category grid: that leaves the space between categories and storage.
+    const auto grid = screen.takeTop(cellHeight * rows + gap * (rows - 1), groupGap);
     auto label = theme.bodyText;
     label.maxLines = 1;
     for (int i = 0; i < categoryCount; ++i) {
@@ -1578,7 +1580,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
                                    StrId::STR_RICKY_IMAGES, StrId::STR_RICKY_DOWNLOADS};
     static_assert(sizeof(storageIcons) / sizeof(storageIcons[0]) == 5);
     const auto storageGrid =
-        screen.takeTop(cellHeight * storageRows + gap * (storageRows - 1), groupGap);
+        screen.takeTop(cellHeight * storageRows + gap * (storageRows - 1), 0);
     for (int i = 0; i < 5; ++i) {
       const auto rect = RickyPageUi::uiRect(
           RickyPageLayout::cell(Rect{storageGrid.x, storageGrid.y, storageGrid.width, storageGrid.height}, i, 5, gap,
