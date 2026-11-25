@@ -807,6 +807,8 @@ bool CrossPointSettings::loadFromBinaryFile() {
     sleepTimeoutMinutes = sleepTimeoutEnumToMinutes(validated(11, SLEEP_10_MIN, SLEEP_TIMEOUT_COUNT));
   }
   refreshFrequency = validated(12, refreshFrequency, REFRESH_FREQUENCY_COUNT);
+  // refreshMode is persisted via settings.json; the legacy binary file keeps
+  // the field's default value.
   screenMargin = value(13, screenMargin);
   sleepScreenCoverMode = validated(14, sleepScreenCoverMode, SLEEP_SCREEN_COVER_MODE_COUNT);
   textAntiAliasing = value(15, textAntiAliasing);
@@ -962,6 +964,10 @@ uint64_t CrossPointSettings::getDailyGoalMs() const {
     case DAILY_GOAL_60_MIN:
       return 60ULL * 60ULL * 1000ULL;
   }
+}
+
+uint8_t CrossPointSettings::getRefreshMode() const {
+  return refreshMode < REFRESH_MODE_COUNT ? refreshMode : static_cast<uint8_t>(REFRESH_MODE_FAST);
 }
 
 int CrossPointSettings::getRefreshFrequency() const {

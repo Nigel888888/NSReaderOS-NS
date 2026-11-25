@@ -575,7 +575,14 @@ void AgendaActivity::drawDetail() {
 
 void AgendaActivity::drawMessage() {
   if (message.empty() || static_cast<long>(millis() - messageUntil) >= 0) return;
-  renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD, renderer.getScreenHeight() - 40, message.c_str());
+  // Show the sync notice directly below the tab strip (under "本周" etc.),
+  // as a high-contrast black block with white text so it is easy to read.
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int lineH = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
+  const int msgY = metrics.topPadding + metrics.headerHeight + TAB_TOP + TAB_H + 6;
+  const int width = renderer.getScreenWidth() - 2 * SIDE_PAD;
+  renderer.fillRect(SIDE_PAD, msgY - 2, width, lineH + 4, true);
+  renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD + 6, msgY, message.c_str(), false);
 }
 
 void AgendaActivity::render(RenderLock&&) {

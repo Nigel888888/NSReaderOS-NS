@@ -8,72 +8,6 @@
 namespace i18n_strings {
 extern const char STRINGS_EN_DATA[];
 extern const uint16_t OFFSETS_EN[];
-extern const char STRINGS_AR_DATA[];
-extern const uint16_t OFFSETS_AR[];
-extern const char STRINGS_BE_DATA[];
-extern const uint16_t OFFSETS_BE[];
-extern const char STRINGS_BG_DATA[];
-extern const uint16_t OFFSETS_BG[];
-extern const char STRINGS_BS_DATA[];
-extern const uint16_t OFFSETS_BS[];
-extern const char STRINGS_CA_DATA[];
-extern const uint16_t OFFSETS_CA[];
-extern const char STRINGS_CAV_DATA[];
-extern const uint16_t OFFSETS_CAV[];
-extern const char STRINGS_CS_DATA[];
-extern const uint16_t OFFSETS_CS[];
-extern const char STRINGS_DA_DATA[];
-extern const uint16_t OFFSETS_DA[];
-extern const char STRINGS_DE_DATA[];
-extern const uint16_t OFFSETS_DE[];
-extern const char STRINGS_ES_DATA[];
-extern const uint16_t OFFSETS_ES[];
-extern const char STRINGS_FA_DATA[];
-extern const uint16_t OFFSETS_FA[];
-extern const char STRINGS_FI_DATA[];
-extern const uint16_t OFFSETS_FI[];
-extern const char STRINGS_FR_DATA[];
-extern const uint16_t OFFSETS_FR[];
-extern const char STRINGS_HE_DATA[];
-extern const uint16_t OFFSETS_HE[];
-extern const char STRINGS_HU_DATA[];
-extern const uint16_t OFFSETS_HU[];
-extern const char STRINGS_ID_DATA[];
-extern const uint16_t OFFSETS_ID[];
-extern const char STRINGS_IT_DATA[];
-extern const uint16_t OFFSETS_IT[];
-extern const char STRINGS_KK_DATA[];
-extern const uint16_t OFFSETS_KK[];
-extern const char STRINGS_LT_DATA[];
-extern const uint16_t OFFSETS_LT[];
-extern const char STRINGS_NB_DATA[];
-extern const uint16_t OFFSETS_NB[];
-extern const char STRINGS_NL_DATA[];
-extern const uint16_t OFFSETS_NL[];
-extern const char STRINGS_OOK_DATA[];
-extern const uint16_t OFFSETS_OOK[];
-extern const char STRINGS_PL_DATA[];
-extern const uint16_t OFFSETS_PL[];
-extern const char STRINGS_PT_DATA[];
-extern const uint16_t OFFSETS_PT[];
-extern const char STRINGS_P2_DATA[];
-extern const uint16_t OFFSETS_P2[];
-extern const char STRINGS_RO_DATA[];
-extern const uint16_t OFFSETS_RO[];
-extern const char STRINGS_RU_DATA[];
-extern const uint16_t OFFSETS_RU[];
-extern const char STRINGS_SK_DATA[];
-extern const uint16_t OFFSETS_SK[];
-extern const char STRINGS_SI_DATA[];
-extern const uint16_t OFFSETS_SI[];
-extern const char STRINGS_SV_DATA[];
-extern const uint16_t OFFSETS_SV[];
-extern const char STRINGS_TR_DATA[];
-extern const uint16_t OFFSETS_TR[];
-extern const char STRINGS_UK_DATA[];
-extern const uint16_t OFFSETS_UK[];
-extern const char STRINGS_VI_DATA[];
-extern const uint16_t OFFSETS_VI[];
 extern const char STRINGS_ZH_CN_DATA[];
 extern const uint16_t OFFSETS_ZH_CN[];
 }  // namespace i18n_strings
@@ -81,40 +15,7 @@ extern const uint16_t OFFSETS_ZH_CN[];
 // Language enum (ordered by _bcp47, English first)
 enum class Language : uint8_t {
   EN    = 0,  // en
-  AR    = 1,  // ar
-  BE    = 2,  // be
-  BG    = 3,  // bg
-  BS    = 4,  // bs
-  CA    = 5,  // ca
-  CAV   = 6,  // ca-valencia
-  CS    = 7,  // cs
-  DA    = 8,  // da
-  DE    = 9,  // de
-  ES    = 10,  // es
-  FA    = 11,  // fa
-  FI    = 12,  // fi
-  FR    = 13,  // fr
-  HE    = 14,  // he
-  HU    = 15,  // hu
-  ID    = 16,  // id
-  IT    = 17,  // it
-  KK    = 18,  // kk
-  LT    = 19,  // lt
-  NB    = 20,  // nb
-  NL    = 21,  // nl
-  OOK   = 22,  // ook
-  PL    = 23,  // pl
-  PT    = 24,  // pt-BR
-  P2    = 25,  // pt-PT
-  RO    = 26,  // ro
-  RU    = 27,  // ru
-  SK    = 28,  // sk
-  SI    = 29,  // sl
-  SV    = 30,  // sv
-  TR    = 31,  // tr
-  UK    = 32,  // uk
-  VI    = 33,  // vi
-  ZH_CN = 34,  // zh-CN
+  ZH_CN = 1,  // zh-CN
   _COUNT
 };
 
@@ -435,6 +336,11 @@ enum class StrId : uint16_t {
   STR_REMOVE_READ_FROM_RECENTS,
   STR_MOVE_FINISHED_TO_READ,
   STR_REFRESH_FREQ,
+  STR_REFRESH_MODE,
+  STR_REFRESH_MODE_ULTRA,
+  STR_REFRESH_MODE_HD,
+  STR_REFRESH_MODE_FAST,
+  STR_REFRESH_MODE_FASTEST,
   STR_KOREADER_SYNC,
   STR_CHECK_UPDATES,
   STR_RICKYOS_FIRMWARE_UPDATE,
@@ -773,6 +679,56 @@ enum class StrId : uint16_t {
   STR_SCREENSHOT_BUTTON,
   STR_SLEEP_TIMER_VALUE_FORMAT,
   STR_SLEEP_NEVER,
+  STR_WEATHER_TITLE,
+  STR_WEATHER_UPDATE,
+  STR_WEATHER_CHANGE_CITY,
+  STR_WEATHER_CITY_PROMPT,
+  STR_WEATHER_CITY_NOT_FOUND,
+  STR_WEATHER_CITY_UPDATED,
+  STR_WEATHER_UPDATING,
+  STR_WEATHER_NO_WIFI,
+  STR_WEATHER_UPDATE_FAILED,
+  STR_WEATHER_UPDATED,
+  STR_WEATHER_CITY_CHANGED,
+  STR_WEATHER_NO_DATA,
+  STR_WEATHER_OBSERVED,
+  STR_WEATHER_WIND,
+  STR_WEATHER_TEMP_FORMAT,
+  STR_WEATHER_WIND_FORMAT,
+  STR_WEATHER_DAY_FORMAT,
+  STR_WEATHER_CLEAR,
+  STR_WEATHER_MAINLY_CLEAR,
+  STR_WEATHER_PARTLY_CLOUDY,
+  STR_WEATHER_OVERCAST,
+  STR_WEATHER_FOG,
+  STR_WEATHER_DRIZZLE,
+  STR_WEATHER_RAIN,
+  STR_WEATHER_SNOW,
+  STR_WEATHER_SHOWERS,
+  STR_WEATHER_THUNDERSTORM,
+  STR_WEATHER_UNKNOWN,
+  STR_WEATHER_TODAY,
+  STR_WEATHER_PRECIP,
+  STR_WEATHER_FEELS_LIKE,
+  STR_WEATHER_UV,
+  STR_WEATHER_ADVICE,
+  STR_WEATHER_NEXT_FIVE,
+  STR_WEATHER_FORECAST,
+  STR_WEATHER_UV_LOW,
+  STR_WEATHER_UV_MODERATE,
+  STR_WEATHER_UV_HIGH,
+  STR_WEATHER_UV_VERY_HIGH,
+  STR_WEATHER_ADVICE_OUTDOOR,
+  STR_WEATHER_ADVICE_SUNSCREEN,
+  STR_WEATHER_ADVICE_UMBRELLA,
+  STR_WEATHER_ADVICE_WARM,
+  STR_WEATHER_MON,
+  STR_WEATHER_TUE,
+  STR_WEATHER_WED,
+  STR_WEATHER_THU,
+  STR_WEATHER_FRI,
+  STR_WEATHER_SAT,
+  STR_WEATHER_SUN,
   STR_STEP_HINT_FRONT,
   STR_STEP_HINT_SIDE,
   STR_ADD_SERVER,
@@ -1515,6 +1471,8 @@ enum class StrId : uint16_t {
   STR_RICKY_BOOKS_UNREAD,
   STR_RICKY_LIBRARY_PAGE,
   STR_RICKY_NAV_HOME,
+  STR_RICKY_NAV_OTHER,
+  STR_RICKY_COVER_PROGRESS,
   STR_RICKY_LIBRARY_COUNT,
   STR_RICKY_LIBRARY_SUBTITLE,
   STR_RICKY_BOOK_NO_COVER,
@@ -1693,6 +1651,13 @@ enum class StrId : uint16_t {
   STR_QUOTES_PAGE,
   STR_QUOTES_BACK,
   STR_QUOTES_HELP,
+  STR_QUOTES_EXPORT_CLIPPINGS,
+  STR_QUOTES_EXPORT_BY_BOOK,
+  STR_QUOTES_EXPORT_BOOKS_DONE,
+  STR_QUOTES_EXPORT_DONE,
+  STR_QUOTES_EXPORT_EMPTY,
+  STR_QUOTES_EXPORT_FAIL,
+  STR_QUOTES_EXPORT_FILE,
   STR_VOCABULARY_REMOVE,
   STR_VOCABULARY_REMOVED,
   STR_UI_FONT_SCALE,
@@ -1709,6 +1674,57 @@ enum class StrId : uint16_t {
   STR_READER_HIGHLIGHT_SAVED,
   STR_VOC_SECTION_WORDS,
   STR_QUOTES_SECTION,
+  STR_RSS_TITLE,
+  STR_RSS_FEEDS,
+  STR_RSS_UPDATE,
+  STR_RSS_INFO,
+  STR_RSS_UPDATE_NOW,
+  STR_RSS_ADD_FEED,
+  STR_RSS_FEED_PROMPT,
+  STR_RSS_NO_FEEDS,
+  STR_RSS_NO_ARTICLES,
+  STR_RSS_UPDATING,
+  STR_RSS_UPDATE_DONE,
+  STR_RSS_UPDATE_FAILED,
+  STR_RSS_NO_WIFI,
+  STR_RSS_ADDED,
+  STR_RSS_ADD_FAILED,
+  STR_RSS_REMOVED,
+  STR_RSS_TAP_REMOVE,
+  STR_RSS_BACK,
+  STR_RSS_READING,
+  STR_RSS_NO_BODY,
+  STR_RSS_FAVORITES,
+  STR_RSS_NO_FAVORITES,
+  STR_RSS_STAR,
+  STR_RSS_STARRED,
+  STR_RSS_FAV_TOGGLED,
+  STR_RSS_MANAGE,
+  STR_RSS_CLEAR_READ,
+  STR_RSS_CLEAR_READ_CONFIRM,
+  STR_RSS_CLEAR_READ_DONE,
+  STR_RSS_DELETE,
+  STR_RSS_DELETE_CONFIRM,
+  STR_RSS_DELETED,
+  STR_AGENDA_TITLE,
+  STR_AGENDA_TODAY,
+  STR_AGENDA_WEEK,
+  STR_AGENDA_ALL,
+  STR_AGENDA_ALL_DAY,
+  STR_AGENDA_REFRESH,
+  STR_AGENDA_SUBSCRIBE,
+  STR_AGENDA_URL_PROMPT,
+  STR_AGENDA_URL_SAVED,
+  STR_AGENDA_URL_INVALID,
+  STR_AGENDA_NO_SUBSCRIPTION,
+  STR_AGENDA_NO_TODAY,
+  STR_AGENDA_NO_WEEK,
+  STR_AGENDA_NO_EVENTS,
+  STR_AGENDA_NO_WIFI,
+  STR_AGENDA_UPDATING,
+  STR_AGENDA_UPDATE_DONE,
+  STR_AGENDA_UPDATE_FAILED,
+  STR_AGENDA_BACK,
   // Sentinel - must be last
   _COUNT
 };
@@ -1724,72 +1740,6 @@ inline LangStrings getLanguageStrings(Language lang) {
   switch (lang) {
     case Language::EN:
       return {i18n_strings::STRINGS_EN_DATA, i18n_strings::OFFSETS_EN};
-    case Language::AR:
-      return {i18n_strings::STRINGS_AR_DATA, i18n_strings::OFFSETS_AR};
-    case Language::BE:
-      return {i18n_strings::STRINGS_BE_DATA, i18n_strings::OFFSETS_BE};
-    case Language::BG:
-      return {i18n_strings::STRINGS_BG_DATA, i18n_strings::OFFSETS_BG};
-    case Language::BS:
-      return {i18n_strings::STRINGS_BS_DATA, i18n_strings::OFFSETS_BS};
-    case Language::CA:
-      return {i18n_strings::STRINGS_CA_DATA, i18n_strings::OFFSETS_CA};
-    case Language::CAV:
-      return {i18n_strings::STRINGS_CAV_DATA, i18n_strings::OFFSETS_CAV};
-    case Language::CS:
-      return {i18n_strings::STRINGS_CS_DATA, i18n_strings::OFFSETS_CS};
-    case Language::DA:
-      return {i18n_strings::STRINGS_DA_DATA, i18n_strings::OFFSETS_DA};
-    case Language::DE:
-      return {i18n_strings::STRINGS_DE_DATA, i18n_strings::OFFSETS_DE};
-    case Language::ES:
-      return {i18n_strings::STRINGS_ES_DATA, i18n_strings::OFFSETS_ES};
-    case Language::FA:
-      return {i18n_strings::STRINGS_FA_DATA, i18n_strings::OFFSETS_FA};
-    case Language::FI:
-      return {i18n_strings::STRINGS_FI_DATA, i18n_strings::OFFSETS_FI};
-    case Language::FR:
-      return {i18n_strings::STRINGS_FR_DATA, i18n_strings::OFFSETS_FR};
-    case Language::HE:
-      return {i18n_strings::STRINGS_HE_DATA, i18n_strings::OFFSETS_HE};
-    case Language::HU:
-      return {i18n_strings::STRINGS_HU_DATA, i18n_strings::OFFSETS_HU};
-    case Language::ID:
-      return {i18n_strings::STRINGS_ID_DATA, i18n_strings::OFFSETS_ID};
-    case Language::IT:
-      return {i18n_strings::STRINGS_IT_DATA, i18n_strings::OFFSETS_IT};
-    case Language::KK:
-      return {i18n_strings::STRINGS_KK_DATA, i18n_strings::OFFSETS_KK};
-    case Language::LT:
-      return {i18n_strings::STRINGS_LT_DATA, i18n_strings::OFFSETS_LT};
-    case Language::NB:
-      return {i18n_strings::STRINGS_NB_DATA, i18n_strings::OFFSETS_NB};
-    case Language::NL:
-      return {i18n_strings::STRINGS_NL_DATA, i18n_strings::OFFSETS_NL};
-    case Language::OOK:
-      return {i18n_strings::STRINGS_OOK_DATA, i18n_strings::OFFSETS_OOK};
-    case Language::PL:
-      return {i18n_strings::STRINGS_PL_DATA, i18n_strings::OFFSETS_PL};
-    case Language::PT:
-      return {i18n_strings::STRINGS_PT_DATA, i18n_strings::OFFSETS_PT};
-    case Language::P2:
-      return {i18n_strings::STRINGS_P2_DATA, i18n_strings::OFFSETS_P2};
-    case Language::RO:
-      return {i18n_strings::STRINGS_RO_DATA, i18n_strings::OFFSETS_RO};
-    case Language::RU:
-      return {i18n_strings::STRINGS_RU_DATA, i18n_strings::OFFSETS_RU};
-    case Language::SK:
-      return {i18n_strings::STRINGS_SK_DATA, i18n_strings::OFFSETS_SK};
-    case Language::SI:
-      return {i18n_strings::STRINGS_SI_DATA, i18n_strings::OFFSETS_SI};
-    case Language::SV:
-      return {i18n_strings::STRINGS_SV_DATA, i18n_strings::OFFSETS_SV};
-    case Language::TR:
-      return {i18n_strings::STRINGS_TR_DATA, i18n_strings::OFFSETS_TR};
-    case Language::UK:
-      return {i18n_strings::STRINGS_UK_DATA, i18n_strings::OFFSETS_UK};
-    case Language::VI:
-      return {i18n_strings::STRINGS_VI_DATA, i18n_strings::OFFSETS_VI};
     case Language::ZH_CN:
       return {i18n_strings::STRINGS_ZH_CN_DATA, i18n_strings::OFFSETS_ZH_CN};
     default:
@@ -1802,47 +1752,14 @@ constexpr uint8_t getLanguageCount() { return static_cast<uint8_t>(Language::_CO
 
 // Sorted language indices by _bcp47 (auto-generated by gen_i18n.py)
 //    0: EN   en       English
-//    1: AR   ar       العربية
-//    2: BE   be       Беларуская
-//    3: BG   bg       Български
-//    4: BS   bs       Bosanski
-//    5: CA   ca       Català
-//    6: CAV  ca-valencia Valencià
-//    7: CS   cs       Čeština
-//    8: DA   da       Dansk
-//    9: DE   de       Deutsch
-//   10: ES   es       Español
-//   11: FA   fa       فارسی
-//   12: FI   fi       Suomi
-//   13: FR   fr       Français
-//   14: HE   he       עברית
-//   15: HU   hu       Magyar
-//   16: ID   id       Bahasa Indonesia
-//   17: IT   it       Italiano
-//   18: KK   kk       Қазақша
-//   19: LT   lt       Lietuvių
-//   20: NB   nb       Norsk bokmål
-//   21: NL   nl       Nederlands
-//   22: OOK  ook      Orangutan
-//   23: PL   pl       Polski
-//   24: PT   pt-BR    Português (Brasil)
-//   25: P2   pt-PT    Português (Portugal)
-//   26: RO   ro       Română
-//   27: RU   ru       Русский
-//   28: SK   sk       Slovenčina
-//   29: SI   sl       Slovenščina
-//   30: SV   sv       Svenska
-//   31: TR   tr       Türkçe
-//   32: UK   uk       Українська
-//   33: VI   vi       Tiếng Việt
-//   34: ZH_CN zh-CN    简体中文
-constexpr uint8_t SORTED_LANGUAGE_INDICES[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34};
+//    1: ZH_CN zh-CN    简体中文
+constexpr uint8_t SORTED_LANGUAGE_INDICES[] = {0, 1};
 
 static_assert(sizeof(SORTED_LANGUAGE_INDICES) / sizeof(SORTED_LANGUAGE_INDICES[0]) == getLanguageCount(),
               "SORTED_LANGUAGE_INDICES size mismatch");
 
 // V1 language.bin migration table (frozen enum order from 2f969a9)
 constexpr Language V1_LANGUAGES[] = {
-    Language::EN, Language::ES, Language::FR, Language::DE, Language::CS, Language::PT, Language::RU, Language::SV, Language::RO, Language::CA, Language::UK, Language::BE, Language::IT, Language::PL, Language::FI, Language::DA, Language::NL, Language::TR, Language::KK, Language::HU, Language::LT, Language::SI,
+    Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN, Language::EN,
 };
 constexpr uint8_t V1_LANGUAGE_COUNT = 22;

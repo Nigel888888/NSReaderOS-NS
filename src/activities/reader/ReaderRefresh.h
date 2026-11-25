@@ -1,30 +1,48 @@
 #pragma once
 #include <CrossPointSettings.h>
+
+#include <algorithm>
 #include <GfxRenderer.h>
 
 namespace ReaderUtils {
 inline HalDisplay::RefreshMode consumeRefreshMode(int& pagesUntilFullRefresh, bool deferClean = false) {
-  if (deferClean && pagesUntilFullRefresh <= 1) {
-    // Keep the debt: the next ordinary page must still clean.
+  using Mode = CrossPointSettings::REFRESH_MODE;
+  const uint8_t preset = SETTINGS.getRefreshMode();
+
+  // ULTRA: a full GC16 clean on every page. Maximum clarity, no accumulated
+  // ghosting, at the cost of a flash per turn.
+  if (preset == Mode::REFRESH_MODE_ULTRA) {
     pagesUntilFullRefresh = 1;
+    return HalDisplay::FULL_REFRESH;
+  }
+
+  // How many differential turns before a real clean. HD and FAST clean more
+  // often than the legacy cadence to keep the gray floor from building up;
+  // FASTEST keeps the user's (longer) cadence for maximum speed.
+  int cadence = SETTINGS.getRefreshFrequency();
+  if (preset == Mode::REFRESH_MODE_HD) {
+    cadence = std::min(cadence, 5);
+  } else if (preset == Mode::REFRESH_MODE_FAST) {
+    cadence = std::min(cadence, 10);
+  }
+  if (cadence < 1) cadence = 1;
+
+  // The clean is FULL on Read Pico (GL16 never pre-blackens, so it cannot reset
+  // the accumulated gray floor; GC16 does). Other panels keep HALF for a lighter
+  // clean. Deferred cleans are capped at ONE turn so a long transition sequence
+  // can never postpone the reset indefinitely -- the main ghosting fix for FAST.
+  if (deferClean && pagesUntilFullRefresh <= 2) {
+    pagesUntilFullRefresh = 2;  // allow at most one more deferred turn, then clean
     return HalDisplay::FAST_REFRESH;
   }
-  // The due page cleans the panel. Read Pico needs GC16 (FULL_REFRESH): GL16 (HALF)
-  // keeps an already-white background and never pre-blackens, so it cannot clear the
-  // gray floor that differential turns accumulate -- it only changes the waveform.
-  // FULL drives every pixel black then white, which is what actually resets the panel,
-  // and it propagates: EpdiyLcdDriver::displayGray steps Fast up to Half but leaves Full
-  // alone, so the base and grey planes go out together as GC16. Ordinary pages stay
-  // FAST -> GL16: anti-aliasing preserved, no flash. Vendor firmware cleans the same way
-  // every APP_GC16_EVERY = 14 pages.
 #if FREEINK_DEVICE_READPICO
   const auto cleanMode = HalDisplay::FULL_REFRESH;
 #else
-  const auto cleanMode = HalDisplay::HALF_REFRESH;
+  const auto cleanMode = preset == Mode::REFRESH_MODE_FASTEST ? HalDisplay::HALF_REFRESH : HalDisplay::FULL_REFRESH;
 #endif
   const auto mode = (pagesUntilFullRefresh <= 1) ? cleanMode : HalDisplay::FAST_REFRESH;
   if (pagesUntilFullRefresh <= 1) {
-    pagesUntilFullRefresh = SETTINGS.getRefreshFrequency();
+    pagesUntilFullRefresh = cadence;
   } else {
     pagesUntilFullRefresh--;
   }

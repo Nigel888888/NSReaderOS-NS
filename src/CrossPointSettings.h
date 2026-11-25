@@ -230,6 +230,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     REFRESH_NEVER = 5,
     REFRESH_FREQUENCY_COUNT
   };
+  // E-ink refresh strength. ULTRA/HD favour a clean panel, FAST/FAVOUR speed.
+  enum REFRESH_MODE {
+    REFRESH_MODE_ULTRA = 0,
+    REFRESH_MODE_HD = 1,
+    REFRESH_MODE_FAST = 2,
+    REFRESH_MODE_FASTEST = 3,
+    REFRESH_MODE_COUNT
+  };
 
   // Short power button press actions. PWR_CONFIRM is only offered on touch
   // boards (see SettingsList.h).
@@ -433,6 +441,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   uint8_t sleepTimeoutMinutes = 10;
   // E-ink refresh frequency (default 15 pages)
   uint8_t refreshFrequency = REFRESH_15;
+  // E-ink refresh strength/quality preset (default Fast).
+  uint8_t refreshMode = REFRESH_MODE_FAST;
   uint8_t hyphenationEnabled = 0;
 
   // Reader screen margin settings
@@ -736,6 +746,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   float getReaderLineCompression() const;
   unsigned long getSleepTimeoutMs() const;
   int getRefreshFrequency() const;
+  uint8_t getRefreshMode() const;
   // Daily reading goal in milliseconds, derived from dailyGoalTarget.
   uint64_t getDailyGoalMs() const;
 };

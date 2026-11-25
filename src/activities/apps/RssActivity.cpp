@@ -60,7 +60,9 @@ bool gArticlesCached = false;
 constexpr unsigned long NETWORK_DEADLINE_MS = 60000;
 
 bool hit(const Rect& r, int x, int y) {
-  return r.width > 0 && r.height > 0 && x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height;
+  constexpr int kPad = 4;
+  return r.width > 0 && r.height > 0 && x >= r.x - kPad && x < r.x + r.width + kPad && y >= r.y - kPad &&
+         y < r.y + r.height + kPad;
 }
 
 Rect rowRectFor(int index, const Rect& bounds, int rowHeight, int rowGap) {
@@ -396,8 +398,15 @@ void RssActivity::loop() {
     int lpX = 0;
     int lpY = 0;
     if (mappedInput.wasScreenLongPress(lpX, lpY)) {
-      lookupBodyWord(lpX, lpY);
-      return;
+      // Do not let word lookup consume touches on the bottom action bar;
+      // otherwise the Back / Favorite / Delete buttons appear unresponsive.
+      const auto& lpMetrics = UITheme::getInstance().getMetrics();
+      const int actionBarTop =
+          renderer.getScreenHeight() - lpMetrics.buttonHintsHeight - READ_BTN_H - READ_BTN_BOTTOM_PAD - 6;
+      if (lpY < actionBarTop) {
+        lookupBodyWord(lpX, lpY);
+        return;
+      }
     }
   }
 
@@ -466,9 +475,17 @@ void RssActivity::loop() {
         return;
       }
     } else if (view == View::Article) {
-      if (hit(starButton, tx, ty)) { deleteArmed = false; toggleCurrentFavorite(); return; }
-      if (hit(deleteButton, tx, ty)) { deleteCurrentArticle(); return; }
-      if (hit(backButton, tx, ty)) {
+      // Compute a geometry-based fallback: backButton is only assigned during
+      // render(), so it can be empty on the first frame after entering a page.
+      const auto& tapMetrics = UITheme::getInstance().getMetrics();
+      const int tapActionY =
+          renderer.getScreenHeight() - tapMetrics.buttonHintsHeight - READ_BTN_H - READ_BTN_BOTTOM_PAD;
+      const int tapRowW = renderer.getScreenWidth() - 2 * SIDE_PAD;
+      const int tapBtnW = (tapRowW - READ_BTN_GAP * 2) / 3;
+      const Rect backHit = backButton.height > 0
+                               ? backButton
+                               : Rect{SIDE_PAD, tapActionY, tapBtnW, READ_BTN_H};
+      if (hit(backHit, tx, ty)) {
         deleteArmed = false;
         view = View::Updates;
         rebuildUpdateRows();
@@ -479,6 +496,8 @@ void RssActivity::loop() {
         requestUpdate();
         return;
       }
+      if (hit(starButton, tx, ty)) { deleteArmed = false; toggleCurrentFavorite(); return; }
+      if (hit(deleteButton, tx, ty)) { deleteCurrentArticle(); return; }
       // Tapping lower half advances a whole screen of text; upper half goes
       // back one screen (with one line of overlap for continuity).
       const int mid = listBounds.y + listBounds.height / 2;

@@ -427,9 +427,10 @@ void RickyHomeUi::drawPortrait(UiScreen& screen) {
 
   // ---- Footer: left "now reading" (books[0]) | right paged "recently read". ----
   // The calendar's last row can sit visually tight against the section label.
-  // Add one full gap on top of takeTop()'s own gap before starting the footer.
+  // Add extra breathing room above the footer so "正在阅读" never collides
+  // with the reading calendar directly above it.
   const auto footerRect = screen.body();
-  const int footerGap = gap;
+  const int footerGap = gap + smallHeight / 2;
   if (footerRect.height <= footerGap + smallHeight * 2) return;
   const fui::Rect footer{footerRect.x, static_cast<int16_t>(footerRect.y + footerGap), footerRect.width,
                          static_cast<int16_t>(footerRect.height - footerGap)};

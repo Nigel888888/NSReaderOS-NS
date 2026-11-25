@@ -741,8 +741,14 @@ void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, cons
   const int16_t backBtnSize = props.leadingSize;
   const bool showBackButton = backButton && title != nullptr && gpio.hasTouch();
   if (showBackButton) {
+#ifdef RICKYOS_PRODUCT
+    // RickyOS apps provide their own on-page Back controls; hide the header
+    // arrow glyph but keep the leading tap target so a corner tap still maps
+    // to Back. Leaving leadingAction at NO_ACTION suppresses the drawing.
+#else
     props.leadingIcon = fui::bitmapFromIcon(icon_header_back_32);
     props.leadingAction = 1;  // any non-NO_ACTION id: paints the button, routing is via HeaderBackTapTarget
+#endif
     const int titleWidth = renderer.getTextWidth(uiScaleSpec(upstreamStyle).titleFontId, title);
     HeaderBackTapTarget::setLeading(band.x, band.y, band.width, band.height, 4 + backBtnSize + titleWidth + 24);
   } else {
