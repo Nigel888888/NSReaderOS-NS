@@ -1398,17 +1398,9 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   }
   for (int i = 0; i < visible; ++i) {
     const auto& path = shelfPaths[i];
-    const char* format = FsHelpers::hasEpubExtension(path)       ? "EPUB"
-                         : FsHelpers::hasTxtExtension(path)      ? "TXT"
-                         : FsHelpers::hasMarkdownExtension(path) ? "MD"
-                         : FsHelpers::hasXtcExtension(path)      ? "XTC"
-                                                                 : "";
+    // Shelf shows a progress bar under each cover: keep only the percent.
     const auto* stats = READING_STATS.findMatchingBookForPath(path);
-    if (stats)
-      snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_PROGRESS), format,
-               static_cast<unsigned>(stats->lastProgressPercent));
-    else
-      snprintf(shelfDetails[i].data(), shelfDetails[i].size(), tr(STR_RICKY_BOOK_UNREAD), format);
+    shelfProgress[i] = stats ? static_cast<uint8_t>(std::clamp(stats->lastProgressPercent, 0, 100)) : 0;
   }
   for (int i = 0; i < visible; ++i) shelfItems[i] = fui::coverGridItem(shelfTitles[i].c_str(), start + i);
   shelfGrid = {};
@@ -1478,15 +1470,16 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     return true;
   };
   fui::coverGrid(screen.frame(), body, shelfGrid);
-  auto detail = theme.smallText;
-  detail.align = fui::TextAlign::Center;
+  // Progress bar replaces the old "format + percent" label under each cover.
   for (int i = 0; i < visible; ++i) {
     const int cellWidth = (body.width - gap * (columns - 1)) / columns;
-    const fui::Rect textRect{
-        static_cast<int16_t>(body.x + i % columns * (cellWidth + gap)),
-        static_cast<int16_t>(body.y + i / columns * (rowHeight + gap) + coverHeight + labelHeight + gap),
-        static_cast<int16_t>(cellWidth), static_cast<int16_t>(labelHeight)};
-    screen.target().text(textRect, shelfDetails[i].data(), detail);
+    const int barWidth = cellWidth * 3 / 4;
+    const int barH = std::max(4, labelHeight / 3);
+    const fui::Rect barRect{
+        static_cast<int16_t>(body.x + i % columns * (cellWidth + gap) + (cellWidth - barWidth) / 2),
+        static_cast<int16_t>(body.y + i / columns * (rowHeight + gap) + coverHeight + labelHeight / 2 - barH / 2),
+        static_cast<int16_t>(barWidth), static_cast<int16_t>(barH)};
+    RickyPageUi::progressBar(screen.target(), barRect, shelfProgress[i]);
   }
   n.drawnCount = count;
   n.onListRendered(start, visible, paging.selectedIndex >= start && paging.selectedIndex < start + visible);

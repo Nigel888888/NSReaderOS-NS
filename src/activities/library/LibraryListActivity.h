@@ -220,7 +220,7 @@ class LibraryListActivity final : public UiTabListActivity {
   int shelfHeight = 0;
   int shelfCount = 0;
   std::array<std::string, SHELF_CAPACITY> shelfTitles{}, shelfAuthors{}, shelfPaths{}, shelfCovers{};
-  std::array<std::array<char, 56>, SHELF_CAPACITY> shelfDetails{};
+  std::array<uint8_t, SHELF_CAPACITY> shelfProgress{};  // last-read percent per visible cover
   std::array<freeink::ui::CoverGridItem, SHELF_CAPACITY> shelfItems{};
   freeink::ui::CoverGridProps shelfGrid{};
   void buildRickyShelf(UiScreen& screen);
