@@ -1400,7 +1400,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     const auto& path = shelfPaths[i];
     // Shelf shows a progress bar under each cover: keep only the percent.
     const auto* stats = READING_STATS.findMatchingBookForPath(path);
-    shelfProgress[i] = stats ? static_cast<uint8_t>(std::clamp(stats->lastProgressPercent, 0, 100)) : 0;
+    shelfProgress[i] = stats ? static_cast<uint8_t>(std::clamp<int>(stats->lastProgressPercent, 0, 100)) : 0;
   }
   for (int i = 0; i < visible; ++i) shelfItems[i] = fui::coverGridItem(shelfTitles[i].c_str(), start + i);
   shelfGrid = {};
