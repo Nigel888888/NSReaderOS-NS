@@ -381,25 +381,22 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
       // dominates; keep the icon+label block centred in the cell both ways.
       constexpr int iconSize = kRickyAppIconSize;  // native 96px, drawn 1:1
       constexpr int labelGap = 8;
-      // 8pt CJK builtin (0x434A4B08 == CJK_UI_8_FONT_ID): ~12px on the 300PPI
-      // panel; SMALL_FONT_ID is 12pt (~18px), nearly as large as body text.
-      // Using the literal avoids pulling SdCardFontSystem.h into this TU.
-      constexpr int kTinyFontId = 0x434A4B08;
-      const int labelLineHeight = renderer.getLineHeight(kTinyFontId);
+      // batch11: draw the label with a REAL GfxRenderer font id (0x4150504C,
+      // registered in main.cpp as a genuine 10pt CJK face). The previous code
+      // passed this id through fui::TextStyle.font, which is a 0-3 SLOT index,
+      // not a font id -- values >= 4 silently fell back to the body font, so
+      // the label never shrank. Draw straight through the renderer instead.
+      constexpr int kAppLabelFontId = 0x4150504C;
+      const int labelLineHeight = renderer.getLineHeight(kAppLabelFontId);
       const std::string smallLabel = renderer.truncatedText(
-          kTinyFontId, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
+          kAppLabelFontId, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
       const int blockHeight = iconSize + labelGap + labelLineHeight;
       const int blockTop = cell.y + std::max(2, (cell.height - blockHeight) / 2);
       const int iconX = cell.x + (cell.width - iconSize) / 2;
       drawRickyAppIcon(renderer, icon, iconX, blockTop);
-      fui::TextStyle labelStyle;
-      labelStyle.font = static_cast<fui::FontId>(kTinyFontId);
-      labelStyle.align = fui::TextAlign::Center;
-      labelStyle.color = fui::Color::DarkGray;
-      labelStyle.maxLines = 1;
-      target.text(fui::Rect{static_cast<int16_t>(cell.x), static_cast<int16_t>(blockTop + iconSize + labelGap),
-                            static_cast<int16_t>(cell.width), static_cast<int16_t>(labelLineHeight + 4)},
-                  smallLabel.c_str(), labelStyle);
+      const int labelW = renderer.getTextWidth(kAppLabelFontId, smallLabel.c_str());
+      const int labelX = cell.x + std::max(0, (cell.width - labelW) / 2);
+      renderer.drawText(kAppLabelFontId, labelX, blockTop + iconSize + labelGap, smallLabel.c_str(), true);
       continue;
     }
 #endif

@@ -189,6 +189,12 @@ EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 
 #ifdef CROSSMUX_UI_PROFILE_HIGH_DPI
 EpdFontFamily cjk8FontFamily(&offlineReaderFont);
+// batch11: a genuine 10pt CJK face for app-grid labels. CJK_UI_8/10/12 are all
+// rebound to 12-16pt on this high-DPI build, so none of them shrinks text; this
+// dedicated face uses the real notosans_cjk_10 data already compiled in all.h.
+EpdFont appLabel10Font(&notosans_cjk_10);
+EpdFontFamily appLabel10FontFamily(&appLabel10Font);
+static constexpr int kAppLabelFontId = 0x4150504C;  // "APPL"
 EpdFont cjk14Font(&notosans_cjk_14);
 EpdFont cjk16Font(&notosans_cjk_16);
 EpdFontFamily cjk10FontFamily(&cjk14Font);
@@ -619,6 +625,8 @@ bool setupDisplayAndFonts(bool seamless = false, bool logSdFontLoadHeap = false)
   renderer.insertFont(CJK_UI_8_FONT_ID, cjk8FontFamily);
   renderer.insertFont(CJK_UI_10_FONT_ID, cjk10FontFamily);
   renderer.insertFont(CJK_UI_12_FONT_ID, cjk12FontFamily);
+  renderer.insertFont(kAppLabelFontId, appLabel10FontFamily);  // batch11 real 10pt app labels
+  renderer.setFallbackFont(kAppLabelFontId, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(SMALL_FONT_ID, CJK_UI_8_FONT_ID);
   renderer.setFallbackFont(CONTROL_18_FONT_ID, CJK_UI_12_FONT_ID);
   renderer.setFallbackFont(UI_10_FONT_ID, CJK_UI_10_FONT_ID);
