@@ -19,7 +19,6 @@
 #ifdef RICKYOS_PRODUCT
 #include "components/RickyBrandMark.h"
 #include "components/RickyPowerLayout.h"
-#include "components/icons/kindleBootWallpaper.h"
 #endif
 #include "components/UIScale.h"
 #include "components/UITheme.h"
@@ -84,22 +83,6 @@ void BaseTheme::drawSplash(const GfxRenderer& renderer, const char* status, cons
 void BaseTheme::drawRickyPowerScreen(const GfxRenderer& renderer, const bool sleeping, const bool transition,
                                      const char* version, const uint8_t reveal) {
   renderer.clearScreen();
-#if defined(BOARD_HAS_PSRAM) || defined(CROSSPOINT_EMULATED)
-  // Built-in Kindle-style wallpaper fills the whole panel as a clean image,
-  // with no brand text overlaid. If decoding ever fails, fall through to the
-  // original branded power screen.
-  {
-    Bitmap bitmap(KindleBootWallpaper::BMP, KindleBootWallpaper::SIZE);
-    if (bitmap.parseHeaders() == BmpReaderError::Ok && bitmap.getWidth() > 0 && bitmap.getHeight() > 0) {
-      renderer.drawBitmapCropToFill(bitmap, 0, 0, renderer.getScreenWidth(), renderer.getScreenHeight());
-      (void)version;
-      (void)reveal;
-      (void)sleeping;
-      (void)transition;
-      return;
-    }
-  }
-#endif
   const Rect safe = UITheme::getInstance().getScreenSafeArea(renderer);
   const GfxRenderer::ClipScope clip(renderer, safe.x, safe.y, safe.width, safe.height);
   const auto layout = RickyPowerLayout::fit(safe, renderer.getLineHeight(UI_10_FONT_ID), UiHighDpiProfile::controlGap);
