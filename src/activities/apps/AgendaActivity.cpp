@@ -30,6 +30,10 @@ constexpr int TAB_GAP = 8;
 constexpr int BAR_H = 56;
 constexpr int BAR_GAP = 12;
 constexpr int BAR_TOP = 8;
+// Detail-page Back button: bottom-right, matching the RSS reading page.
+constexpr int DETAIL_BACK_W = 120;
+constexpr int DETAIL_BACK_H = 36;
+constexpr int DETAIL_BACK_PAD = 8;
 constexpr int CARD_GAP = 10;
 constexpr int CARD_RADIUS = 8;
 constexpr unsigned long MESSAGE_MS = 3000;
@@ -551,11 +555,15 @@ void AgendaActivity::drawEventList() {
 void AgendaActivity::drawDetail() {
   drawHeaderAndTabs();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  backButton = Rect{SIDE_PAD, metrics.topPadding + 4, 120, metrics.headerHeight - 8};
-  GUI.drawActionButton(renderer, backButton, tr(STR_AGENDA_BACK), false);
   const int top = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD,
-                    renderer.getScreenHeight() - top - metrics.buttonHintsHeight - metrics.verticalSpacing};
+  // Back button sits at the bottom-right, on a hairline like the RSS reading
+  // page. The body stops above the hairline so text never runs under the button.
+  const int actionY = renderer.getScreenHeight() - metrics.buttonHintsHeight - DETAIL_BACK_H - DETAIL_BACK_PAD;
+  renderer.fillRect(SIDE_PAD, actionY - BAR_GAP, renderer.getScreenWidth() - 2 * SIDE_PAD, 1, Color::LightGray);
+  backButton = Rect{renderer.getScreenWidth() - SIDE_PAD - DETAIL_BACK_W, actionY, DETAIL_BACK_W, DETAIL_BACK_H};
+  GUI.drawActionButton(renderer, backButton, tr(STR_AGENDA_BACK), false);
+  const int bodyBottom = actionY - BAR_GAP - metrics.verticalSpacing;
+  listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, bodyBottom - top};
   const int lineHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
   const int linesOnScreen = std::max(1, listBounds.height / lineHeight);
   detailPageLines = linesOnScreen;
