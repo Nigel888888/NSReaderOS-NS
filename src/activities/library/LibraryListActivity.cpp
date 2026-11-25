@@ -1339,9 +1339,12 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   const int coverHeight = std::max(1, std::min(cellWidth * 88 / 100 * 4 / 3,
                                                (body.height - gap * (rows - 1) - labelHeight * 2 - gap * 3) / rows));
   const int rowHeight = coverHeight + labelHeight * 2 + gap * 3;
-  const int shelfHeight = rowHeight * rows + gap * (rows - 1);
-  const int shelfTop = body.y + std::max(0, (body.height - shelfHeight) / 2);
-  const Rect shelfBody{body.x, static_cast<int16_t>(shelfTop), body.width, static_cast<int16_t>(shelfHeight)};
+  const int shelfRowsHeight = rowHeight * rows + gap * (rows - 1);
+  const int shelfTop = body.y + std::max(0, (body.height - shelfRowsHeight) / 2);
+  // Derive from body so the type stays freeink::ui::Rect (coverGrid's parameter).
+  auto shelfBody = body;
+  shelfBody.y = static_cast<decltype(shelfBody.y)>(shelfTop);
+  shelfBody.height = static_cast<decltype(shelfBody.height)>(shelfRowsHeight);
   auto& n = activeNav();
   fui::ListProps paging;
   // Feed the existing atomic list-nav requests with four virtual one-pixel rows.
