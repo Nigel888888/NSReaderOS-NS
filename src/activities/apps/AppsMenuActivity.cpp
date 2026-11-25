@@ -180,14 +180,16 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
 // Reference style: a clean 3x4 ruled grid (thin gray dividers), each cell a
 // bare black line icon over its label — no rounded-square tile, no shadow/halo
 // and no selection marker behind the last opened app.
-void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y,
-                      const bool /*selected*/) {
-  // Icons are pure black line art, with no backing shape in any state.
-  if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, true)) return;
+void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const int size) {
+  // Icons are pure black line art, with no backing shape in any state. The AA
+  // twins are authored at 56x56; sample them up to the requested screen size.
+  if (RickyAaIcons::drawScaled(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, size, size, true)) return;
   constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;
-  for (int row = 0; row < kRickyAppIconSize; ++row) {
-    for (int column = 0; column < kRickyAppIconSize; ++column) {
-      if ((icon[row * rowBytes + column / 8] & (0x80U >> (column % 8))) == 0)
+  for (int row = 0; row < size; ++row) {
+    const int srcRow = row * kRickyAppIconSize / size;
+    for (int column = 0; column < size; ++column) {
+      const int srcCol = column * kRickyAppIconSize / size;
+      if ((icon[srcRow * rowBytes + srcCol / 8] & (0x80U >> (srcCol % 8))) == 0)
         renderer.drawPixel(x + column, y + row, true);
     }
   }
@@ -377,15 +379,25 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
     const int labelX = cell.x + (cell.width - renderer.getTextWidth(UI_10_FONT_ID, label.c_str())) / 2;
 #ifdef RICKYOS_PRODUCT
     if (const uint8_t* icon = rickyAppIcon(kAppEntries[appIndex].icon)) {
-      // Center the icon + label as one block inside the cell so a short grid
-      // never pushes the label past the row divider. Icons are plain black line
-      // art with no selection halo behind them.
-      constexpr int labelGap = 6;
-      const int blockHeight = kRickyAppIconSize + labelGap + lineHeight;
+      // v2 grid: enlarge the icon and shrink/weaken the label so the icon
+      // dominates; keep the icon+label block centred in the cell both ways.
+      constexpr int iconSize = 96;
+      constexpr int labelGap = 10;
+      const int labelLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+      const std::string smallLabel = renderer.truncatedText(
+          SMALL_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
+      const int blockHeight = iconSize + labelGap + labelLineHeight;
       const int blockTop = cell.y + std::max(2, (cell.height - blockHeight) / 2);
-      const int iconX = cell.x + (cell.width - kRickyAppIconSize) / 2;
-      drawRickyAppIcon(renderer, icon, iconX, blockTop, isSelected);
-      renderer.drawText(UI_10_FONT_ID, labelX, blockTop + kRickyAppIconSize + labelGap, label.c_str(), true);
+      const int iconX = cell.x + (cell.width - iconSize) / 2;
+      drawRickyAppIcon(renderer, icon, iconX, blockTop, iconSize);
+      fui::TextStyle labelStyle;
+      labelStyle.font = static_cast<fui::FontId>(SMALL_FONT_ID);
+      labelStyle.align = fui::TextAlign::Center;
+      labelStyle.color = fui::Color::DarkGray;
+      labelStyle.maxLines = 1;
+      target.text(fui::Rect{static_cast<int16_t>(cell.x), static_cast<int16_t>(blockTop + iconSize + labelGap),
+                            static_cast<int16_t>(cell.width), static_cast<int16_t>(labelLineHeight + 4)},
+                  smallLabel.c_str(), labelStyle);
       continue;
     }
 #endif

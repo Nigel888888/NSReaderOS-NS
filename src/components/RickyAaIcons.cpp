@@ -45,5 +45,46 @@ bool draw(const GfxRenderer& renderer, const uint8_t* bits, const int width, con
   }
   return true;
 }
+
+bool drawScaled(const GfxRenderer& renderer, const uint8_t* bits, const int width, const int height, const int x,
+                const int y, const int dstWidth, const int dstHeight, const bool ink) {
+  if (!renderer.isGrayscale16Active() || !bits || dstWidth <= 0 || dstHeight <= 0) return false;
+  const uint32_t hash = fnv1a(bits, (width + 7) / 8 * height);
+  const ricky_aa_icons::Icon* twin = nullptr;
+  for (const auto& icon : ricky_aa_icons::kIcons) {
+    if (icon.bitsHash == hash && icon.width == width && icon.height == height) {
+      twin = &icon;
+      break;
+    }
+  }
+  if (!twin) return false;
+  const int target = ink ? 0 : 15;
+  int pixel = 0;
+  const int total = width * height;
+  for (int i = 0; i < twin->rleBytes && pixel < total; ++i) {
+    const int run = (twin->rle[i] >> 4) + 1;
+    const int coverage = twin->rle[i] & 0x0F;
+    for (int r = 0; r < run && pixel < total; ++r, ++pixel) {
+      if (coverage == 0) continue;
+      const int sx = pixel % width;
+      const int sy = pixel / width;
+      const int dx0 = sx * dstWidth / width;
+      const int dx1 = (sx + 1) * dstWidth / width;
+      const int dy0 = sy * dstHeight / height;
+      const int dy1 = (sy + 1) * dstHeight / height;
+      for (int dy = dy0; dy < dy1; ++dy) {
+        for (int dx = dx0; dx < dx1; ++dx) {
+          const int px = x + dx;
+          const int py = y + dy;
+          const int paper = renderer.grayscale16Level(px, py);
+          const int delta = (target - paper) * coverage;
+          const int level = paper + (delta >= 0 ? (delta + 7) / 15 : -((7 - delta) / 15));
+          renderer.drawGrayscale16Pixel(px, py, static_cast<uint8_t>(level * 17));
+        }
+      }
+    }
+  }
+  return true;
+}
 }  // namespace RickyAaIcons
 #endif

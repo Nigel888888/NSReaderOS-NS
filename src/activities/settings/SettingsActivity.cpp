@@ -1549,8 +1549,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     const int needed = profileHeight + cellHeight * totalRows + fixedGaps + gap;
     const int section = gap + std::clamp((screen.body().height - needed) / 4, 0, gap);
     RickyProfile::drawCard(screen, renderer, screen.takeTop(profileHeight, section), ACTION_TAB_USER + 20);
-    const int selected = RickyPageUi::syncNav(nav, categoryCount);
-    const bool focus = showMainTabContentSelection();
+    RickyPageUi::syncNav(nav, categoryCount);
     const freeink::Icon* icons[] = {&icon_ricky_display_40, &icon_ricky_reader_40, &icon_ricky_network_40,
                                     &icon_ricky_fonts_40,   &icon_ricky_folder_40, &icon_ricky_system_40};
     static_assert(sizeof(icons) / sizeof(icons[0]) == categoryCount);
@@ -1562,7 +1561,7 @@ void SettingsActivity::buildScreen(UiScreen& screen) {
     for (int i = 0; i < categoryCount; ++i) {
       const auto rect = RickyPageUi::uiRect(
           RickyPageLayout::cell(Rect{grid.x, grid.y, grid.width, grid.height}, i, categoryCount, gap, columns));
-      RickyPageUi::card(target, rect, focus && selected == i);
+      RickyPageUi::card(target, rect, false);
       screen.frame().hit(rect, ACTION_ROW, i, fui::InputTouch);
       const int middle = rect.y + rect.height / 2;
       RickyPageUi::pageIcon(target, renderer, rect.x + pad, middle, *icons[i]);
