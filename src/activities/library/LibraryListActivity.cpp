@@ -1470,14 +1470,15 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     return true;
   };
   fui::coverGrid(screen.frame(), body, shelfGrid);
-  // Progress bar replaces the old "format + percent" label under each cover.
+  // Progress bar sits in the old second text row, just below the title.
   for (int i = 0; i < visible; ++i) {
     const int cellWidth = (body.width - gap * (columns - 1)) / columns;
     const int barWidth = cellWidth * 3 / 4;
     const int barH = std::max(4, labelHeight / 3);
     const fui::Rect barRect{
         static_cast<int16_t>(body.x + i % columns * (cellWidth + gap) + (cellWidth - barWidth) / 2),
-        static_cast<int16_t>(body.y + i / columns * (rowHeight + gap) + coverHeight + labelHeight / 2 - barH / 2),
+        static_cast<int16_t>(body.y + i / columns * (rowHeight + gap) + coverHeight + labelHeight + gap +
+                             (labelHeight - barH) / 2),
         static_cast<int16_t>(barWidth), static_cast<int16_t>(barH)};
     RickyPageUi::progressBar(screen.target(), barRect, shelfProgress[i]);
   }
