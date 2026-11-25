@@ -699,6 +699,18 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
 
 void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
                                     const bool backButton, const bool upstreamStyle, const bool showClock) {
+#ifdef RICKYOS_PRODUCT
+  // Full-screen app content: no header text, rule or transparent back zone.
+  (void)renderer;
+  (void)rect;
+  (void)title;
+  (void)subtitle;
+  (void)backButton;
+  (void)upstreamStyle;
+  (void)showClock;
+  HeaderBackTapTarget::clear();
+  return;
+#endif
   // Every activity header renders through the FreeInkUI header + battery
   // indicator components, styled by the active theme's tokens (padding,
   // centering, underline). Non-interactive frame: no hit rects registered.

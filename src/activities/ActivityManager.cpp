@@ -213,6 +213,9 @@ void ActivityManager::renderTaskLoop() {
           renderer.requestNextFullRefresh();
           gUiFramesSinceClean = 0;
         }
+        if (mainTabSwitchRefreshPending.exchange(false, std::memory_order_relaxed)) {
+          renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+        }
 #endif
         currentActivity->render(std::move(lock));
         idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
@@ -697,6 +700,9 @@ void ActivityManager::goToInxRecent() { replaceActivityWith<InxRecentActivity>()
 
 void ActivityManager::goToMainTab(const MainTab tab) {
   mainTabEntryReleasePending = false;
+  if (tab != MainTab::None) {
+    mainTabSwitchRefreshPending.store(true, std::memory_order_relaxed);
+  }
   switch (tab) {
     case MainTab::Recent:
       goToInxRecent();

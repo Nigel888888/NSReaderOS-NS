@@ -18,6 +18,18 @@ namespace fui = freeink::ui;
 void catalogScreenHeader(UiAppHost::UiScreen& screen, const GfxRenderer& renderer, const char* title,
                          const fui::BitmapRef& trailingIcon, const fui::ActionId trailingAction) {
   const auto& metrics = UITheme::getInstance().getMetrics();
+#ifdef RICKYOS_PRODUCT
+  // Full-screen app content: no header band, text, rule or transparent back zone.
+  (void)renderer;
+  (void)title;
+  (void)trailingIcon;
+  (void)trailingAction;
+  HeaderBackTapTarget::clear();
+  screen.setContentMarginFromScreen(
+      fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.verticalSpacing), 0,
+                  static_cast<int16_t>(metrics.buttonHintsHeight), 0});
+  return;
+#endif
   const auto& theme = screen.theme();
   fui::HeaderProps header;
   header.title = title;

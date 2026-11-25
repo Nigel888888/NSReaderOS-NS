@@ -82,6 +82,9 @@ class ActivityManager {
   // Cross-task render request flag. requestUpdate() may set it from any task;
   // loop() consumes and clears it with exchange(false).
   std::atomic<bool> requestedUpdate{false};
+  // One-shot flag consumed on the render task to upgrade the main-tab switch
+  // frame from DU to GL16: clears ghosting without a black full-refresh flash.
+  std::atomic<bool> mainTabSwitchRefreshPending{false};
   std::atomic<uint32_t> idleRenderGeneration{0};
   std::atomic<const char*> lastIdleCancel{"none"};
   std::atomic<bool> lastIdleCancelRearms{false};

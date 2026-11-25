@@ -13,6 +13,7 @@
 #include "I18n.h"
 #include "InxItemLayout.h"
 #include "InxTheme.h"
+#include "components/HeaderBackTapTarget.h"
 #include "components/UITheme.h"
 #include "components/UiAppHelpers.h"
 #include "components/icons/inx_apps.h"
@@ -165,12 +166,14 @@ void drawDottedSeparator(const GfxRenderer& renderer, const int x, const int y, 
 void InxTheme::drawHeader(const GfxRenderer& renderer, const Rect rect, const char* title, const char* subtitle,
                           const bool backButton) const {
 #ifdef RICKYOS_PRODUCT
-  // Product-wide hierarchical navigation: pushed touch pages need the same
-  // visible Back target and title reserve as the shared FreeInkUI header.
-  if (backButton && gpio.hasTouch()) {
-    BaseTheme::drawHeader(renderer, rect, title, subtitle, true);
-    return;
-  }
+  // Full-screen app content: no header text, rule or transparent back zone.
+  (void)renderer;
+  (void)rect;
+  (void)title;
+  (void)subtitle;
+  (void)backButton;
+  HeaderBackTapTarget::clear();
+  return;
 #endif
   (void)backButton;
   constexpr int titleFont = UiHighDpiProfile::enabled ? UI_12_FONT_ID : NOTOSERIF_12_FONT_ID;

@@ -23,6 +23,7 @@
 #include "RecentBooksStore.h"
 #include "activities/plugins/PluginCatalogActivity.h"  // anyPluginInstalled()
 #include "components/UITheme.h"
+#include "components/UiHighDpiProfile.h"
 #include "fontIds.h"
 #include "util/BookCoverLoader.h"
 
@@ -714,8 +715,15 @@ void HomeActivity::render(RenderLock&&) {
   }
 
   const Rect headerRect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding};
+#ifdef RICKYOS_PRODUCT
+  // App headers are hidden product-wide; keep home's original menu reserve so
+  // the banner and menu layout stays pixel-identical to the previous release.
+  constexpr int headerReserve = UiHighDpiProfile::headerHeight;
+#else
+  const int headerReserve = metrics.headerHeight;
+#endif
   const Rect menuRect{0, metrics.homeTopPadding + metrics.homeCoverTileHeight + metrics.homeMenuTopOffset, pageWidth,
-                      pageHeight - (metrics.headerHeight + metrics.homeTopPadding + metrics.verticalSpacing +
+                      pageHeight - (headerReserve + metrics.homeTopPadding + metrics.verticalSpacing +
                                     metrics.homeMenuTopOffset + metrics.buttonHintsHeight)};
   auto drawHeader = [&] {
     GUI.drawHeader(renderer, headerRect,

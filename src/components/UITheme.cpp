@@ -187,6 +187,10 @@ const ThemeMetrics& UITheme::getMetrics() const {
   if (!metricsValid || showButtonHints != metricsForButtonHints) {
     adjustedMetrics = *currentMetrics;
     UiHighDpiProfile::apply(adjustedMetrics);
+#ifdef RICKYOS_PRODUCT
+    // Full-screen app content: app pages reserve no header band.
+    adjustedMetrics.headerHeight = 0;
+#endif
     if (!showButtonHints) {
       adjustedMetrics.buttonHintsHeight = 0;
     }
