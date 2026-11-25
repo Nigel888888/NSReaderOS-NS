@@ -1335,11 +1335,15 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   // Compact rows sized to cover + title/progress lines, then centre the whole
   // shelf vertically so the lower half of the page is not left empty.
   const int cellWidth = (body.width - gap * (columns - 1)) / columns;
+  // A dedicated, larger gap between the two book rows. The shelf stays
+  // vertically centred in `body`, so the extra space is split evenly between
+  // the top and bottom margins and the two rows keep symmetric breathing room.
+  const int rowGap = rows > 1 ? std::max<int>(gap * 3, body.height / 14) : gap;
   // 3:4 covers, capped so two compact rows still fit comfortably in the body.
   const int coverHeight = std::max(1, std::min(cellWidth * 88 / 100 * 4 / 3,
-                                               (body.height - gap * (rows - 1) - labelHeight * 2 - gap * 3) / rows));
+                                               (body.height - rowGap * (rows - 1) - labelHeight * 2 - gap * 3) / rows));
   const int rowHeight = coverHeight + labelHeight * 2 + gap * 3;
-  const int shelfRowsHeight = rowHeight * rows + gap * (rows - 1);
+  const int shelfRowsHeight = rowHeight * rows + rowGap * (rows - 1);
   const int shelfTop = body.y + std::max(0, (body.height - shelfRowsHeight) / 2);
   // Derive from body so the type stays freeink::ui::Rect (coverGrid's parameter).
   auto shelfBody = body;
@@ -1417,7 +1421,8 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
   shelfGrid.count = visible;
   shelfGrid.columns = columns;
   shelfGrid.rowHeight = rowHeight;
-  shelfGrid.gap = shelfGrid.rowGap = gap;
+  shelfGrid.gap = gap;
+  shelfGrid.rowGap = rowGap;
   shelfGrid.cellInset = fui::Insets{0, static_cast<int16_t>(gap), 0, static_cast<int16_t>(gap)};
   shelfGrid.coverSize = fui::Size{static_cast<int16_t>(coverHeight * 3 / 4), static_cast<int16_t>(coverHeight)};
   shelfGrid.labelHeight = labelHeight;
@@ -1485,7 +1490,7 @@ void LibraryListActivity::buildRickyShelf(UiScreen& screen) {
     const int barH = std::max(4, labelHeight / 3);
     const fui::Rect barRect{
         static_cast<int16_t>(body.x + i % columns * (cellWidth + gap) + (cellWidth - barWidth) / 2),
-        static_cast<int16_t>(shelfBody.y + i / columns * (rowHeight + gap) + coverHeight + labelHeight + gap +
+        static_cast<int16_t>(shelfBody.y + i / columns * (rowHeight + rowGap) + coverHeight + labelHeight + gap +
                              (labelHeight - barH) / 2),
         static_cast<int16_t>(barWidth), static_cast<int16_t>(barH)};
     RickyPageUi::progressBar(screen.target(), barRect, shelfProgress[i]);

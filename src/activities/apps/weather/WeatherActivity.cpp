@@ -787,12 +787,14 @@ void WeatherActivity::render(RenderLock&&) {
     divider(y);
     y += lineGap + 2;
 
-    // Ten days in two rows of five: each column is wide enough for the
-    // weekday / icon / high-low stack, so nothing is squeezed into one line.
+    // Ten days in two rows of five: weekday / icon / high-low / condition.
+    // A generous row gap keeps the two forecast rows visually separated.
     constexpr int kCols = 5;
     const int dayW = innerW / kCols;
     const int dayIcon = 36;
-    const int rowStep = bigLine + 4 + dayIcon + 4 + smallLine + 6;
+    const int conditionLine = renderer.getLineHeight(smallFont);
+    const int rowGap = std::max(20, smallLine / 2);
+    const int rowStep = bigLine + 4 + dayIcon + 4 + smallLine + 2 + conditionLine + rowGap;
     int todayWday = weekdayFromIso(cache_.days[0].date);
     if (todayWday < 0) {
       const time_t now = time(nullptr);
@@ -811,8 +813,12 @@ void WeatherActivity::render(RenderLock&&) {
       drawWeatherIcon(renderer, cache_.days[i].code, center - dayIcon / 2, rowY + bigLine + 4, dayIcon);
       char dayRange[32];
       snprintf(dayRange, sizeof(dayRange), "%.0f°/%.0f°", cache_.days[i].high, cache_.days[i].low);
-      drawCenteredFitted(renderer, smallFont, center, rowY + bigLine + 4 + dayIcon + 4, dayW - 2, dayRange);
-      if (col > 0) renderer.fillRect(left, rowY, 1, rowStep - 6, true);
+      const int tempY = rowY + bigLine + 4 + dayIcon + 4;
+      drawCenteredFitted(renderer, smallFont, center, tempY, dayW - 2, dayRange);
+      // Condition (e.g. 小雨 / 晴 / 阴) on its own line below the temperature.
+      drawCenteredFitted(renderer, smallFont, center, tempY + smallLine + 2, dayW - 2,
+                         weatherDescription(cache_.days[i].code));
+      if (col > 0) renderer.fillRect(left, rowY, 1, rowStep - rowGap / 2, true);
     }
   } else {
     const char* noData = tr(STR_WEATHER_NO_DATA);

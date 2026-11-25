@@ -475,29 +475,23 @@ void RssActivity::loop() {
         return;
       }
     } else if (view == View::Article) {
-      // Compute a geometry-based fallback: backButton is only assigned during
-      // render(), so it can be empty on the first frame after entering a page.
+      // Geometry-based fallback for the first frame before render() assigns the
+      // button rects. Four equal buttons: < / Favorite / Delete / >.
       const auto& tapMetrics = UITheme::getInstance().getMetrics();
       const int tapActionY =
           renderer.getScreenHeight() - tapMetrics.buttonHintsHeight - READ_BTN_H - READ_BTN_BOTTOM_PAD;
       const int tapRowW = renderer.getScreenWidth() - 2 * SIDE_PAD;
-      const int tapBtnW = (tapRowW - READ_BTN_GAP * 2) / 3;
-      const Rect backHit = backButton.height > 0
-                               ? backButton
+      const int tapBtnW = (tapRowW - READ_BTN_GAP * 3) / 4;
+      const Rect prevHit = prevButton.height > 0
+                               ? prevButton
                                : Rect{SIDE_PAD, tapActionY, tapBtnW, READ_BTN_H};
-      if (hit(backHit, tx, ty)) {
-        deleteArmed = false;
-        view = View::Updates;
-        rebuildUpdateRows();
-        selected = updatesSelected;
-        scrollTop = updatesScroll;
-        clampScroll();
-        ensureCursorVisible();
-        requestUpdate();
-        return;
-      }
+      const Rect nextHit = nextButton.height > 0
+                               ? nextButton
+                               : Rect{SIDE_PAD + 3 * (tapBtnW + READ_BTN_GAP), tapActionY, tapBtnW, READ_BTN_H};
+      if (hit(prevHit, tx, ty)) { deleteArmed = false; navigateArticle(-1); return; }
       if (hit(starButton, tx, ty)) { deleteArmed = false; toggleCurrentFavorite(); return; }
       if (hit(deleteButton, tx, ty)) { deleteCurrentArticle(); return; }
+      if (hit(nextHit, tx, ty)) { deleteArmed = false; navigateArticle(1); return; }
       // Tapping lower half advances a whole screen of text; upper half goes
       // back one screen (with one line of overlap for continuity).
       const int mid = listBounds.y + listBounds.height / 2;
@@ -571,6 +565,20 @@ void RssActivity::openArticle(int index) {
   bodyLine = 0;
   wrapBodyLines();
   requestUpdate();
+}
+
+void RssActivity::navigateArticle(int delta) {
+  // Find the open article in the process-wide sorted list and step by one.
+  // openGuid (not `selected`) is the source of truth while reading, so this
+  // works no matter which list view the article was opened from.
+  int current = -1;
+  for (size_t i = 0; i < articles.size(); ++i) {
+    if (articles[i].guid == openGuid) { current = static_cast<int>(i); break; }
+  }
+  if (current < 0) return;
+  const int target = current + delta;
+  if (target < 0 || target >= static_cast<int>(articles.size())) return;
+  openArticle(target);
 }
 
 void RssActivity::toggleCurrentFavorite() {
@@ -1134,24 +1142,27 @@ void RssActivity::drawArticleBody() {
   drawHeaderAndTabs(tr(STR_RSS_READING), true);
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int top = metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing;
-  // Bottom action row: Back / Favorite / Delete, on a hairline at the page
-  // bottom. Keep the article body clear of both the row and the hint band.
+  // Bottom action row: < (prev) / Favorite / Delete / > (next), on a hairline
+  // at the page bottom. Back is handled by the physical Back key, so the whole
+  // row is free for browsing articles without leaving the reading page.
   const int actionY = renderer.getScreenHeight() - metrics.buttonHintsHeight - READ_BTN_H - READ_BTN_BOTTOM_PAD;
   renderer.fillRect(SIDE_PAD, actionY - BAR_GAP, renderer.getScreenWidth() - 2 * SIDE_PAD, 1, Color::LightGray);
   const int rowW = renderer.getScreenWidth() - 2 * SIDE_PAD;
-  const int btnW = (rowW - READ_BTN_GAP * 2) / 3;
-  backButton = Rect{SIDE_PAD, actionY, btnW, READ_BTN_H};
-  starButton = Rect{SIDE_PAD + btnW + READ_BTN_GAP, actionY, btnW, READ_BTN_H};
+  const int btnW = (rowW - READ_BTN_GAP * 3) / 4;
+  prevButton = Rect{SIDE_PAD, actionY, btnW, READ_BTN_H};
+  starButton = Rect{SIDE_PAD + (btnW + READ_BTN_GAP), actionY, btnW, READ_BTN_H};
   deleteButton = Rect{SIDE_PAD + 2 * (btnW + READ_BTN_GAP), actionY, btnW, READ_BTN_H};
+  nextButton = Rect{SIDE_PAD + 3 * (btnW + READ_BTN_GAP), actionY, btnW, READ_BTN_H};
   const bool starred = [this]() {
     for (const auto& a : articles) if (a.guid == openGuid) return a.favorite;
     return false;
   }();
-  GUI.drawActionButton(renderer, backButton, tr(STR_RSS_BACK), false);
+  GUI.drawActionButton(renderer, prevButton, "<", false);
   GUI.drawActionButton(renderer, starButton,
                        starred ? tr(STR_RSS_STARRED) : tr(STR_RSS_STAR), starred);
   const bool armed = deleteArmed && millis() < deleteArmedUntil;
   GUI.drawActionButton(renderer, deleteButton, tr(STR_RSS_DELETE), armed);
+  GUI.drawActionButton(renderer, nextButton, ">", false);
   const int bodyBottom = actionY - BAR_GAP - metrics.verticalSpacing;
   listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, bodyBottom - top};
   const int lineHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID);

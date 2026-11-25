@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "CrossPointSettings.h"
+#include "SdCardFontSystem.h"
 #include "I18n.h"
 #include "InxItemLayout.h"
 #include "InxTheme.h"
@@ -30,11 +31,12 @@
 
 namespace {
 #ifdef RICKYOS_PRODUCT
-// The product tab bar: 40 px icons drawn with ~2.5 px round strokes over small labels;
-// the selected tab reverses its icon inside an ink capsule.
-constexpr int kIconSize = 40;
-constexpr int kPillWidth = 80;
-constexpr int kPillHeight = 50;
+// The product tab bar: labels removed, so icons are enlarged to 56 px (native
+// 1-bpp art already in rickyNavigationIcons.h) and fill the bar. The selected
+// tab reverses its icon inside an ink capsule.
+constexpr int kIconSize = 56;
+constexpr int kPillWidth = 84;
+constexpr int kPillHeight = 64;
 #else
 constexpr int kIconSize = UiHighDpiProfile::enabled ? UiHighDpiProfile::navigationIconSize : 38;
 #endif
@@ -72,15 +74,15 @@ const uint8_t* iconForTab(const MainTab tab) {
   // By tab, not by position: MainTabs::values sets the order.
   switch (tab) {
     case MainTab::Recent:
-      return ricky_nav_home_40;
+      return ricky_nav_home_56;
     case MainTab::Library:
-      return ricky_nav_library_40;
+      return ricky_nav_library_56;
     case MainTab::Apps:
-      return ricky_nav_apps_40;
+      return ricky_nav_apps_56;
     case MainTab::StorageFiles:
-      return ricky_nav_storage_40;
+      return ricky_nav_storage_56;
     case MainTab::Settings:
-      return ricky_nav_settings_40;
+      return ricky_nav_settings_56;
     default:
       return nullptr;
   }
@@ -451,6 +453,11 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
                                const int selectedIndex) const {
   if (options.empty()) return;
 
+  // UI_10 maps to cjk_14 on high-DPI builds, which is missing glyphs like
+  // 拼/贴/票; those fell back to a smaller face and made options such as
+  // "书籍拼贴"/"阅读小票" look smaller than the rest. Use the fully-covered
+  // cjk_12 face so every option keeps one consistent size.
+  const int optionFont = CJK_UI_12_FONT_ID;
   const int optionCount = static_cast<int>(options.size());
   const int selected = std::clamp(selectedIndex, 0, optionCount - 1);
   const auto layout =
@@ -465,9 +472,9 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
   const bool selectionVisible = UITheme::getInstance().showSelectionCursor();
 
   renderer.fillRect(panelX, panelY, panelWidth, panelHeight, false);
-  const std::string shownTitle = renderer.truncatedText(UI_10_FONT_ID, title, panelWidth - 32, EpdFontFamily::BOLD);
-  const int titleY = panelY + (InxOptionGeometry::headerHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-  renderer.drawText(UI_10_FONT_ID, panelX + 16, titleY, shownTitle.c_str(), true, EpdFontFamily::BOLD);
+  const std::string shownTitle = renderer.truncatedText(optionFont, title, panelWidth - 32);
+  const int titleY = panelY + (InxOptionGeometry::headerHeight - renderer.getLineHeight(optionFont)) / 2;
+  renderer.drawText(optionFont, panelX + 16, titleY, shownTitle.c_str(), true);
   renderer.drawLine(panelX, panelY + InxOptionGeometry::headerHeight, panelX + panelWidth - 1,
                     panelY + InxOptionGeometry::headerHeight, true);
 
@@ -479,10 +486,9 @@ void InxTheme::drawOptionPopup(const GfxRenderer& renderer, const char* title, c
       const Rect row = layout.optionRect(slot);
       renderer.fillRect(row.x, row.y, row.width, row.height, true);
     }
-    const std::string option = renderer.truncatedText(UI_10_FONT_ID, options[optionIndex].c_str(), panelWidth - 44);
-    const int textY = rowY + (InxOptionGeometry::rowHeight - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-    renderer.drawText(UI_10_FONT_ID, panelX + 18, textY, option.c_str(), !isSelected,
-                      isSelected ? EpdFontFamily::BOLD : EpdFontFamily::REGULAR);
+    const std::string option = renderer.truncatedText(optionFont, options[optionIndex].c_str(), panelWidth - 44);
+    const int textY = rowY + (InxOptionGeometry::rowHeight - renderer.getLineHeight(optionFont)) / 2;
+    renderer.drawText(optionFont, panelX + 18, textY, option.c_str(), !isSelected);
     if (slot + 1 < visibleRows)
       drawDottedSeparator(renderer, panelX + 2, rowY + InxOptionGeometry::rowHeight - 1, panelWidth - 4);
   }
@@ -507,26 +513,8 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
   const bool tabsAtBottom = SETTINGS.inxTabPosition == CrossPointSettings::INX_TAB_BOTTOM;
   const int separatorY = tabsAtBottom ? rect.y : rect.y + rect.height - 1;
   renderer.fillRect(rect.x, separatorY, rect.width, 1, true);
-  // Rows are laid out for the capsule so it never touches the separator or labels.
-  auto rows = RickyPageLayout::navigationRows(rect, kPillHeight, renderer.getLineHeight(SMALL_FONT_ID));
-  rows.iconY += (kPillHeight - kIconSize) / 2;
-  const auto labelFor = [](const MainTab tab) {
-    switch (tab) {
-      case MainTab::Recent:
-        return StrId::STR_RICKY_NAV_HOME;
-      case MainTab::Library:
-        return StrId::STR_LIBRARY;
-      case MainTab::Apps:
-        return StrId::STR_APPS_TITLE;
-      case MainTab::StorageFiles:
-        return StrId::STR_RICKY_STORAGE;
-      case MainTab::Settings:
-      default:
-        // The last tab is labelled "Other" (it still opens Settings, which now
-        // also hosts the Storage short-card grid).
-        return StrId::STR_RICKY_NAV_OTHER;
-    }
-  };
+  // Labels removed at the user's request: the enlarged icon is centred in the
+  // bar on its own. Click/touch targets (MainTabs::tabBounds) are unchanged.
   for (size_t i = 0; i < MainTabs::values.size(); ++i) {
     const MainTab tab = MainTabs::values[i];
     const auto bounds = MainTabs::tabBounds(static_cast<int>(i), rect.width);
@@ -534,17 +522,13 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
     const int width = bounds.right - bounds.left;
     const GfxRenderer::ClipScope clip(renderer, left, rect.y, width, rect.height);
     const int iconX = left + (width - kIconSize) / 2;
+    const int iconY = rect.y + std::max(0, (rect.height - kIconSize) / 2);
     if (const uint8_t* icon = iconForTab(tab)) {
       if (tab == selected)
-        drawSelectedInxIcon(renderer, icon, iconX, rows.iconY, width);
+        drawSelectedInxIcon(renderer, icon, iconX, iconY, width);
       else
-        drawInxIcon(renderer, icon, iconX, rows.iconY);
+        drawInxIcon(renderer, icon, iconX, iconY);
     }
-    // Labels stay regular: the capsule marks the tab, and the embedded CJK face has
-    // no bold to switch to.
-    const char* label = I18N.get(labelFor(tab));
-    const int textX = left + std::max(0, (width - renderer.getTextWidth(SMALL_FONT_ID, label)) / 2);
-    renderer.drawText(SMALL_FONT_ID, textX, rows.labelY, label, true);
   }
 #else
   constexpr int bottomIconInset = UiHighDpiProfile::enabled ? 18 : 6;

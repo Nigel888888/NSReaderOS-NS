@@ -14,6 +14,7 @@
 #include <variant>
 
 #include "MappedInputManager.h"
+#include "SdCardFontSystem.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/UITheme.h"
@@ -22,6 +23,13 @@
 #include "util/TimeUtils.h"
 
 namespace {
+
+// All TickTick page text uses one fully-covered face. NOTOSANS_18 has no Han
+// glyphs on high-DPI builds and its fallback (cjk_16) is missing common
+// characters such as 派/听/拼/票, which caused a second fallback to a smaller
+// face and visibly inconsistent font sizes on the same page. cjk_12_rickyos
+// covers every glyph we draw, so one face keeps every line the same size.
+constexpr int kAgendaFont = CJK_UI_12_FONT_ID;
 
 constexpr int SIDE_PAD = 16;
 constexpr int TAB_H = 56;
@@ -249,7 +257,7 @@ void AgendaActivity::openDetail(int index) {
 
   // Greedy UTF-8-aware wrap using the renderer, bounded to keep RAM modest.
   detailLines.clear();
-  const int font = NOTOSANS_18_FONT_ID;
+  const int font = kAgendaFont;
   const int maxWidth = renderer.getScreenWidth() - 2 * SIDE_PAD;
   constexpr size_t MAX_LINES = 400;
   size_t pos = 0;
@@ -460,20 +468,20 @@ void AgendaActivity::drawCardRow(const Rect& r, const Row& row, bool selectedRow
     renderer.fillRoundedRect(r.x, r.y, r.width, r.height, CARD_RADIUS, Color::White);
   }
   renderer.drawRoundedRect(r.x, r.y, r.width, r.height, 1, CARD_RADIUS, true);
-  const int titleLine = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
-  const int subLine = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
+  const int titleLine = renderer.getLineHeight(kAgendaFont);
+  const int subLine = renderer.getLineHeight(kAgendaFont);
   const int innerX = r.x + 14;
   const int dateW = row.date.empty() ? 0 : renderer.getTextWidth(UI_10_FONT_ID, row.date.c_str()) + 16;
   const int maxTitleW = r.width - 24 - dateW - 8;
   std::string title = row.title;
-  while (!title.empty() && renderer.getTextWidth(NOTOSANS_18_FONT_ID, title.c_str(), EpdFontFamily::BOLD) > maxTitleW) {
+  while (!title.empty() && renderer.getTextWidth(kAgendaFont, title.c_str()) > maxTitleW) {
     size_t n = title.size() - 1;
     while (n > 0 && (static_cast<unsigned char>(title[n]) & 0xC0) == 0x80) --n;
     title.erase(n);
   }
   const int textTop = r.y + (r.height - titleLine - subLine) / 2;
-  renderer.drawText(NOTOSANS_18_FONT_ID, innerX, textTop, title.c_str(), true, EpdFontFamily::BOLD);
-  renderer.drawText(NOTOSANS_16_FONT_ID, innerX, textTop + titleLine, row.subtitle.c_str(), true);
+  renderer.drawText(kAgendaFont, innerX, textTop, title.c_str(), true);
+  renderer.drawText(kAgendaFont, innerX, textTop + titleLine, row.subtitle.c_str(), true);
   if (!row.date.empty() && dateW > 0) {
     const Rect pill{r.x + r.width - dateW - 10, textTop + 2, dateW, subLine + 4};
     renderer.fillRoundedRect(pill.x, pill.y, pill.width, pill.height, pill.height / 2,
@@ -504,10 +512,10 @@ void AgendaActivity::drawTabs() {
       renderer.fillRoundedRect(tabRects[i].x, tabRects[i].y, tabRects[i].width, tabRects[i].height, TAB_H / 2,
                                Color::DarkGray);
     }
-    const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, labels[i], EpdFontFamily::BOLD);
+    const int textWidth = renderer.getTextWidth(kAgendaFont, labels[i]);
     const int textX = tabRects[i].x + (segW - textWidth) / 2;
-    const int textY = tabRects[i].y + (TAB_H - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
-    renderer.drawText(UI_10_FONT_ID, textX, textY, labels[i], !active, EpdFontFamily::BOLD);
+    const int textY = tabRects[i].y + (TAB_H - renderer.getLineHeight(kAgendaFont)) / 2;
+    renderer.drawText(kAgendaFont, textX, textY, labels[i], !active);
   }
 }
 
@@ -530,7 +538,7 @@ void AgendaActivity::drawEventList() {
   const int top = listTop();
   const int barY = renderer.getScreenHeight() - metrics.buttonHintsHeight - BAR_H;
   listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, barY - CARD_GAP - top};
-  rowHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID) + renderer.getLineHeight(NOTOSANS_16_FONT_ID) + 28;
+  rowHeight = renderer.getLineHeight(kAgendaFont) * 2 + 28;
   rowGap = CARD_GAP;
 
   const char* empty = nullptr;
@@ -541,7 +549,7 @@ void AgendaActivity::drawEventList() {
            : tr(STR_AGENDA_NO_EVENTS);
   }
   if (empty) {
-    renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD, listBounds.y + 20, empty);
+    renderer.drawText(kAgendaFont, SIDE_PAD, listBounds.y + 20, empty);
     return;
   }
   const int first = listFirstIndex();
@@ -564,11 +572,11 @@ void AgendaActivity::drawDetail() {
   GUI.drawActionButton(renderer, backButton, tr(STR_AGENDA_BACK), false);
   const int bodyBottom = actionY - BAR_GAP - metrics.verticalSpacing;
   listBounds = Rect{SIDE_PAD, top, renderer.getScreenWidth() - 2 * SIDE_PAD, bodyBottom - top};
-  const int lineHeight = renderer.getLineHeight(NOTOSANS_18_FONT_ID);
+  const int lineHeight = renderer.getLineHeight(kAgendaFont);
   const int linesOnScreen = std::max(1, listBounds.height / lineHeight);
   detailPageLines = linesOnScreen;
   for (int i = 0; i < linesOnScreen && detailLine + i < static_cast<int>(detailLines.size()); ++i) {
-    renderer.drawText(NOTOSANS_18_FONT_ID, listBounds.x, listBounds.y + i * lineHeight,
+    renderer.drawText(kAgendaFont, listBounds.x, listBounds.y + i * lineHeight,
                       detailLines[detailLine + i].c_str());
   }
 }
@@ -578,11 +586,11 @@ void AgendaActivity::drawMessage() {
   // Show the sync notice directly below the tab strip (under "本周" etc.),
   // as a high-contrast black block with white text so it is easy to read.
   const auto& metrics = UITheme::getInstance().getMetrics();
-  const int lineH = renderer.getLineHeight(NOTOSANS_16_FONT_ID);
+  const int lineH = renderer.getLineHeight(kAgendaFont);
   const int msgY = metrics.topPadding + metrics.headerHeight + TAB_TOP + TAB_H + 6;
   const int width = renderer.getScreenWidth() - 2 * SIDE_PAD;
   renderer.fillRect(SIDE_PAD, msgY - 2, width, lineH + 4, true);
-  renderer.drawText(NOTOSANS_16_FONT_ID, SIDE_PAD + 6, msgY, message.c_str(), false);
+  renderer.drawText(kAgendaFont, SIDE_PAD + 6, msgY, message.c_str(), false);
 }
 
 void AgendaActivity::render(RenderLock&&) {

@@ -110,6 +110,9 @@ class RssActivity final : public Activity {
   void deleteCurrentArticle();
   void clearReadArticles();
   void openArticle(int index);
+  // Reading-page navigation: open the previous/next cached article relative to
+  // the currently open one. No-op at either end of the list.
+  void navigateArticle(int delta);
   void scrollBody(int lines);
   void wrapBodyLines();
   // Long-press word lookup in the reading view. `rebuildBodyWords()` is part
@@ -166,12 +169,13 @@ class RssActivity final : public Activity {
   unsigned long clearReadArmedUntil = 0;
 
   Rect tabRects[3]{};
+  Rect prevButton{0, 0, 0, 0};  // reading view: previous article
   Rect starButton{0, 0, 0, 0};
   Rect deleteButton{0, 0, 0, 0};
+  Rect nextButton{0, 0, 0, 0};  // reading view: next article
   Rect updateButton{0, 0, 0, 0};
   Rect addButton{0, 0, 0, 0};
   Rect manageButton{0, 0, 0, 0};
-  Rect backButton{0, 0, 0, 0};
   Rect listBounds{0, 0, 0, 0};
   int rowHeight = 0;
   int rowGap = 0;

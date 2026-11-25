@@ -19,6 +19,10 @@ class RickyReadingStatsActivity final : public UiListActivity {
   void onEnter() override;
 
  protected:
+  // This page is opened straight from the Apps grid via replaceActivityWith();
+  // finishing would drop back to Home. Return to the Apps grid instead, like
+  // the other product apps (Quotes, Vocabulary, RSS, ...).
+  void onBackButton() override { activityManager.goToApps(); }
   static constexpr freeink::ui::ActionId ACTION_QUOTE_STAR = ACTION_USER;
   int listCount() const override { return 0; }
   const char* headerTitle() const override;
