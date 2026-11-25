@@ -145,33 +145,33 @@ namespace {
 const uint8_t* rickyAppIcon(const UIIcon icon) {
   switch (icon) {
     case UIIcon::Transfer:
-      return ricky_app_transfer_56;
+      return ricky_app_transfer_96;
     case UIIcon::Nutstore:
-      return ricky_app_nutstore_56;
+      return ricky_app_nutstore_96;
     case UIIcon::Opds:
-      return ricky_app_opds_56;
+      return ricky_app_opds_96;
     case UIIcon::WeRead:
-      return ricky_app_weread_56;
+      return ricky_app_weread_96;
     case UIIcon::ReadingStats:
-      return ricky_app_stats_56;
+      return ricky_app_stats_96;
     case UIIcon::Bookmark:
-      return ricky_app_bookmark_56;
+      return ricky_app_bookmark_96;
     case UIIcon::Calculator:
-      return ricky_app_calculator_56;
+      return ricky_app_calculator_96;
     case UIIcon::Standby:
-      return ricky_app_standby_56;
+      return ricky_app_standby_96;
     case UIIcon::Weather:
-      return ricky_app_weather_56;
+      return ricky_app_weather_96;
     case UIIcon::AirPage:
-      return ricky_app_airpage_56;
+      return ricky_app_airpage_96;
     case UIIcon::Vocabulary:
-      return ricky_app_vocabulary_56;
+      return ricky_app_vocabulary_96;
     case UIIcon::Quotes:
-      return ricky_app_quotes_56;
+      return ricky_app_quotes_96;
     case UIIcon::Rss:
-      return ricky_app_rss_56;
+      return ricky_app_rss_96;
     case UIIcon::Agenda:
-      return ricky_app_agenda_56;
+      return ricky_app_agenda_96;
     default:
       return nullptr;
   }
@@ -180,16 +180,14 @@ const uint8_t* rickyAppIcon(const UIIcon icon) {
 // Reference style: a clean 3x4 ruled grid (thin gray dividers), each cell a
 // bare black line icon over its label — no rounded-square tile, no shadow/halo
 // and no selection marker behind the last opened app.
-void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y, const int size) {
-  // Icons are pure black line art, with no backing shape in any state. The AA
-  // twins are authored at 56x56; sample them up to the requested screen size.
-  if (RickyAaIcons::drawScaled(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, size, size, true)) return;
+void drawRickyAppIcon(const GfxRenderer& renderer, const uint8_t* icon, const int x, const int y) {
+  // Icons are native 96x96 line art rendered 1:1; no runtime upscaling, so
+  // edges stay crisp on the high-DPI panel.
+  if (RickyAaIcons::draw(renderer, icon, kRickyAppIconSize, kRickyAppIconSize, x, y, true)) return;
   constexpr int rowBytes = (kRickyAppIconSize + 7) / 8;
-  for (int row = 0; row < size; ++row) {
-    const int srcRow = row * kRickyAppIconSize / size;
-    for (int column = 0; column < size; ++column) {
-      const int srcCol = column * kRickyAppIconSize / size;
-      if ((icon[srcRow * rowBytes + srcCol / 8] & (0x80U >> (srcCol % 8))) == 0)
+  for (int row = 0; row < kRickyAppIconSize; ++row) {
+    for (int column = 0; column < kRickyAppIconSize; ++column) {
+      if ((icon[row * rowBytes + column / 8] & (0x80U >> (column % 8))) == 0)
         renderer.drawPixel(x + column, y + row, true);
     }
   }
@@ -381,17 +379,21 @@ void AppsMenuActivity::drawIconGrid(const Rect& rect, const int visibleCount, co
     if (const uint8_t* icon = rickyAppIcon(kAppEntries[appIndex].icon)) {
       // v2 grid: enlarge the icon and shrink/weaken the label so the icon
       // dominates; keep the icon+label block centred in the cell both ways.
-      constexpr int iconSize = 96;
-      constexpr int labelGap = 10;
-      const int labelLineHeight = renderer.getLineHeight(SMALL_FONT_ID);
+      constexpr int iconSize = kRickyAppIconSize;  // native 96px, drawn 1:1
+      constexpr int labelGap = 8;
+      // 8pt CJK builtin (0x434A4B08 == CJK_UI_8_FONT_ID): ~12px on the 300PPI
+      // panel; SMALL_FONT_ID is 12pt (~18px), nearly as large as body text.
+      // Using the literal avoids pulling SdCardFontSystem.h into this TU.
+      constexpr int kTinyFontId = 0x434A4B08;
+      const int labelLineHeight = renderer.getLineHeight(kTinyFontId);
       const std::string smallLabel = renderer.truncatedText(
-          SMALL_FONT_ID, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
+          kTinyFontId, I18N.get(kAppEntries[appIndex].titleId), std::max(1, cell.width - 8));
       const int blockHeight = iconSize + labelGap + labelLineHeight;
       const int blockTop = cell.y + std::max(2, (cell.height - blockHeight) / 2);
       const int iconX = cell.x + (cell.width - iconSize) / 2;
-      drawRickyAppIcon(renderer, icon, iconX, blockTop, iconSize);
+      drawRickyAppIcon(renderer, icon, iconX, blockTop);
       fui::TextStyle labelStyle;
-      labelStyle.font = static_cast<fui::FontId>(SMALL_FONT_ID);
+      labelStyle.font = static_cast<fui::FontId>(kTinyFontId);
       labelStyle.align = fui::TextAlign::Center;
       labelStyle.color = fui::Color::DarkGray;
       labelStyle.maxLines = 1;
