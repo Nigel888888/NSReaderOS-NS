@@ -700,14 +700,19 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
 void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, const char* title, const char* subtitle,
                                     const bool backButton, const bool upstreamStyle, const bool showClock) {
 #ifdef RICKYOS_PRODUCT
-  // Full-screen app content: no header text, rule or transparent back zone.
-  (void)renderer;
-  (void)rect;
+  // Slim status strip only: time on the left, battery on the right. No title,
+  // no divider, no back arrow/tap zone; the page content fills all below.
   (void)title;
   (void)subtitle;
   (void)backButton;
   (void)upstreamStyle;
   (void)showClock;
+  // GUI resolves the active theme instance, so the virtual status-bar painter
+  // is reachable even from this static helper (same pattern as drawBatteryLeft).
+  // Clamp to the status strip height: home passes a tall banner rect, and the
+  // clock/battery must stay in a thin top strip, not the middle of the banner.
+  const int stripH = std::min(rect.height, UITheme::getInstance().getMetrics().batteryBarHeight);
+  GUI.drawMainTabStatusBar(renderer, Rect{rect.x, rect.y, rect.width, stripH});
   HeaderBackTapTarget::clear();
   return;
 #endif

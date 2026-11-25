@@ -19,14 +19,15 @@ void catalogScreenHeader(UiAppHost::UiScreen& screen, const GfxRenderer& rendere
                          const fui::BitmapRef& trailingIcon, const fui::ActionId trailingAction) {
   const auto& metrics = UITheme::getInstance().getMetrics();
 #ifdef RICKYOS_PRODUCT
-  // Full-screen app content: no header band, text, rule or transparent back zone.
-  (void)renderer;
+  // Slim status strip only (time + battery); no title text or divider.
   (void)title;
   (void)trailingIcon;
   (void)trailingAction;
+  GUI.drawMainTabStatusBar(renderer, Rect{0, metrics.topPadding,
+                                          static_cast<int>(renderer.getScreenWidth()), metrics.headerHeight});
   HeaderBackTapTarget::clear();
   screen.setContentMarginFromScreen(
-      fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.verticalSpacing), 0,
+      fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight + metrics.verticalSpacing), 0,
                   static_cast<int16_t>(metrics.buttonHintsHeight), 0});
   return;
 #endif

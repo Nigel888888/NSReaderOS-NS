@@ -188,8 +188,10 @@ const ThemeMetrics& UITheme::getMetrics() const {
     adjustedMetrics = *currentMetrics;
     UiHighDpiProfile::apply(adjustedMetrics);
 #ifdef RICKYOS_PRODUCT
-    // Full-screen app content: app pages reserve no header band.
-    adjustedMetrics.headerHeight = 0;
+    // Product header is a slim status strip: time on the left, battery on the
+    // right. No title text and no divider, but keep the strip height so it
+    // never overlaps the page content below it.
+    adjustedMetrics.headerHeight = UiHighDpiProfile::statusHeight;
 #endif
     if (!showButtonHints) {
       adjustedMetrics.buttonHintsHeight = 0;

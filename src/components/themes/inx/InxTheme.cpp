@@ -166,13 +166,9 @@ void drawDottedSeparator(const GfxRenderer& renderer, const int x, const int y, 
 void InxTheme::drawHeader(const GfxRenderer& renderer, const Rect rect, const char* title, const char* subtitle,
                           const bool backButton) const {
 #ifdef RICKYOS_PRODUCT
-  // Full-screen app content: no header text, rule or transparent back zone.
-  (void)renderer;
-  (void)rect;
-  (void)title;
-  (void)subtitle;
-  (void)backButton;
-  HeaderBackTapTarget::clear();
+  // Route every pushed page through the shared slim status strip so the header
+  // treatment (time + battery, no title/rule/back) stays identical product-wide.
+  BaseTheme::drawHeader(renderer, rect, title, subtitle, backButton);
   return;
 #endif
   (void)backButton;
