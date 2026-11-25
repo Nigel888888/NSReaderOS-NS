@@ -26,6 +26,7 @@
 #include <esp_sntp.h>
 #endif
 #include <builtinFonts/all.h>
+#include <builtinFonts/app_label_10.h>  // batch11: trimmed 10pt font for app-grid labels
 
 #include <cstring>
 
@@ -191,8 +192,8 @@ EpdFontFamily ui12FontFamily(&ui12RegularFont, &ui12BoldFont);
 EpdFontFamily cjk8FontFamily(&offlineReaderFont);
 // batch11: a genuine 10pt CJK face for app-grid labels. CJK_UI_8/10/12 are all
 // rebound to 12-16pt on this high-DPI build, so none of them shrinks text; this
-// dedicated face uses the real notosans_cjk_10 data already compiled in all.h.
-EpdFont appLabel10Font(&notosans_cjk_10);
+// trimmed app_label_10 face (advanceY=30px) holds only app-title characters.
+EpdFont appLabel10Font(&app_label_10);
 EpdFontFamily appLabel10FontFamily(&appLabel10Font);
 static constexpr int kAppLabelFontId = 0x4150504C;  // "APPL"
 EpdFont cjk14Font(&notosans_cjk_14);
