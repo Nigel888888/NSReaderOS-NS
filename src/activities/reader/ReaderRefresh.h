@@ -6,25 +6,21 @@
 
 namespace ReaderUtils {
 inline HalDisplay::RefreshMode consumeRefreshMode(int& pagesUntilFullRefresh, bool deferClean = false) {
-  using Mode = CrossPointSettings::REFRESH_MODE;
-  const uint8_t preset = SETTINGS.getRefreshMode();
-
-  // ULTRA: a full GC16 clean on every page. Maximum clarity, no accumulated
-  // ghosting, at the cost of a flash per turn.
-  if (preset == Mode::REFRESH_MODE_ULTRA) {
-    pagesUntilFullRefresh = 1;
-    return HalDisplay::FULL_REFRESH;
-  }
-
-  // How many differential turns before a real clean. HD and FAST clean more
-  // often than the legacy cadence to keep the gray floor from building up;
-  // FASTEST keeps the user's (longer) cadence for maximum speed.
+  // The reader's clean cadence is now driven ONLY by the explicit "refresh
+  // frequency" setting (1/5/10/15/30/never). Previously the four display presets
+  // silently clamped it with std::min (HD -> 5, FAST -> 10), so choosing 15 or
+  // "never" appeared to do nothing while the default preset is FAST. That was
+  // the reported bug: a 10-page full clean regardless of the setting.
+  // Now the chosen page count is authoritative:
+  //   - 1/5/10/15/30 -> a full GC16 clean at exactly that interval (user still
+  //     has every "full refresh" option and can pick one any time).
+  //   - "never" (INT_MAX) -> the counter never reaches the threshold, so no
+  //     full clean ever fires; every turn stays on the flash-free differential
+  //     waveform, giving the same self-cleaning, no-black-flash behaviour the
+  //     navigation bar now has. Ghost residue is light and tolerated.
+  // The four display presets still drive every non-reader screen; the reader
+  // deliberately decouples so the explicit page-count setting always wins.
   int cadence = SETTINGS.getRefreshFrequency();
-  if (preset == Mode::REFRESH_MODE_HD) {
-    cadence = std::min(cadence, 5);
-  } else if (preset == Mode::REFRESH_MODE_FAST) {
-    cadence = std::min(cadence, 10);
-  }
   if (cadence < 1) cadence = 1;
 
   // The clean is FULL on Read Pico (GL16 never pre-blackens, so it cannot reset
@@ -38,7 +34,10 @@ inline HalDisplay::RefreshMode consumeRefreshMode(int& pagesUntilFullRefresh, bo
 #if FREEINK_DEVICE_READPICO
   const auto cleanMode = HalDisplay::FULL_REFRESH;
 #else
-  const auto cleanMode = preset == Mode::REFRESH_MODE_FASTEST ? HalDisplay::HALF_REFRESH : HalDisplay::FULL_REFRESH;
+  using Mode = CrossPointSettings::REFRESH_MODE;
+  const auto cleanMode = SETTINGS.getRefreshMode() == Mode::REFRESH_MODE_FASTEST
+                             ? HalDisplay::HALF_REFRESH
+                             : HalDisplay::FULL_REFRESH;
 #endif
   const auto mode = (pagesUntilFullRefresh <= 1) ? cleanMode : HalDisplay::FAST_REFRESH;
   if (pagesUntilFullRefresh <= 1) {
