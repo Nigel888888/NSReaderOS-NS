@@ -142,16 +142,14 @@ constexpr int kUiCleanEveryUltra = 1;
 constexpr int kUiCleanEveryHd = 5;
 constexpr int kUiCleanEveryFast = 10;
 
-// Navigation ghosting self-clean. Every main-tab switch uses pure FAST (DU),
-// which never pre-blackens the panel, so the old selection capsule slowly
-// accumulates as a ghost. The periodic UI clean is deferred on every switch
-// frame (gUiFramesSinceClean is reset there), so while the user keeps
-// navigating it may never fire at all -- ghosting only grows. Instead, count
-// FAST switches: once enough have piled up, make THAT switch a real GC16 clean.
-// The flash lands at the moment of the tap (when a flash is expected), not on
-// an idle timer that fires later while the user is already reading. Kept sparse
-// on purpose: only one switch in kNavGhostCleanAfterSwitches flashes, so light
-// ghosting between them is tolerated in exchange for a calm, predictable bar.
+// Navigation ghosting: FAST-only light-sweep trial. Every main-tab switch uses
+// pure FAST (DU), which never pre-blackens the panel, so no switch flashes.
+// The selection capsule leaves a faint residue that DU alone clears only
+// slowly; a full GC16 clean would erase it but flashes the whole screen, so it
+// is deliberately NOT used here. gNavGhostSwitches merely wraps at this cadence
+// so the old behaviour can be restored in one line; the reader's own periodic
+// full-page clean scrubs any residue when a book is opened. This whole path is
+// main-tab only (goToMainTab); reader page turns are unaffected.
 constexpr int kNavGhostCleanAfterSwitches = 10;
 
 // The earlier "two screens superimposed" failures were traced to stale scan-line
@@ -255,20 +253,19 @@ void ActivityManager::renderTaskLoop() {
           }
         }
         if (tabSwitchPending) {
-          // Normally FAST (epd_fast / drive bank): a differential refresh whose
-          // unchanged pixels - including the non-selected nav icons - are not
-          // re-driven, so the bar stays flash-free. The old capsule leaves a
-          // faint residue that builds up as gNavGhostSwitches. Once the debt
-          // reaches the bar, make THIS switch a full GC16 clean instead: the
-          // flash lands on the tap itself, not on a later idle timer, and the
-          // debt resets. One full clean every kNavGhostCleanAfterSwitches taps.
-          if (!currentActivity->isReaderActivity() && gNavGhostSwitches >= kNavGhostCleanAfterSwitches - 1) {
+          // FAST-only light-sweep trial: EVERY main-tab switch uses the DU
+          // differential waveform (epd_fast / drive bank), which never
+          // pre-blackens the panel, so no switch flashes -- including the one
+          // that would previously have fired a full GC16. The debt counter is
+          // retained at the same cadence but no longer forces a clean: it just
+          // wraps, so reverting to a full clean is a one-line change. Any
+          // residual capsule ghosting is scrubbed later by the reader's own
+          // periodic full-page GC16, which repaints the whole panel. This block
+          // is reached only from goToMainTab(): reader page turns never take it.
+          if (!currentActivity->isReaderActivity() && ++gNavGhostSwitches >= kNavGhostCleanAfterSwitches) {
             gNavGhostSwitches = 0;
-            renderer.requestNextFullRefresh();
-          } else {
-            if (!currentActivity->isReaderActivity()) ++gNavGhostSwitches;
-            renderer.requestNextRefresh(HalDisplay::FAST_REFRESH);
           }
+          renderer.requestNextRefresh(HalDisplay::FAST_REFRESH);
         }
         // No idle wake is armed for nav ghosting any more: the (single, sparse)
         // scrub now happens on the switch frame itself. Ordinary activity idle
