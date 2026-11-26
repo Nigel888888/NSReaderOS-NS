@@ -240,10 +240,14 @@ void ActivityManager::renderTaskLoop() {
           }
         }
         if (tabSwitchPending) {
-          // Always HALF on navigation, at every preset. The capsule moves
-          // without a black/white GC16 flash; the four presets still govern
-          // the periodic clean above and the reader page-turn behaviour.
-          renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+          // Use FAST (epd_fast / drive bank) on navigation, at every preset.
+          // On Read Pico, FULL and HALF both map to epd_text (clean bank) and
+          // re-drive the whole panel, so HALF still flashed. FAST is a
+          // differential refresh: unchanged pixels - including the non-selected
+          // nav icons - are not re-driven, so the bar stops flashing. The old
+          // capsule may leave a faint residue, scrubbed by the periodic clean
+          // on ordinary frames; the four presets still govern that cadence.
+          renderer.requestNextRefresh(HalDisplay::FAST_REFRESH);
         }
 #endif
         currentActivity->render(std::move(lock));
