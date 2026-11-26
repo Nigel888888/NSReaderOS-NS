@@ -828,7 +828,9 @@ void WeatherActivity::render(RenderLock&&) {
     if (forecastDays > 0) {
       const int forecastRows = (forecastDays + kCols - 1) / kCols;
       const int lastContentH = bigLine + 4 + dayIcon + 4 + smallLine + 2 + conditionLine;
-      divider(y + (forecastRows - 1) * rowStep + lastContentH + lineGap);
+      // Column separators end at lastContentH + rowGap/2 below each row's top;
+      // place the closing rule below them so it never crosses a vertical line.
+      divider(y + (forecastRows - 1) * rowStep + lastContentH + rowGap / 2 + lineGap);
     }
   } else {
     const char* noData = tr(STR_WEATHER_NO_DATA);
