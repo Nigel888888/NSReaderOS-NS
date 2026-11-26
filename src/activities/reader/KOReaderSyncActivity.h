@@ -66,9 +66,10 @@ class KOReaderSyncActivity final : public Activity, private UiAppHost {
   // Selection in result screen (0=Apply, 1=Upload)
   int selectedOption = 0;
 
-  // Timed return for successful smart-sync terminal states.
+  // Timed return for successful smart-sync terminal states. E-ink renders are
+  // slow (~0.5-1s), so keep the result visible long enough to actually read it.
   unsigned long autoReturnAt = 0;
-  static constexpr unsigned long AUTO_RETURN_DELAY_MS = 1200;
+  static constexpr unsigned long AUTO_RETURN_DELAY_MS = 3000;
 
   // Tracks whether this session activated WiFi. Set in onEnter past the credentials
   // check; checked in onExit to decide whether to silent-reboot. Can't rely on

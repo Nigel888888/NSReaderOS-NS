@@ -100,7 +100,9 @@ void KOReaderSyncActivity::saveProgressAndReturn(int spineIndex, int page) {
     requestUpdate(true);
     return;
   }
-  returnToReader();
+  // Remote progress applied successfully: show a confirmation before returning
+  // so the user knows the pull actually happened (was an instant silent jump).
+  completeAlreadySynced();
 }
 
 void KOReaderSyncActivity::returnToReader() { activityManager.goToReader(epubPath); }
@@ -123,7 +125,14 @@ void KOReaderSyncActivity::completeAlreadySynced() {
 void KOReaderSyncActivity::onWifiSelectionComplete(const bool success) {
   if (!success) {
     LOG_DBG("KOSync", "WiFi connection failed, exiting");
-    returnToReader();
+    // Do not exit silently: show why the sync did not start, then auto-return.
+    {
+      RenderLock lock(*this);
+      state = SYNC_FAILED;
+      statusMessage = tr(STR_WIFI_CONN_FAILED);
+    }
+    markAutoReturn();
+    requestUpdate(true);
     return;
   }
 

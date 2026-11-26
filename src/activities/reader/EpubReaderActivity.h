@@ -41,6 +41,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool pendingScreenshot = false;
   bool pendingSyncSaveError = false;
   bool pendingSyncLaunchError = false;
+  bool pendingSyncNoCreds = false;
   uint8_t pageLoadRetryCount = 0;
   static constexpr uint8_t MAX_PAGE_LOAD_RETRIES = 3;
   bool skipNextButtonCheck = false;

@@ -1428,7 +1428,13 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
 }
 
 bool EpubReaderActivity::launchKOReaderSync() {
-  if (!KOREADER_STORE.hasCredentials()) return false;
+  if (!KOREADER_STORE.hasCredentials()) {
+    // Never fail silently: the user tapped Sync and must see why nothing started.
+    // The popup is painted by showPendingSyncSaveError() on the next render.
+    pendingSyncNoCreds = true;
+    requestUpdate();
+    return false;
+  }
 
   RenderLock renderLock;
 
@@ -1761,6 +1767,9 @@ void EpubReaderActivity::renderBook() {
     } else if (pendingSyncLaunchError) {
       pendingSyncLaunchError = false;
       GUI.drawPopup(renderer, tr(STR_SYNC_FAILED_MSG));
+    } else if (pendingSyncNoCreds) {
+      pendingSyncNoCreds = false;
+      GUI.drawPopup(renderer, tr(STR_KOREADER_SETUP_HINT));
     }
   };
 
