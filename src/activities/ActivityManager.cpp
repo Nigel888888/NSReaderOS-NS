@@ -216,28 +216,34 @@ void ActivityManager::renderTaskLoop() {
         // run their own refresh cadence). Forcing a full clean on the frame after
         // every settle made ordinary taps flash; the periodic GC16 settles below
         // are enough to keep the panel re-anchored.
+        // Consume the tab-switch flag before the periodic-clean block so a
+        // navigation frame can opt out of the GC16 clean. The user wants the
+        // selection capsule to simply move with no panel flash on tab changes.
+        const bool tabSwitchPending = mainTabSwitchRefreshPending.exchange(false, std::memory_order_relaxed);
         if (!currentActivity->isReaderActivity()) {
           // Resolve the UI clean cadence from the four display presets so the
           // refresh mode applies to every screen, not only reader page turns.
+          // On a tab-switch frame we skip the clean and let the light HALF
+          // waveform carry the moving selection; residual image is still
+          // cleaned by the cadence on ordinary interaction frames.
           const uint8_t preset = SETTINGS.getRefreshMode();
           using Mode = CrossPointSettings::REFRESH_MODE;
           int cleanEvery = kUiFullCleanEvery;
           if (preset == Mode::REFRESH_MODE_ULTRA) cleanEvery = kUiCleanEveryUltra;
           else if (preset == Mode::REFRESH_MODE_HD) cleanEvery = kUiCleanEveryHd;
           else if (preset == Mode::REFRESH_MODE_FAST) cleanEvery = kUiCleanEveryFast;
-          if (++gUiFramesSinceClean >= cleanEvery) {
+          if (tabSwitchPending) {
+            gUiFramesSinceClean = 0;  // defer the periodic clean, no flash on switch
+          } else if (++gUiFramesSinceClean >= cleanEvery) {
             renderer.requestNextFullRefresh();
             gUiFramesSinceClean = 0;
           }
         }
-        if (mainTabSwitchRefreshPending.exchange(false, std::memory_order_relaxed)) {
-          // Stronger presets clean the panel on tab switches; FAST/FASTEST keep
-          // the light HALF waveform to avoid a flash on every navigation.
-          const uint8_t preset = SETTINGS.getRefreshMode();
-          if (preset == CrossPointSettings::REFRESH_MODE_ULTRA || preset == CrossPointSettings::REFRESH_MODE_HD)
-            renderer.requestNextFullRefresh();
-          else
-            renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+        if (tabSwitchPending) {
+          // Always HALF on navigation, at every preset. The capsule moves
+          // without a black/white GC16 flash; the four presets still govern
+          // the periodic clean above and the reader page-turn behaviour.
+          renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
         }
 #endif
         currentActivity->render(std::move(lock));
