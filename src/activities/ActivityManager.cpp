@@ -150,8 +150,12 @@ constexpr int kUiCleanEveryFast = 10;
 // FAST switches: once enough have piled up, scrub once when input goes quiet.
 // This keeps each switch itself flash-free and is deliberately sparse: light
 // ghosting is tolerated, a single clean clears it after a real burst of moves.
-constexpr int kNavGhostCleanAfterSwitches = 5;
-constexpr uint32_t kNavGhostCleanIdleMs = 2000;
+// Kept very sparse on purpose: the full clean is a visible whole-screen flash,
+// so raise the debt bar and push the scrub further into idle. A longer idle
+// also lets an intervening touch pre-empt the scrub, so most switch bursts end
+// with no flash at all. Tolerating more light ghosting is the intended trade.
+constexpr int kNavGhostCleanAfterSwitches = 10;
+constexpr uint32_t kNavGhostCleanIdleMs = 3000;
 
 // The earlier "two screens superimposed" failures were traced to stale scan-line
 // queues and a driver state that only a panel restart / full clean resets; both
