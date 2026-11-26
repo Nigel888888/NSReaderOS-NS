@@ -142,6 +142,17 @@ constexpr int kUiCleanEveryUltra = 1;
 constexpr int kUiCleanEveryHd = 5;
 constexpr int kUiCleanEveryFast = 10;
 
+// Navigation ghosting self-clean. Every main-tab switch uses pure FAST (DU),
+// which never pre-blackens the panel, so the old selection capsule slowly
+// accumulates as a ghost. The periodic UI clean is deferred on every switch
+// frame (gUiFramesSinceClean is reset there), so while the user keeps
+// navigating it may never fire at all -- ghosting only grows. Instead, count
+// FAST switches: once enough have piled up, scrub once when input goes quiet.
+// This keeps each switch itself flash-free and is deliberately sparse: light
+// ghosting is tolerated, a single clean clears it after a real burst of moves.
+constexpr int kNavGhostCleanAfterSwitches = 5;
+constexpr uint32_t kNavGhostCleanIdleMs = 2000;
+
 // The earlier "two screens superimposed" failures were traced to stale scan-line
 // queues and a driver state that only a panel restart / full clean resets; both
 // fixes now ship in patch_rickyos_epdiy.py. Keep the simulator off (no real panel).
@@ -162,6 +173,9 @@ constexpr uint8_t kGlobalTextCurve[16] = {0, 1, 2, 4, 5, 7, 8, 9, 10, 11, 12, 13
 // Both variables are touched only from the render task.
 uint8_t gGraySettles = 0;
 int gUiFramesSinceClean = 0;
+// Number of FAST main-tab switches since the last idle ghost scrub. Render-task
+// owned (only touched from renderTaskLoop), so no atomic needed.
+int gNavGhostSwitches = 0;
 }  // namespace
 #endif
 
@@ -234,6 +248,7 @@ void ActivityManager::renderTaskLoop() {
           else if (preset == Mode::REFRESH_MODE_FAST) cleanEvery = kUiCleanEveryFast;
           if (tabSwitchPending) {
             gUiFramesSinceClean = 0;  // defer the periodic clean, no flash on switch
+            ++gNavGhostSwitches;      // debt for the one-shot idle ghost scrub
           } else if (++gUiFramesSinceClean >= cleanEvery) {
             renderer.requestNextFullRefresh();
             gUiFramesSinceClean = 0;
@@ -249,13 +264,32 @@ void ActivityManager::renderTaskLoop() {
           // on ordinary frames; the four presets still govern that cadence.
           renderer.requestNextRefresh(HalDisplay::FAST_REFRESH);
         }
+        // If FAST tab switches have accumulated enough ghosting debt, arm a
+        // short idle wake. Non-reader screens normally have delayMs==0 (no idle
+        // wake), so this is the one case we deliberately schedule one: the debt
+        // is scrubbed only after the user stops interacting, never on a switch.
+        if (gNavGhostSwitches >= kNavGhostCleanAfterSwitches && !currentActivity->isReaderActivity()) {
+          idleDelayTicks = pdMS_TO_TICKS(kNavGhostCleanIdleMs);
+        } else {
+          idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
+        }
+#else
+        idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
 #endif
         currentActivity->render(std::move(lock));
-        idleDelayTicks = delayMs != 0 ? pdMS_TO_TICKS(delayMs) : portMAX_DELAY;
         waitTicks = idleDelayTicks;
       } else if (!idleRenderCancelled(idleGeneration)) {
 #if defined(RICKYOS_PRODUCT) && FREEINK_DEVICE_READPICO
-        if (graySettlePending) {
+        // Idle fired with ghosting debt outstanding: scrub once with a real full
+        // GC16 clean (the only waveform that clears accumulated residue) and
+        // reset the debt. This flash happens at rest, not during navigation.
+        if (gNavGhostSwitches >= kNavGhostCleanAfterSwitches) {
+          LOG_DBG("ACT", "Nav ghost scrub: full clean after %d FAST switches", gNavGhostSwitches);
+          gNavGhostSwitches = 0;
+          renderer.requestNextFullRefresh();
+          currentActivity->render(std::move(lock));
+          graySettlePending = false;
+        } else if (graySettlePending) {
           graySettlePending = false;
           settleToGray(std::move(lock), idleGeneration);
         } else {
