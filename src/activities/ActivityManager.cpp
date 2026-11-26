@@ -134,6 +134,13 @@ constexpr uint8_t kGrayCleanEvery = 24;
 // cadence so old pages cannot build up a grey floor. Each GC16 clean is a
 // visible flash, so keep it deliberately sparse.
 constexpr int kUiFullCleanEvery = 300;
+// UI refresh preset cadence, matching ReaderRefresh::consumeRefreshMode so the
+// four display presets affect every screen, not just reader page turns.
+// ULTRA cleans every frame, HD every 5, FAST every 10, FASTEST keeps the sparse
+// legacy cadence (maximum speed).
+constexpr int kUiCleanEveryUltra = 1;
+constexpr int kUiCleanEveryHd = 5;
+constexpr int kUiCleanEveryFast = 10;
 
 // The earlier "two screens superimposed" failures were traced to stale scan-line
 // queues and a driver state that only a panel restart / full clean resets; both
@@ -209,12 +216,28 @@ void ActivityManager::renderTaskLoop() {
         // run their own refresh cadence). Forcing a full clean on the frame after
         // every settle made ordinary taps flash; the periodic GC16 settles below
         // are enough to keep the panel re-anchored.
-        if (!currentActivity->isReaderActivity() && ++gUiFramesSinceClean >= kUiFullCleanEvery) {
-          renderer.requestNextFullRefresh();
-          gUiFramesSinceClean = 0;
+        if (!currentActivity->isReaderActivity()) {
+          // Resolve the UI clean cadence from the four display presets so the
+          // refresh mode applies to every screen, not only reader page turns.
+          const uint8_t preset = SETTINGS.getRefreshMode();
+          using Mode = CrossPointSettings::REFRESH_MODE;
+          int cleanEvery = kUiFullCleanEvery;
+          if (preset == Mode::REFRESH_MODE_ULTRA) cleanEvery = kUiCleanEveryUltra;
+          else if (preset == Mode::REFRESH_MODE_HD) cleanEvery = kUiCleanEveryHd;
+          else if (preset == Mode::REFRESH_MODE_FAST) cleanEvery = kUiCleanEveryFast;
+          if (++gUiFramesSinceClean >= cleanEvery) {
+            renderer.requestNextFullRefresh();
+            gUiFramesSinceClean = 0;
+          }
         }
         if (mainTabSwitchRefreshPending.exchange(false, std::memory_order_relaxed)) {
-          renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
+          // Stronger presets clean the panel on tab switches; FAST/FASTEST keep
+          // the light HALF waveform to avoid a flash on every navigation.
+          const uint8_t preset = SETTINGS.getRefreshMode();
+          if (preset == CrossPointSettings::REFRESH_MODE_ULTRA || preset == CrossPointSettings::REFRESH_MODE_HD)
+            renderer.requestNextFullRefresh();
+          else
+            renderer.requestNextRefresh(HalDisplay::HALF_REFRESH);
         }
 #endif
         currentActivity->render(std::move(lock));

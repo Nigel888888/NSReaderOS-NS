@@ -712,7 +712,7 @@ void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, cons
   // Clamp to the status strip height: home passes a tall banner rect, and the
   // clock/battery must stay in a thin top strip, not the middle of the banner.
   const int stripH = std::min(rect.height, UITheme::getInstance().getMetrics().batteryBarHeight);
-  GUI.drawMainTabStatusBar(renderer, Rect{rect.x, rect.y, rect.width, stripH});
+  GUI.drawMainTabStatusBar(renderer, Rect{rect.x, rect.y, rect.width, stripH}, showClock);
   HeaderBackTapTarget::clear();
   return;
 #endif
@@ -787,7 +787,7 @@ void BaseTheme::drawHeaderWithStyle(const GfxRenderer& renderer, Rect rect, cons
 }
 
 void BaseTheme::drawMainTabBar(const GfxRenderer&, Rect, MainTab) const {}
-void BaseTheme::drawMainTabStatusBar(const GfxRenderer&, Rect) const {}
+void BaseTheme::drawMainTabStatusBar(const GfxRenderer&, Rect, bool) const {}
 
 void BaseTheme::drawSubHeader(const GfxRenderer& renderer, Rect rect, const char* label, const char* rightLabel) const {
   constexpr int labelGap = 10;

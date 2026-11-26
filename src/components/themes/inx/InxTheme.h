@@ -143,5 +143,5 @@ class InxTheme final : public LyraTheme {
   void drawOptionPopup(const GfxRenderer& renderer, const char* title, const std::vector<std::string>& options,
                        int selectedIndex) const override;
   void drawMainTabBar(const GfxRenderer& renderer, Rect rect, MainTab selected) const override;
-  void drawMainTabStatusBar(const GfxRenderer& renderer, Rect rect) const override;
+  void drawMainTabStatusBar(const GfxRenderer& renderer, Rect rect, bool showClock = true) const override;
 };

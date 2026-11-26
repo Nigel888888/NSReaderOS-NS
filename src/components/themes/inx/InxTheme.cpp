@@ -555,7 +555,7 @@ void InxTheme::drawMainTabBar(const GfxRenderer& renderer, const Rect rect, cons
 #endif
 }
 
-void InxTheme::drawMainTabStatusBar(const GfxRenderer& renderer, const Rect rect) const {
+void InxTheme::drawMainTabStatusBar(const GfxRenderer& renderer, const Rect rect, const bool showClock) const {
   if (rect.width <= 0 || rect.height <= 0) return;
   constexpr int numericFontId = UiHighDpiProfile::enabled ? SMALL_FONT_ID : STATUS_NUMERIC_FONT_ID;
   constexpr int edgeInset = UiHighDpiProfile::enabled ? UiHighDpiProfile::contentPadding : 12;
@@ -569,7 +569,7 @@ void InxTheme::drawMainTabStatusBar(const GfxRenderer& renderer, const Rect rect
                                    : std::min(rect.y + rect.height - 1, renderer.getScreenHeight() - edgeInset) -
                                          metrics.batteryHeight - batteryTextOffset;
   const GfxRenderer::ClipScope clip(renderer, rect.x, rect.y, rect.width, rect.height);
-  if (tabsAtBottom) {
+  if (tabsAtBottom && showClock) {
     char time[9] = "--:--";
     TimeUtils::formatCurrentTime(time, sizeof(time), SETTINGS.clockFormat == 1);
     renderer.drawText(numericFontId, std::max(rect.x, edgeInset), textY, time);

@@ -793,7 +793,9 @@ void WeatherActivity::render(RenderLock&&) {
     const int dayW = innerW / kCols;
     const int dayIcon = 36;
     const int conditionLine = renderer.getLineHeight(smallFont);
-    const int rowGap = std::max(20, smallLine / 2);
+    // Roomier separation between the two five-day rows, plus a closing rule
+    // below the last row so the future-weather block reads as complete.
+    const int rowGap = std::max(40, smallLine);
     const int rowStep = bigLine + 4 + dayIcon + 4 + smallLine + 2 + conditionLine + rowGap;
     int todayWday = weekdayFromIso(cache_.days[0].date);
     if (todayWday < 0) {
@@ -801,7 +803,9 @@ void WeatherActivity::render(RenderLock&&) {
       const struct tm* local = localtime(&now);
       todayWday = local ? local->tm_wday : 0;
     }
+    int forecastDays = 0;
     for (int i = 0; i < kForecastDays && cache_.days[i].date[0]; ++i) {
+      forecastDays = i + 1;
       const int row = i / kCols;
       const int col = i % kCols;
       const int left = card.x + pad + col * dayW;
@@ -819,6 +823,12 @@ void WeatherActivity::render(RenderLock&&) {
       drawCenteredFitted(renderer, smallFont, center, tempY + smallLine + 2, dayW - 2,
                          weatherDescription(cache_.days[i].code));
       if (col > 0) renderer.fillRect(left, rowY, 1, rowStep - rowGap / 2, true);
+    }
+    // Closing rule below the last forecast row.
+    if (forecastDays > 0) {
+      const int forecastRows = (forecastDays + kCols - 1) / kCols;
+      const int lastContentH = bigLine + 4 + dayIcon + 4 + smallLine + 2 + conditionLine;
+      divider(y + (forecastRows - 1) * rowStep + lastContentH + lineGap);
     }
   } else {
     const char* noData = tr(STR_WEATHER_NO_DATA);

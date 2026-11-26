@@ -355,7 +355,9 @@ class BaseTheme {
                         const std::function<bool(int index)>& rowDimmed = nullptr, bool showSelection = true,
                         const std::function<bool(int index)>& rowHeading = nullptr) const;
   virtual void drawMainTabBar(const GfxRenderer& renderer, Rect rect, MainTab selected) const;
-  virtual void drawMainTabStatusBar(const GfxRenderer& renderer, Rect rect) const;
+  // showClock=false suppresses the time text (used by the pull-down panel,
+  // which draws its own large clock); the battery indicator is still drawn.
+  virtual void drawMainTabStatusBar(const GfxRenderer& renderer, Rect rect, bool showClock = true) const;
   static void drawSplash(const GfxRenderer& renderer, const char* status, const char* version = nullptr);
 #ifdef RICKYOS_PRODUCT
   static void drawRickyPowerScreen(const GfxRenderer& renderer, bool sleeping, bool transition,

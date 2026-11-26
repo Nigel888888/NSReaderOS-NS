@@ -412,7 +412,7 @@ void FrontlightPanelActivity::buildPanelScreen(UiScreen& screen) {
     screen.takeTop(bandH, theme.spaceMd);
     GUI.drawHeaderWithStyle(
         renderer, Rect{0, metrics.topPadding, renderer.getScreenWidth(), metrics.homeTopPadding - metrics.topPadding},
-        nullptr, nullptr, true, true);
+        nullptr, nullptr, true, true, false);
   }
 
   if (Frontlight.present()) {
