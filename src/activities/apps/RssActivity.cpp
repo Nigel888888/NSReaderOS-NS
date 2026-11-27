@@ -15,10 +15,12 @@
 #include <variant>
 
 #include <CrossPointSettings.h>
+#include <SecureHttpClient.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
 #include "MappedInputManager.h"
+#include "Memory.h"
 #include "activities/network/WifiSelectionActivity.h"
 #include "activities/reader/DictionaryDefinitionActivity.h"
 #include "activities/util/KeyboardEntryActivity.h"
@@ -55,9 +57,11 @@ std::vector<RssStore::Feed> gFeedsCache;
 std::vector<RssStore::Article> gArticlesCache;
 bool gFeedsCached = false;
 bool gArticlesCached = false;
-// A single feed request is bounded well above the HTTP library's own 15 s
-// per-read timeout; this is only a last-resort backstop (see weather app).
-constexpr unsigned long NETWORK_DEADLINE_MS = 60000;
+// Last-resort backstop for one feed, polled in every network wait loop. It
+// stays above the library's 30 s per-read timeout so a healthy slow read is
+// never cut off, but a feed stuck in a dead handshake now yields after 45 s
+// instead of 60 s, so a weak-link failure no longer stalls the whole pass.
+constexpr unsigned long NETWORK_DEADLINE_MS = 45000;
 
 bool hit(const Rect& r, int x, int y) {
   constexpr int kPad = 4;
@@ -119,7 +123,13 @@ size_t rssSentenceEndLength(const std::string& text, const size_t pos) {
 RssActivity::RssActivity(GfxRenderer& renderer, MappedInputManager& mappedInput)
     : Activity("Rss", renderer, mappedInput) {}
 
-RssActivity::~RssActivity() = default;
+RssActivity::~RssActivity() = default;  // out-of-line: completes SecureHttpClient type
+
+void RssActivity::ensureSession() {
+  // Lazily create one client for the whole refresh pass. If allocation fails,
+  // fetchFeed still works with session_ == nullptr via the per-call fallback.
+  if (!session_) session_ = makeUniqueNoThrow<freeink::SecureHttpClient>();
+}
 
 void RssActivity::rememberCursor() {
   // The article view owns no list cursor; keep the last list tab's values.
@@ -219,6 +229,9 @@ void RssActivity::onEnter() {
 
 void RssActivity::onExit() {
   saveState();
+  // Release the reusable HTTPS client: a live TLS session holds wolfSSL buffers,
+  // and this app runs on a tight heap. It is cheaply recreated on next refresh.
+  session_.reset();
   // Move the index out of the dying Activity; the next entry takes it back
   // instead of re-reading the SD, without ever holding two live copies.
   gFeedsCache = std::move(feeds);
@@ -315,6 +328,7 @@ void RssActivity::beginFetch() {
   fetchFeedIndex = -1;
   fetchedNew = 0;
   failedFeeds = 0;
+  ensureSession();
   queueNextFetch();
 }
 
@@ -368,9 +382,11 @@ void RssActivity::loop() {
     resetTaskWatchdogIfSubscribed();
     const unsigned long started = millis();
     const auto keepAlive = [this, started]() { return networkShouldAbort(started); };
-    const int added = RssStore::fetchFeed(feeds[fetchFeedIndex], fetchFeedIndex, articles, keepAlive);
+    const int added = RssStore::fetchFeed(feeds[fetchFeedIndex], fetchFeedIndex, articles, keepAlive, session_.get());
     if (added < 0) ++failedFeeds;
     else if (added > 0) fetchedNew += added;
+    LOG_INF("RSS", "feed #%d done: added=%d failed=%d elapsed=%lu ms", fetchFeedIndex, added, failedFeeds,
+            millis() - started);
     resetTaskWatchdogIfSubscribed();
     queueNextFetch();
     return;

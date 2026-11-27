@@ -6,6 +6,10 @@
 #include <string>
 #include <vector>
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 // Offline RSS reader data layer.
 //
 // Feeds are fetched over HTTPS while online, parsed with the expat SAX parser
@@ -90,8 +94,12 @@ class RssStore {
   // Returns the number of new articles, or -1 on a transport/parse failure.
   // The `shouldAbort` callback is polled during network waits (watchdog feed +
   // deadline); pass a lambda that returns true to cancel.
+  // `session` is an optional caller-owned reusable HTTPS client. Passing one
+  // avoids a fresh wolfSSL CTX/connection per feed (each handshake allocates
+  // ~tens of KB and fragments the heap on this device); nullptr keeps the old
+  // per-call client behaviour.
   static int fetchFeed(const Feed& feed, int feedIndex, std::vector<Article>& articles,
-                       const std::function<bool()>& shouldAbort);
+                       const std::function<bool()>& shouldAbort, freeink::SecureHttpClient* session = nullptr);
 
   // Turns feed HTML (e.g. <br/>, <a href=...>) into readable plain text.
   static std::string htmlToText(const std::string& html);

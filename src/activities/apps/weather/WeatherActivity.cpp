@@ -4,6 +4,7 @@
 #include <WiFi.h>
 
 #include <I18n.h>
+#include <Logging.h>
 
 #include <algorithm>
 #include <cmath>
@@ -477,7 +478,10 @@ bool WeatherActivity::geocodeCity(const std::string& name, Location& out, const 
   String body;
   const auto keepAlive = [this, started]() { return networkShouldAbort(started); };
   const int status = pluginhttp::request(client, url, "GET", "", {}, body, kMaxGeocodeResponse, nullptr, keepAlive);
+  const unsigned long elapsed = millis() - started;
   resetTaskWatchdogIfSubscribed();
+  LOG_INF("WTHR", "geocode status=%d bytes=%u ms=%lu free=%u", status,
+          static_cast<unsigned>(body.length()), elapsed, static_cast<unsigned>(ESP.getFreeHeap()));
   if (status != 200) return false;
 
   JsonDocument doc;
@@ -560,7 +564,10 @@ void WeatherActivity::fetchForecast(const bool cityChanged) {
   const unsigned long started = millis();
   const auto keepAlive = [this, started]() { return networkShouldAbort(started); };
   const int status = pluginhttp::request(client, url, "GET", "", {}, body, kMaxForecastResponse, nullptr, keepAlive);
+  const unsigned long elapsed = millis() - started;
   resetTaskWatchdogIfSubscribed();
+  LOG_INF("WTHR", "forecast status=%d bytes=%u ms=%lu free=%u", status,
+          static_cast<unsigned>(body.length()), elapsed, static_cast<unsigned>(ESP.getFreeHeap()));
   if (status != 200) {
     showMessage(tr(STR_WEATHER_UPDATE_FAILED));
     return;

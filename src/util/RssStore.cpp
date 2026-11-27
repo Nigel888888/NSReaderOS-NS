@@ -25,9 +25,11 @@ constexpr const char* ARTICLES_PATH = "/.crosspoint/rss/articles.json";
 // bounded (FIFO) so the file cannot grow without limit on a busy feed.
 constexpr const char* DISMISSED_PATH = "/.crosspoint/rss/dismissed.txt";
 constexpr size_t MAX_DISMISSED = 512;
-// A generous cap; feeds stay a few KB in practice. Keeps a corrupt feed from
-// driving an unbounded allocation on this memory-constrained device.
-constexpr size_t MAX_FEED_RESPONSE = 256 * 1024;
+// A feed is normally a few KB; the old 256 KB cap let one oversized/corrupt
+// feed reserve a quarter-megabyte right when the TLS handshake had already
+// pushed the heap to ~10 KB free (measured on-device). 96 KB still clears the
+// largest realistic feed while sharply cutting peak allocation and parse time.
+constexpr size_t MAX_FEED_RESPONSE = 96 * 1024;
 constexpr size_t INDEX_READ_CAP = 512 * 1024;
 
 // writeFile() does not create parent directories. Do it explicitly so the
@@ -526,12 +528,17 @@ size_t RssStore::dropArticlesForFeed(std::vector<Article>& articles, int feedInd
 }
 
 int RssStore::fetchFeed(const Feed& feed, int feedIndex, std::vector<Article>& articles,
-                        const std::function<bool()>& shouldAbort) {
-  // Passing a null session makes PluginHttp build a per-call stack client.
-  // One request per fetch keeps it simple and avoids holding TLS state.
+                        const std::function<bool()>& shouldAbort, freeink::SecureHttpClient* session) {
+  // A caller-owned session is reused across feeds so the wolfSSL CTX/connection
+  // is allocated once instead of once per feed (each handshake fragments the
+  // heap badly on this device). Pass nullptr to fall back to a per-call client.
+  const unsigned long started = millis();
   String body;
-  const int status = pluginhttp::request(nullptr, feed.url, "GET", "", {}, body, MAX_FEED_RESPONSE, nullptr,
+  const int status = pluginhttp::request(session, feed.url, "GET", "", {}, body, MAX_FEED_RESPONSE, nullptr,
                                          shouldAbort);
+  const unsigned long elapsed = millis() - started;
+  LOG_INF("RSS", "fetch #%d status=%d bytes=%u ms=%lu free=%u url=%s", feedIndex, status,
+          static_cast<unsigned>(body.length()), elapsed, static_cast<unsigned>(ESP.getFreeHeap()), feed.url.c_str());
   if (status != 200) return -1;
 
   FeedParser parser;

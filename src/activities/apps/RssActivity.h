@@ -11,6 +11,10 @@
 #include "components/Rect.h"
 #include "util/RssStore.h"
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 // Vocabulary RSS reader, styled after the redesigned phone screen:
 //   - a titled header with a star (toggle favorite) action
 //   - a three-way segmented tab: Updates / Feeds / Favorites
@@ -149,6 +153,12 @@ class RssActivity final : public Activity {
   int fetchFeedIndex = -1;
   int fetchedNew = 0;
   int failedFeeds = 0;
+  // One HTTPS client reused across every feed in a refresh pass. Each fresh
+  // wolfSSL handshake allocates a CTX + SSL and leaves the heap fragmented;
+  // on-device that showed up as ~10 KB min-free and intermittent fetch failures.
+  // Out-of-line destructor below completes the incomplete SecureHttpClient type.
+  std::unique_ptr<freeink::SecureHttpClient> session_;
+  void ensureSession();
 
   // Currently open article body, wrapped into screen lines.
   std::string bodyText;
