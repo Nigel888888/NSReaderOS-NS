@@ -38,6 +38,9 @@ class QuoteViewerActivity final : public Activity {
   Rect nextButtonRect() const;
   Rect starButtonRect() const;
   Rect deleteButtonRect() const;
+  // True only when this sentence has a cached AI answer. Sentences that were
+  // never explained show no window at all -- the sentence fills the body.
+  bool hasExplanation() const { return !explanation.empty(); }
   Rect explainRect() const;
   void reloadExplanation();
   void layoutExplanation();

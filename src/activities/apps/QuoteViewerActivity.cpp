@@ -72,6 +72,9 @@ void QuoteViewerActivity::clampIndex() {
 // The framed AI window under the sentence. Shared by layout and render so
 // wrapping and painting use exactly the same box.
 Rect QuoteViewerActivity::explainRect() const {
+  // No cached answer for this sentence: no window at all. A zero rect makes
+  // drawExplanation() a no-op and keeps the tap handler from eating page turns.
+  if (!hasExplanation()) return Rect{0, 0, 0, 0};
   const auto& metrics = UITheme::getInstance().getMetrics();
   const bool isInverted = renderer.getOrientation() == GfxRenderer::Orientation::PortraitInverted;
   const int contentY = isInverted ? metrics.buttonHintsHeight : 0;
@@ -458,11 +461,12 @@ void QuoteViewerActivity::render(RenderLock&&) {
   const int counterY = prev.y + (NAV_HEIGHT - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
   renderer.drawText(UI_10_FONT_ID, counterX, counterY, counter);
 
-  // The sentence sits in the top band; the framed AI explanation window takes
-  // the space below it. The source book sits just above the sentence.
+  // The sentence sits in the top band when an AI explanation exists; with no
+  // cached answer there is no window and the sentence uses the whole body.
   const Rect explainBox = explainRect();
   const int bodyTop = prev.y + NAV_HEIGHT + NAV_GAP + 8;
-  const int sentenceBottom = explainBox.y - EXPLAIN_GAP;
+  const int sentenceBottom = hasExplanation() ? (explainBox.y - EXPLAIN_GAP)
+                                              : (starButtonRect().y - EXPLAIN_GAP);
   if (sentenceBottom > bodyTop) {
     if (!q.book.empty()) {
       UITheme::drawCenteredText(renderer, Rect{contentX, 0, contentWidth, renderer.getScreenHeight()},
