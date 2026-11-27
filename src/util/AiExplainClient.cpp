@@ -47,12 +47,25 @@ AiExplainClient::Result postPrompt(const std::string& userText, freeink::SecureH
   JsonDocument req;
   req["model"] = cfg.model.c_str();
   req["stream"] = false;
-  req["max_tokens"] = 512;
+  // Three labelled sections (paraphrase / translation / language points) can
+  // run longer than the old one-liner; 700 leaves room for the last section
+  // without inflating the token bill much.
+  req["max_tokens"] = 700;
   JsonArray msgs = req["messages"].to<JsonArray>();
   {
     JsonObject sys = msgs.add<JsonObject>();
     sys["role"] = "system";
-    sys["content"] = "You are a concise English reading assistant. Be brief and accurate.";
+    // One shared answer shape for both entry points (word lookup and whole
+    // sentence). Plain text with literal labels so the renderer shows it as-is.
+    sys["content"] =
+        "You are a concise English reading assistant. Always answer in exactly three sections, "
+        "in this order, each beginning on its own line with the label shown, followed by a colon:\n"
+        "Paraphrase: <restate the sentence's meaning in simple, clear English, in context>\n"
+        "Translation: <give an accurate Chinese translation that fits the context>\n"
+        "Language points: <briefly explain only the genuinely difficult items in the sentence - "
+        "tricky phrases, fixed collocations, slang, idioms or proverbs. If there are none, say none. "
+        "Do not explain ordinary words or grammar>\n"
+        "Keep each section brief. Use plain text only, no markdown, no extra headings.";
   }
   {
     JsonObject usr = msgs.add<JsonObject>();
@@ -97,20 +110,20 @@ AiExplainClient::Result postPrompt(const std::string& userText, freeink::SecureH
 AiExplainClient::Result AiExplainClient::explain(const std::string& headword, const std::string& sentence,
                                                  freeink::SecureHttpClient* session,
                                                  const std::function<bool()>& shouldAbort) {
-  // "word + sentence" context: explain the marked word as used in that line.
+  // "word + sentence" context: the three-section answer is about this sentence,
+  // with the highlighted word called out so language points can touch it.
   std::string userText;
   if (!sentence.empty()) {
     std::string ctx = sentence;
     if (ctx.size() > 900) ctx.resize(900);  // bound prompt size -> token cost
     char buf[1024];
-    std::snprintf(buf, sizeof(buf), "Explain the word/phrase \"%s\" as used in this sentence. "
-                  "Reply concisely in English, then give a short Chinese translation:\n%s",
+    std::snprintf(buf, sizeof(buf), "Explain the following English sentence. The reader selected "
+                  "the word/phrase \"%s\" in it (you may mention it under Language points if relevant):\n%s",
                   headword.c_str(), ctx.c_str());
     userText = buf;
   } else {
     char buf[512];
-    std::snprintf(buf, sizeof(buf), "Explain the word/phrase \"%s\" concisely in English, "
-                  "then give a short Chinese translation.", headword.c_str());
+    std::snprintf(buf, sizeof(buf), "Explain the word/phrase \"%s\" using the three sections.", headword.c_str());
     userText = buf;
   }
   return postPrompt(userText, session, shouldAbort);
@@ -119,13 +132,12 @@ AiExplainClient::Result AiExplainClient::explain(const std::string& headword, co
 AiExplainClient::Result AiExplainClient::explainSentence(const std::string& sentence,
                                                          freeink::SecureHttpClient* session,
                                                          const std::function<bool()>& shouldAbort) {
-  // No headword: explain the whole sentence, which is all a good-sentence
-  // collected from RSS has. Keep the same "English then Chinese" shape.
+  // No headword: a good-sentence collected from RSS is the whole input. Ask for
+  // the three sections explicitly (the system prompt already defines them).
   std::string ctx = sentence;
   if (ctx.size() > 900) ctx.resize(900);
   char buf[1024];
-  std::snprintf(buf, sizeof(buf), "Explain this English sentence concisely, then give a short Chinese "
-                  "translation:\n%s", ctx.c_str());
+  std::snprintf(buf, sizeof(buf), "Explain this English sentence with the three sections:\n%s", ctx.c_str());
   return postPrompt(buf, session, shouldAbort);
 }
 
