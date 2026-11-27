@@ -27,6 +27,7 @@ const char* AiExplainClient::Result::label(Status s) {
 AiExplainClient::Result AiExplainClient::explain(const std::string& headword, const std::string& sentence,
                                                  freeink::SecureHttpClient* session,
                                                  const std::function<bool()>& shouldAbort) {
+  using Status = Result::Status;  // nested enum; explain() is not a Result member
   Result result;
   const unsigned long started = millis();
 
@@ -73,7 +74,7 @@ AiExplainClient::Result AiExplainClient::explain(const std::string& headword, co
     usr["role"] = "user";
     usr["content"] = userText.c_str();
   }
-  String body;
+  std::string body;  // request() takes const std::string& (Arduino String has no such conversion)
   serializeJson(req, body);
 
   pluginhttp::Headers headers;
