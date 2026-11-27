@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -9,19 +10,24 @@
 #include "components/Rect.h"
 #include "util/QuotesFile.h"
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 // Full-screen, paged reader for the highlighted sentences. Opened from the
 // Quotes notebook: one sentence fills the screen, Prev/Next step through the
 // whole list (touch buttons, left/right screen zones or the physical buttons),
 // and Star/Delete act on the sentence in place. Back returns to the notebook.
 class QuoteViewerActivity final : public Activity {
  public:
+  // Out-of-line ctor/dtor: the class holds a unique_ptr<SecureHttpClient> and
+  // both need that forward-declared type to be complete at instantiation.
   explicit QuoteViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
-                               std::vector<QuotesFile::Quote> quotes, int index)
-      : Activity("QuoteViewer", renderer, mappedInput),
-        quotes(std::move(quotes)),
-        index(index) {}
+                               std::vector<QuotesFile::Quote> quotes, int index);
+  ~QuoteViewerActivity() override;
 
   void onEnter() override;
+  void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
 
@@ -50,6 +56,17 @@ class QuoteViewerActivity final : public Activity {
   void toggleFavorite();
   void deleteCurrent();
 
+  // "AI 解释" button shown only for sentences with no cached answer. Lets the
+  // user collect a sentence first (e.g. a whole RSS line no word was picked
+  // from) and generate its explanation here, offline-cacheable, then reload.
+  Rect aiButtonRect() const;
+  void drawAiButton() const;
+  void startAiExplain();
+  void performAiExplain();
+  void ensureWifiThenAi();
+  void ensureAiSession();
+  void expireAiMessage();
+
   std::vector<QuotesFile::Quote> quotes;
   int index = 0;
   const char* message = nullptr;
@@ -62,4 +79,12 @@ class QuoteViewerActivity final : public Activity {
   int explainPages = 1;
   int explainLinesPerPage = 1;
   std::string loadedExplainKey;             // quote key the cache was loaded for
+
+  // AI-explain request state (mirrors the dictionary card). Network runs in
+  // loop(); the render task only paints a busy popup.
+  enum class AiPhase : uint8_t { Idle, Requested, Requesting };
+  AiPhase aiPhase = AiPhase::Idle;
+  const char* aiMessage = nullptr;
+  unsigned long aiMessageUntil = 0;
+  std::unique_ptr<freeink::SecureHttpClient> aiSession_;
 };

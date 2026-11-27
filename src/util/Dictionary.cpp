@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <MemoryManager.h>
 
 #include <algorithm>
 #include <cctype>
@@ -505,7 +506,20 @@ bool Dictionary::readDefinition(const DictLocation& location, std::string& out, 
   // Refuse before touching the heap or the SD: std::string growth aborts on OOM
   // (-fno-exceptions), and the extraction below transiently holds a chunk buffer
   // plus a 32KB inflate window we'd rather not commit to a doomed lookup.
-  if (ESP.getMaxAllocHeap() < size + DEFINITION_HEAP_HEADROOM_BYTES) {
+  //
+  // An internal-heap-only test used to report "memory low" intermittently after
+  // the user visited RSS/weather/agenda: those apps leave rebuildable glyph and
+  // font caches resident, fragmenting internal SRAM. Two fixes here:
+  //   1. reclaim those caches before deciding, and
+  //   2. on PSRAM boards a buffer this size is actually served from PSRAM, so
+  //      a short internal heap must not reject it — fall back to PSRAM.
+  const size_t need = static_cast<size_t>(size) + DEFINITION_HEAP_HEADROOM_BYTES;
+  if (ESP.getMaxAllocHeap() < need && !memory::psramCanServe(size, DEFINITION_HEAP_HEADROOM_BYTES)) {
+    // Try to free rebuildable caches (glyph atlases, decoded font pages, etc.);
+    // they reload transparently from SD on the next access.
+    freeink::MemoryManager::instance().clearCaches(need);
+  }
+  if (ESP.getMaxAllocHeap() < need && !memory::psramCanServe(size, DEFINITION_HEAP_HEADROOM_BYTES)) {
     LOG_ERR("DICT", "Low heap for %lu byte definition", static_cast<unsigned long>(size));
     return fail(LookupResult::LowMemory);
   }

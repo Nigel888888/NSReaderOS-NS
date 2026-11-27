@@ -191,7 +191,12 @@ bool parse(HalFile& file, Info* info, ExtractError* outError) {
       // heap surfaces LowMemory instead of crashing. chunkCount <= MAX_CHUNK_COUNT
       // caps this at ~32KB.
       const size_t chunkTableBytes = (static_cast<size_t>(chunkCount) + 1) * sizeof(uint32_t);
-      if (ESP.getMaxAllocHeap() < chunkTableBytes + CHUNK_TABLE_HEAP_HEADROOM_BYTES)
+      // The table is a small multi-hundred-byte vector: on PSRAM boards such
+      // allocations are served from PSRAM, so a short internal heap alone must
+      // not fail the extraction. (rebuildable caches are reclaimed by the
+      // caller, Dictionary::readDefinition, before it calls us.)
+      if (ESP.getMaxAllocHeap() < chunkTableBytes + CHUNK_TABLE_HEAP_HEADROOM_BYTES &&
+          !memory::psramCanServe(chunkTableBytes, CHUNK_TABLE_HEAP_HEADROOM_BYTES))
         return fail(ExtractError::LowMemory);
       info->chunkOffsets.reserve(static_cast<size_t>(chunkCount) + 1);
       info->chunkOffsets.push_back(0);

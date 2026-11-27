@@ -24,11 +24,14 @@ const char* AiExplainClient::Result::label(Status s) {
   return "?";
 }
 
-AiExplainClient::Result AiExplainClient::explain(const std::string& headword, const std::string& sentence,
-                                                 freeink::SecureHttpClient* session,
-                                                 const std::function<bool()>& shouldAbort) {
-  using Status = Result::Status;  // nested enum; explain() is not a Result member
-  Result result;
+namespace {
+
+// Shared POST/parse for both prompt flavours. Kept file-local so the two
+// public entry points only differ in how they phrase the user message.
+AiExplainClient::Result postPrompt(const std::string& userText, freeink::SecureHttpClient* session,
+                                   const std::function<bool()>& shouldAbort) {
+  using Status = AiExplainClient::Result::Status;
+  AiExplainClient::Result result;
   const unsigned long started = millis();
 
   AiCredentials::Config cfg = AiCredentials::load();
@@ -39,24 +42,6 @@ AiExplainClient::Result AiExplainClient::explain(const std::string& headword, co
   if (WiFi.status() != WL_CONNECTED) {
     result.status = Status::NoWifi;
     return result;
-  }
-
-  // Build the request. "word + sentence" context: the model explains the
-  // marked word as used in that line, far more accurate than an isolated word.
-  std::string userText;
-  if (!sentence.empty()) {
-    std::string ctx = sentence;
-    if (ctx.size() > 900) ctx.resize(900);  // bound prompt size -> token cost
-    char buf[1024];
-    std::snprintf(buf, sizeof(buf), "Explain the word/phrase \"%s\" as used in this sentence. "
-                  "Reply concisely in English, then give a short Chinese translation:\n%s",
-                  headword.c_str(), ctx.c_str());
-    userText = buf;
-  } else {
-    char buf[512];
-    std::snprintf(buf, sizeof(buf), "Explain the word/phrase \"%s\" concisely in English, "
-                  "then give a short Chinese translation.", headword.c_str());
-    userText = buf;
   }
 
   JsonDocument req;
@@ -82,7 +67,7 @@ AiExplainClient::Result AiExplainClient::explain(const std::string& headword, co
   headers.emplace_back("Content-Type", "application/json");
 
   String response;
-  const int status = pluginhttp::request(session, cfg.url, "POST", body, headers, response, MAX_RESPONSE,
+  const int status = pluginhttp::request(session, cfg.url, "POST", body, headers, response, AiExplainClient::MAX_RESPONSE,
                                          nullptr, shouldAbort);
   result.elapsedMs = millis() - started;
   result.httpStatus = status;
@@ -105,6 +90,43 @@ AiExplainClient::Result AiExplainClient::explain(const std::string& headword, co
   result.text = content;
   result.status = Status::Ok;
   return result;
+}
+
+}  // namespace
+
+AiExplainClient::Result AiExplainClient::explain(const std::string& headword, const std::string& sentence,
+                                                 freeink::SecureHttpClient* session,
+                                                 const std::function<bool()>& shouldAbort) {
+  // "word + sentence" context: explain the marked word as used in that line.
+  std::string userText;
+  if (!sentence.empty()) {
+    std::string ctx = sentence;
+    if (ctx.size() > 900) ctx.resize(900);  // bound prompt size -> token cost
+    char buf[1024];
+    std::snprintf(buf, sizeof(buf), "Explain the word/phrase \"%s\" as used in this sentence. "
+                  "Reply concisely in English, then give a short Chinese translation:\n%s",
+                  headword.c_str(), ctx.c_str());
+    userText = buf;
+  } else {
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), "Explain the word/phrase \"%s\" concisely in English, "
+                  "then give a short Chinese translation.", headword.c_str());
+    userText = buf;
+  }
+  return postPrompt(userText, session, shouldAbort);
+}
+
+AiExplainClient::Result AiExplainClient::explainSentence(const std::string& sentence,
+                                                         freeink::SecureHttpClient* session,
+                                                         const std::function<bool()>& shouldAbort) {
+  // No headword: explain the whole sentence, which is all a good-sentence
+  // collected from RSS has. Keep the same "English then Chinese" shape.
+  std::string ctx = sentence;
+  if (ctx.size() > 900) ctx.resize(900);
+  char buf[1024];
+  std::snprintf(buf, sizeof(buf), "Explain this English sentence concisely, then give a short Chinese "
+                  "translation:\n%s", ctx.c_str());
+  return postPrompt(buf, session, shouldAbort);
 }
 
 #endif  // RICKYOS_PRODUCT

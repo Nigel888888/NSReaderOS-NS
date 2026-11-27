@@ -4,19 +4,27 @@
 #include <GfxRenderer.h>
 #include <I18n.h>
 #include <Logging.h>
+#include <SecureHttpClient.h>
+
+#include <WiFi.h>
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
 #include <cstring>
+#include <variant>
 
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
+#include "activities/network/WifiSelectionActivity.h"
 #include "components/UITheme.h"
 #include "components/UIThemeTokens.h"
 #include "components/UiAppHelpers.h"
 #include "fontIds.h"
+#include "util/AiCredentials.h"
 #include "util/AiExplainCache.h"
+#include "util/AiExplainClient.h"
+#include "util/TaskWatchdog.h"
 
 namespace {
 
@@ -40,7 +48,10 @@ constexpr unsigned long MESSAGE_MS = 2500;
 // AI explanation window: sits below the sentence, framed, paginated. The
 // sentence keeps roughly the top 40% of the body; the box takes the rest.
 constexpr int EXPLAIN_GAP = 12;
-constexpr int EXPLAIN_TITLE_H = 24;
+// Gap between the "AI 解释" title row and the first body line. The title band
+// is the font's real line height plus this gap; a fixed small height made the
+// 18pt title overlap the first answer line.
+constexpr int EXPLAIN_TITLE_GAP = 10;
 constexpr int CARD_INSET_EXPLAIN = 10;
 // Longest measurable/drawable span. Wrapped lines stay under the screen width;
 // only a pathological unbreakable token is split at this cap.
@@ -51,13 +62,29 @@ inline bool inRect(int tx, int ty, const Rect& r) {
   return tx >= r.x && tx < r.x + r.width && ty >= r.y && ty < r.y + r.height;
 }
 
+// How long an AI request may run before its watchdog abort fires.
+constexpr unsigned long AI_REQUEST_DEADLINE_MS = 60000;
+
 }  // namespace
+
+QuoteViewerActivity::QuoteViewerActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                         std::vector<QuotesFile::Quote> quotes, int index)
+    : Activity("QuoteViewer", renderer, mappedInput),
+      quotes(std::move(quotes)),
+      index(index) {}
+
+QuoteViewerActivity::~QuoteViewerActivity() = default;
 
 void QuoteViewerActivity::onEnter() {
   Activity::onEnter();
   clampIndex();
   reloadExplanation();
   requestUpdate();
+}
+
+void QuoteViewerActivity::onExit() {
+  aiSession_.reset();  // release wolfSSL buffers before leaving
+  Activity::onExit();
 }
 
 void QuoteViewerActivity::clampIndex() {
@@ -130,7 +157,8 @@ void QuoteViewerActivity::layoutExplanation() {
   renderer.ensureSdCardFontReady(fontId, explanation.c_str(), 0x01 /* REGULAR */);
   const int maxWidth = box.width - 2 * CARD_INSET_EXPLAIN;
   const int lineHeight = renderer.getLineHeight(fontId);
-  const int bodyH = box.height - 2 * CARD_INSET_EXPLAIN - EXPLAIN_TITLE_H;
+  const int titleH = lineHeight + EXPLAIN_TITLE_GAP;
+  const int bodyH = box.height - 2 * CARD_INSET_EXPLAIN - titleH;
   explainLinesPerPage = std::max(1, bodyH / lineHeight);
   const int spaceWidth = renderer.getSpaceWidth(fontId, EpdFontFamily::REGULAR);
 
@@ -229,7 +257,7 @@ void QuoteViewerActivity::drawExplanation(const Rect& box) const {
     const int pw = renderer.getTextAdvanceX(fontId, pager, EpdFontFamily::REGULAR);
     renderer.drawText(fontId, box.x + box.width - CARD_INSET_EXPLAIN - pw, textY, pager);
   }
-  textY += EXPLAIN_TITLE_H;
+  textY += renderer.getLineHeight(fontId) + EXPLAIN_TITLE_GAP;
 
   if (explanation.empty() || explainLines.empty()) {
     renderer.drawText(fontId, textX, textY, tr(STR_AI_EXPLAIN_EMPTY));
@@ -326,6 +354,112 @@ void QuoteViewerActivity::deleteCurrent() {
   requestUpdate();
 }
 
+// The "AI 解释" chip occupies the band the explanation window would take, but
+// only when this sentence has no cached answer. It keeps the same footprint as
+// the star/delete buttons so the layout does not jump between states.
+Rect QuoteViewerActivity::aiButtonRect() const {
+  if (quotes.empty() || hasExplanation()) return Rect{0, 0, 0, 0};
+  const Rect star = starButtonRect();
+  const int w = std::min(ACTION_MAX_WIDTH / 2, renderer.getScreenWidth() - 2 * SIDE_PADDING);
+  const int x = star.x + (star.width - w) / 2;
+  return Rect{x, star.y - ACTION_HEIGHT - EXPLAIN_GAP, w, ACTION_HEIGHT};
+}
+
+void QuoteViewerActivity::drawAiButton() const {
+  const Rect rect = aiButtonRect();
+  if (rect.width <= 0) return;
+  const char* label = aiMessage ? aiMessage : tr(STR_AI_EXPLAIN);
+  GUI.drawActionButton(renderer, rect, label, aiMessage != nullptr);
+}
+
+void QuoteViewerActivity::ensureAiSession() {
+  if (!aiSession_) aiSession_ = makeUniqueNoThrow<freeink::SecureHttpClient>();
+}
+
+void QuoteViewerActivity::expireAiMessage() {
+  if (aiMessage && static_cast<long>(millis() - aiMessageUntil) >= 0) {
+    aiMessage = nullptr;
+    requestUpdate();
+  }
+}
+
+// Tap handler: no cache for this sentence, so go straight to Wi-Fi (auto)
+// then queue the network turn for the next loop so the busy popup paints.
+void QuoteViewerActivity::startAiExplain() {
+  if (aiPhase != AiPhase::Idle || quotes.empty()) return;
+  if (!AiCredentials::hasKey()) {
+    aiMessage = tr(STR_AI_NO_KEY);
+    aiMessageUntil = millis() + MESSAGE_MS;
+    requestUpdate();
+    return;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    ensureWifiThenAi();
+    return;
+  }
+  aiPhase = AiPhase::Requested;
+  requestUpdate();
+}
+
+void QuoteViewerActivity::ensureWifiThenAi() {
+  auto wifi = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, /*autoConnect=*/true);
+  if (!wifi) {
+    aiMessage = tr(STR_AI_NO_WIFI);
+    aiMessageUntil = millis() + MESSAGE_MS;
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(wifi), [this](const ActivityResult& result) {
+    const auto* wifiResult = std::get_if<WifiResult>(&result.data);
+    const bool connected = !result.isCancelled && wifiResult && wifiResult->connected;
+    if (connected) {
+      aiPhase = AiPhase::Requested;
+    } else {
+      aiMessage = tr(STR_AI_NO_WIFI);
+      aiMessageUntil = millis() + MESSAGE_MS;
+    }
+    requestUpdate();
+  });
+}
+
+void QuoteViewerActivity::performAiExplain() {
+  resetTaskWatchdogIfSubscribed();
+  ensureAiSession();
+  const unsigned long started = millis();
+  const auto keepAlive = [started]() {
+    resetTaskWatchdogIfSubscribed();
+    return millis() - started >= AI_REQUEST_DEADLINE_MS;
+  };
+  const std::string sentence = quotes[index].sentence;
+  AiExplainClient::Result result = AiExplainClient::explainSentence(sentence, aiSession_.get(), keepAlive);
+  resetTaskWatchdogIfSubscribed();
+  LOG_INF("AIC", "sentence status=%s http=%d ms=%lu", AiExplainClient::Result::label(result.status),
+          result.httpStatus, result.elapsedMs);
+
+  aiPhase = AiPhase::Idle;
+  aiSession_.reset();  // free wolfSSL buffers; stacked over the quotes list
+
+  if (result.status == AiExplainClient::Result::Status::Ok) {
+    AiExplainCache::put(sentence, result.text);
+    reloadExplanation();
+    requestUpdate();
+    return;
+  }
+  switch (result.status) {
+    case AiExplainClient::Result::Status::NoWifi:
+      ensureWifiThenAi();
+      return;
+    case AiExplainClient::Result::Status::HttpError:
+      aiMessage = tr(STR_AI_HTTP_ERROR);
+      break;
+    default:
+      aiMessage = tr(STR_AI_FAILED);
+      break;
+  }
+  aiMessageUntil = millis() + MESSAGE_MS;
+  requestUpdate();
+}
+
 void QuoteViewerActivity::loop() {
   if (message) {
     if (static_cast<long>(millis() - messageUntil) >= 0) {
@@ -333,6 +467,19 @@ void QuoteViewerActivity::loop() {
       requestUpdate();
     }
   }
+  expireAiMessage();
+
+  // AI request state machine: one network turn after the busy popup paints.
+  if (aiPhase == AiPhase::Requested) {
+    aiPhase = AiPhase::Requesting;
+    requestUpdate();
+    return;
+  }
+  if (aiPhase == AiPhase::Requesting) {
+    performAiExplain();
+    return;
+  }
+
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     finish();
     return;
@@ -393,6 +540,12 @@ void QuoteViewerActivity::loop() {
       deleteCurrent();
       return;
     }
+    // "AI 解释" chip for a sentence with no cached answer.
+    const Rect aiBtn = aiButtonRect();
+    if (inRect(tx, ty, aiBtn)) {
+      startAiExplain();
+      return;
+    }
     // Tapping the explanation window pages it (top half back, bottom half
     // forward), mirroring the swipe gesture.
     const Rect box = explainRect();
@@ -421,6 +574,13 @@ void QuoteViewerActivity::loop() {
 
 void QuoteViewerActivity::render(RenderLock&&) {
   renderer.clearScreen();
+
+  // Busy popup while the network turn runs (network never runs on render).
+  if (aiPhase == AiPhase::Requesting) {
+    GUI.drawPopup(renderer, tr(STR_AI_EXPLAINING));
+    renderer.displayBuffer();
+    return;
+  }
 
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto orientation = renderer.getOrientation();
@@ -461,12 +621,14 @@ void QuoteViewerActivity::render(RenderLock&&) {
   const int counterY = prev.y + (NAV_HEIGHT - renderer.getLineHeight(UI_10_FONT_ID)) / 2;
   renderer.drawText(UI_10_FONT_ID, counterX, counterY, counter);
 
-  // The sentence sits in the top band when an AI explanation exists; with no
-  // cached answer there is no window and the sentence uses the whole body.
+  // With an answer the sentence sits in the top band above the window; with no
+  // answer it uses the body down to the "AI 解释" chip (which offers to make one).
   const Rect explainBox = explainRect();
+  const Rect aiBtn = aiButtonRect();
   const int bodyTop = prev.y + NAV_HEIGHT + NAV_GAP + 8;
   const int sentenceBottom = hasExplanation() ? (explainBox.y - EXPLAIN_GAP)
-                                              : (starButtonRect().y - EXPLAIN_GAP);
+                                              : (aiBtn.width > 0 ? aiBtn.y - EXPLAIN_GAP
+                                                                 : starButtonRect().y - EXPLAIN_GAP);
   if (sentenceBottom > bodyTop) {
     if (!q.book.empty()) {
       UITheme::drawCenteredText(renderer, Rect{contentX, 0, contentWidth, renderer.getScreenHeight()},
@@ -479,6 +641,7 @@ void QuoteViewerActivity::render(RenderLock&&) {
         NOTOSANS_16_FONT_ID, q.sentence.c_str(), 6, true, EpdFontFamily::REGULAR);
   }
   drawExplanation(explainBox);
+  drawAiButton();
 
   // Star/delete row. The label takes over with the last action's result.
   const Rect star = starButtonRect();

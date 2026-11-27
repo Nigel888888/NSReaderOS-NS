@@ -105,6 +105,32 @@ inline bool psramHasHeadroom(const size_t totalBytes, const size_t contiguousByt
 #endif
 }
 
+// Threshold from CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL on the reader target: on
+// PSRAM boards, normal malloc/new requests at or above this size are served
+// from PSRAM and only the small allocations stay in internal SRAM. A guard
+// that measures *only* the internal heap (ESP.getMaxAllocHeap()) therefore
+// rejects plenty of allocations that would have succeeded in PSRAM — the
+// classic "intermittent low memory after visiting another app" symptom.
+constexpr size_t MALLOC_INTERNAL_THRESHOLD = 256;
+
+// Can a request of `bytes` be served from PSRAM as a fallback? On PSRAM
+// targets, malloc/new requests >= the internal threshold are served from PSRAM,
+// so when the internal heap is short we check the PSRAM largest free block
+// (plus a reserve) instead of rejecting outright. Returns false below the
+// threshold (the allocation stays internal) and on non-PSRAM / simulator
+// builds, so callers keep their existing internal-heap-only behaviour.
+inline bool psramCanServe(size_t bytes, size_t reserve = 0) {
+#if defined(BOARD_HAS_PSRAM) && defined(CROSSPOINT_MEMORY_HAS_HEAP_CAPS)
+  if (bytes < MALLOC_INTERNAL_THRESHOLD) return false;
+  const size_t need = bytes + reserve;
+  return heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT) >= need;
+#else
+  (void)bytes;
+  (void)reserve;
+  return false;
+#endif
+}
+
 }  // namespace memory
 
 #undef CROSSPOINT_MEMORY_HAS_HEAP_CAPS

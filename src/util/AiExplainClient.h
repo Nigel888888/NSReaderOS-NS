@@ -30,4 +30,10 @@ class AiExplainClient {
 
   static Result explain(const std::string& headword, const std::string& sentence, freeink::SecureHttpClient* session,
                         const std::function<bool()>& shouldAbort);
+
+  // Whole-sentence explanation for the good-sentences notebook. Some sources
+  // (e.g. RSS) have no single headword, so there is no word to anchor the
+  // prompt -- ask the model to explain the sentence itself.
+  static Result explainSentence(const std::string& sentence, freeink::SecureHttpClient* session,
+                                const std::function<bool()>& shouldAbort);
 };
