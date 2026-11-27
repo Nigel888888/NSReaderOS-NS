@@ -7,7 +7,7 @@
 #include <cstring>
 #include <string>
 
-#include "AiCredentials.h"
+#include "util/AiCredentials.h"
 #include "activities/util/KeyboardEntryActivity.h"
 #include "components/RickyPageUi.h"
 #include "components/UITheme.h"

@@ -11,8 +11,8 @@
 #include <cstdio>
 #include <ctime>
 
-#include "AiCredentials.h"
-#include "AiExplainClient.h"
+#include "util/AiCredentials.h"
+#include "util/AiExplainClient.h"
 #include "CrossPointSettings.h"
 #include "Memory.h"
 #include "components/UITheme.h"
