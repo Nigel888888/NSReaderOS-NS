@@ -233,7 +233,11 @@ void ActivityManager::renderTaskLoop() {
         // navigation frame can opt out of the GC16 clean. The user wants the
         // selection capsule to simply move with no panel flash on tab changes.
         const bool tabSwitchPending = mainTabSwitchRefreshPending.exchange(false, std::memory_order_relaxed);
-        if (!currentActivity->isReaderActivity()) {
+        // Typing (one frame per keystroke) and the short AI-explain
+        // request/popup burst emit frames fast enough to drive this cadence to
+        // a full flash mid-action. Those screens opt out; no other refresh
+        // setting changes -- mode presets, tab switch and reader are untouched.
+        if (!currentActivity->isReaderActivity() && !currentActivity->skipsFullRefreshCadence()) {
           // Resolve the UI clean cadence from the four display presets so the
           // refresh mode applies to every screen, not only reader page turns.
           // On a tab-switch frame we skip the clean and let the light HALF

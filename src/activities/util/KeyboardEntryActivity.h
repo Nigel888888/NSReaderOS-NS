@@ -32,6 +32,9 @@ class KeyboardEntryActivity : public Activity {
   void loop() override;
   void render(RenderLock&&) override;
   bool preventAutoSleep() override { return true; }
+  // One frame per keystroke: the global clean cadence would flash every ~10
+  // characters typed. Keep this screen on FAST-only frames while entering text.
+  bool skipsFullRefreshCadence() const override { return true; }
 
  private:
   std::string title;

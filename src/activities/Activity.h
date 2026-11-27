@@ -44,6 +44,12 @@ class Activity {
   // Screens whose render() redraws the whole screen from state, with no side effects,
   // may be redrawn into the 16-level frame once input goes quiet (ActivityManager).
   virtual bool wantsGraySettle() const { return false; }
+  // Screens that emit many frames per interaction (e.g. one per keystroke while
+  // typing, or the short request/popup burst of an AI explain) would drive the
+  // global UI clean cadence to a full GC16 flash right in the middle of the
+  // action. Such screens opt out of that cadence here; no other refresh setting
+  // (mode presets, tab switch, reader cadence) is affected.
+  virtual bool skipsFullRefreshCadence() const { return false; }
 
   // If immediate is true, the update will be triggered immediately.
   // Otherwise, it will be deferred until the end of the current loop iteration.

@@ -30,6 +30,9 @@ class QuoteViewerActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
+  // Paging a sentence and the in-place AI-explain request burst must not trip
+  // the global clean cadence into a full flash mid-action.
+  bool skipsFullRefreshCadence() const override { return true; }
 
  private:
   // AI explanation window (bottom half). The sentence keeps the top; the

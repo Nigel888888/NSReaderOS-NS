@@ -38,6 +38,9 @@ class DictionaryDefinitionActivity final : public Activity {
   void onExit() override;
   void loop() override;
   void render(RenderLock&&) override;
+  // Looking up a word and the AI-explain request/popup/result burst are short
+  // multi-frame actions; don't let the global cadence flash mid-action.
+  bool skipsFullRefreshCadence() const override { return true; }
 
  private:
   // One wrapped display line: a byte span of `definition`. Wrapping keeps
