@@ -86,6 +86,12 @@ class DictionaryDefinitionActivity final : public Activity {
   // never on the render task; a Phase state machine paints a busy popup.
   void startAiExplain();
   void performAiExplain();
+  // Opens a fresh definition card showing `text` as the AI explanation.
+  // Shared by cache hits (no network) and successful requests.
+  void showAiResult(const std::string& text);
+  // If Wi-Fi is down, push the Wi-Fi picker (auto-connect from saved creds)
+  // and resume the AI request on a successful result.
+  void ensureWifiThenAi();
   void expireAiMessage();
   void addToVocabulary();
   // Adds the word when unsaved, removes it when already saved.

@@ -6,13 +6,18 @@
 #include <Logging.h>
 #include <SecureHttpClient.h>
 
+#include <WiFi.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
+#include <variant>
 
 #include "util/AiCredentials.h"
+#include "util/AiExplainCache.h"
 #include "util/AiExplainClient.h"
+#include "activities/network/WifiSelectionActivity.h"
 #include "CrossPointSettings.h"
 #include "Memory.h"
 #include "components/UITheme.h"
@@ -713,9 +718,20 @@ void DictionaryDefinitionActivity::expireAiMessage() {
   }
 }
 
-// Tap handler: queue the request for the next loop turn so the busy popup can
-// be painted first and the loop task can feed its watchdog (same pattern as
-// the weather app — no network on the render task).
+// Opens the shared definition card to display an AI answer. Used both for a
+// fresh network result and for a cache hit (which needs no network at all).
+void DictionaryDefinitionActivity::showAiResult(const std::string& text) {
+  std::string answer = text;
+  std::string word = headword;
+  // showQuoteButton=false: an AI answer is not a line to add to the notebook.
+  startActivityForResultWith<DictionaryDefinitionActivity>(
+      [this](const ActivityResult&) { requestUpdate(); }, std::move(word), std::move(answer),
+      /*htmlDefinition=*/false, book, sentence, /*showQuoteButton=*/false);
+}
+
+// Tap handler: cache first (offline, free), then Wi-Fi, then queue the network
+// request for the next loop turn so the busy popup can paint first and the
+// loop task can feed its watchdog (no network on the render task).
 void DictionaryDefinitionActivity::startAiExplain() {
   if (aiPhase != AiPhase::Idle) return;
   if (!AiCredentials::hasKey()) {
@@ -724,14 +740,48 @@ void DictionaryDefinitionActivity::startAiExplain() {
     requestUpdate();
     return;
   }
+  // A cached explanation for this sentence is reused verbatim — no request,
+  // no token cost, works offline.
+  std::string cached;
+  if (!sentence.empty() && AiExplainCache::get(sentence, cached)) {
+    showAiResult(cached);
+    return;
+  }
+  // Not cached: need a live connection. If Wi-Fi is down, push the picker
+  // (auto-connect from saved credentials) and resume when it returns.
+  if (WiFi.status() != WL_CONNECTED) {
+    ensureWifiThenAi();
+    return;
+  }
   aiPhase = AiPhase::Requested;
   requestUpdate();
 }
 
-// Performs one AI request off the render task. Reuses the definition card to
-// display the result: open a fresh card with the answer as its definition and
-// the original word as headword, quote button hidden (the AI text is not a
-// sentence to collect).
+// Push the Wi-Fi picker with autoConnect=true (same entry the weather app
+// uses). On a successful connection the AI request resumes automatically.
+void DictionaryDefinitionActivity::ensureWifiThenAi() {
+  auto wifi = makeUniqueNoThrow<WifiSelectionActivity>(renderer, mappedInput, /*autoConnect=*/true);
+  if (!wifi) {
+    aiMessage = tr(STR_AI_NO_WIFI);
+    aiMessageUntil = millis() + VOCABULARY_MESSAGE_MS;
+    requestUpdate();
+    return;
+  }
+  startActivityForResult(std::move(wifi), [this](const ActivityResult& result) {
+    const auto* wifiResult = std::get_if<WifiResult>(&result.data);
+    const bool connected = !result.isCancelled && wifiResult && wifiResult->connected;
+    if (connected) {
+      aiPhase = AiPhase::Requested;
+    } else {
+      aiMessage = tr(STR_AI_NO_WIFI);
+      aiMessageUntil = millis() + VOCABULARY_MESSAGE_MS;
+    }
+    requestUpdate();
+  });
+}
+
+// Performs one AI request off the render task, then caches the answer by
+// sentence so the Quotes notebook can show it later with no API call.
 void DictionaryDefinitionActivity::performAiExplain() {
   resetTaskWatchdogIfSubscribed();
   ensureAiSession();
@@ -750,19 +800,18 @@ void DictionaryDefinitionActivity::performAiExplain() {
   aiSession_.reset();  // free wolfSSL buffers; this card is stacked over a reader
 
   if (result.status == AiExplainClient::Result::Status::Ok) {
-    std::string answer = std::move(result.text);
-    std::string word = headword;
-    // showQuoteButton=false: an AI answer is not a line to add to the notebook.
-    startActivityForResultWith<DictionaryDefinitionActivity>(
-        [this](const ActivityResult&) { requestUpdate(); }, std::move(word), std::move(answer),
-        /*htmlDefinition=*/false, book, sentence, /*showQuoteButton=*/false);
+    // Persist by sentence: this is what the Quotes page reads, and it makes a
+    // repeated lookup on the same line free and offline.
+    if (!sentence.empty()) AiExplainCache::put(sentence, result.text);
+    showAiResult(result.text);
     return;
   }
 
   switch (result.status) {
     case AiExplainClient::Result::Status::NoWifi:
-      aiMessage = tr(STR_AI_NO_WIFI);
-      break;
+      // The picker should have prevented this; retry it rather than dead-end.
+      ensureWifiThenAi();
+      return;
     case AiExplainClient::Result::Status::HttpError:
       aiMessage = tr(STR_AI_HTTP_ERROR);
       break;
