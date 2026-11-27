@@ -75,6 +75,23 @@ void drawHairline(GfxRenderer& renderer, int x, int y, int width) {
 
 }  // namespace
 
+DictionaryDefinitionActivity::DictionaryDefinitionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
+                                                           std::string headword, std::string definition,
+                                                           bool htmlDefinition, std::string book, std::string sentence,
+                                                           bool showQuoteButton, std::vector<std::string> navWords,
+                                                           int navIndex)
+    : Activity("DictionaryDefinition", renderer, mappedInput),
+      headword(std::move(headword)),
+      definition(std::move(definition)),
+      htmlDefinition(htmlDefinition),
+      book(std::move(book)),
+      sentence(std::move(sentence)),
+      showQuoteButton(showQuoteButton),
+      navWords(std::move(navWords)),
+      navIndex(navIndex) {}
+
+DictionaryDefinitionActivity::~DictionaryDefinitionActivity() = default;
+
 void DictionaryDefinitionActivity::onEnter() {
   Activity::onEnter();
   layoutCurrentWord();

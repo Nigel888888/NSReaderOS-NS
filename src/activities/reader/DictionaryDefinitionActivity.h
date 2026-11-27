@@ -24,19 +24,14 @@ class DictionaryDefinitionActivity final : public Activity {
   // `navWords` + `navIndex` are supplied by the vocabulary notebook so the
   // card can page directly to the previous/next saved word. Empty when the
   // card is opened from the reader (a single lookup).
+  // Defined out-of-line: the class holds a unique_ptr<SecureHttpClient> and
+  // ctor/dtor both need that forward-declared type to be complete at their
+  // point of instantiation (same pattern as WeatherActivity).
   explicit DictionaryDefinitionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string headword,
                                         std::string definition, bool htmlDefinition = false, std::string book = "",
                                         std::string sentence = "", bool showQuoteButton = true,
-                                        std::vector<std::string> navWords = {}, int navIndex = 0)
-      : Activity("DictionaryDefinition", renderer, mappedInput),
-        headword(std::move(headword)),
-        definition(std::move(definition)),
-        htmlDefinition(htmlDefinition),
-        book(std::move(book)),
-        sentence(std::move(sentence)),
-        showQuoteButton(showQuoteButton),
-        navWords(std::move(navWords)),
-        navIndex(navIndex) {}
+                                        std::vector<std::string> navWords = {}, int navIndex = 0);
+  ~DictionaryDefinitionActivity() override;
 
   void onEnter() override;
   void onExit() override;
