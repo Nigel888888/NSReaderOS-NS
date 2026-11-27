@@ -84,7 +84,7 @@ DictionaryDefinitionActivity::DictionaryDefinitionActivity(GfxRenderer& renderer
                                                            std::string headword, std::string definition,
                                                            bool htmlDefinition, std::string book, std::string sentence,
                                                            bool showQuoteButton, std::vector<std::string> navWords,
-                                                           int navIndex)
+                                                           int navIndex, bool aiResultCard)
     : Activity("DictionaryDefinition", renderer, mappedInput),
       headword(std::move(headword)),
       definition(std::move(definition)),
@@ -93,7 +93,8 @@ DictionaryDefinitionActivity::DictionaryDefinitionActivity(GfxRenderer& renderer
       sentence(std::move(sentence)),
       showQuoteButton(showQuoteButton),
       navWords(std::move(navWords)),
-      navIndex(navIndex) {}
+      navIndex(navIndex),
+      aiResultCard(aiResultCard) {}
 
 DictionaryDefinitionActivity::~DictionaryDefinitionActivity() = default;
 
@@ -164,8 +165,10 @@ DictionaryDefinitionActivity::BodyArea DictionaryDefinitionActivity::bodyArea() 
   // the bottom. Only the bottom pager is reserved from the body height.
   const int topArea = wordRowY() + wordRowHeight();
   const int navReserve = hasWordNavigation() ? (WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
-  // Reader lookups reserve the bottom row for the "AI explain" button.
-  const int aiReserve = (!hasWordNavigation()) ? (WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
+  // Reader lookups reserve the bottom row for the "AI explain" button. An AI
+  // result card has neither word navigation nor a nested AI button, so it
+  // keeps the full body height for the answer.
+  const int aiReserve = (!hasWordNavigation() && !aiResultCard) ? (WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
   const int bodyHeight =
       renderer.getScreenHeight() - topArea - bottomArea - navReserve - aiReserve - VOCABULARY_BUTTON_GAP;
   return {renderer.getScreenWidth() - hintGutterWidth - 2 * SIDE_PADDING, bodyHeight};
@@ -174,7 +177,8 @@ DictionaryDefinitionActivity::BodyArea DictionaryDefinitionActivity::bodyArea() 
 // The AI explain button occupies the bottom row for reader lookups, mirroring
 // the notebook's prev/next band. Zero-width in the notebook (no AI there).
 Rect DictionaryDefinitionActivity::aiButtonRect() const {
-  if (hasWordNavigation()) return Rect{0, 0, 0, 0};
+  // The AI result card is the answer itself -- no nested "AI explain" button.
+  if (hasWordNavigation() || aiResultCard) return Rect{0, 0, 0, 0};
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int width = std::min(240, renderer.getScreenWidth() - 2 * SIDE_PADDING);
   const int x = (renderer.getScreenWidth() - width) / 2;
@@ -290,6 +294,15 @@ bool DictionaryDefinitionActivity::layoutHtmlPages() {
   return true;
 }
 
+// Regular dictionary definitions are English and use the reader's chosen face
+// (which may be an SD-card TTF). AI answers are CJK-bearing text; the reader
+// face has no CJK fallback registered, so those render as tofu boxes. Route
+// them through NOTOSANS_18, whose CJK fallback is registered in main.cpp, so
+// Chinese translates cleanly while Latin still uses the Noto Sans face.
+int DictionaryDefinitionActivity::bodyFontId() const {
+  return aiResultCard ? NOTOSANS_18_FONT_ID : SETTINGS.getReaderFontId();
+}
+
 int DictionaryDefinitionActivity::measureSpan(const int fontId, const char* text, size_t len) const {
   char buf[MAX_LINE_BYTES + 1];
   len = std::min(len, MAX_LINE_BYTES);
@@ -306,7 +319,7 @@ void DictionaryDefinitionActivity::wrapText() {
   lines.clear();
   lines.reserve(definition.size() / 32 + 8);
 
-  const int fontId = SETTINGS.getReaderFontId();
+  const int fontId = bodyFontId();
   // SD-card fonts: merge every definition codepoint into the persistent
   // advance table up front. Otherwise each unseen codepoint measured below
   // falls back to an on-demand glyph load from SD (8-slot overflow ring).
@@ -437,7 +450,14 @@ void DictionaryDefinitionActivity::loop() {
     const Rect button = vocabularyButtonRect();
     if (button.width > 0 && button.height > 0 && tx >= button.x && tx < button.x + button.width && ty >= button.y &&
         ty < button.y + button.height) {
-      toggleVocabulary();
+      // On an AI answer the single chip saves the source sentence into the
+      // good-sentences notebook; the explanation is already cached under that
+      // sentence, so the quotes page can show it without another API call.
+      if (aiResultCard) {
+        saveAsQuote();
+      } else {
+        toggleVocabulary();
+      }
       return;
     }
     const Rect qbutton = quoteButtonRect();
@@ -659,7 +679,7 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
   // prewarm scope (same pattern as the reader's renderContents) so SD-card
   // font glyphs load from SD in one batch instead of one on-demand overflow
   // read per character on every page turn.
-  const int fontId = SETTINGS.getReaderFontId();
+  const int fontId = bodyFontId();
   const int bodyStartY = rowTop + rowHeight + VOCABULARY_BUTTON_GAP;
   const BodyArea body = bodyArea();
   renderer.drawRoundedRect(contentX + SIDE_PADDING - CARD_INSET, bodyStartY - 6, body.width + 2 * CARD_INSET,
@@ -686,6 +706,15 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
 // "save as quote" button beside it. A result takes over the label so the
 // answer to the tap stays where the eye already is.
 void DictionaryDefinitionActivity::drawVocabularyButton() const {
+  // AI answer cards replace "add to vocabulary" with a single "save as quote"
+  // chip. The cached explanation is keyed by the sentence, so saving the
+  // sentence is what makes the explanation appear in the good-sentences page.
+  if (aiResultCard) {
+    const char* label = quoteMessage ? quoteMessage : tr(STR_QUOTES_SAVE_TO_NOTES);
+    GUI.drawActionButton(renderer, vocabularyButtonRect(), label, quoteMessage != nullptr);
+    return;
+  }
+
   const char* idle = wordSaved ? tr(STR_VOCABULARY_REMOVE) : tr(STR_VOCABULARY_ADD);
   const char* label = vocabularyMessage ? vocabularyMessage : idle;
   GUI.drawActionButton(renderer, vocabularyButtonRect(), label, vocabularyMessage != nullptr);
@@ -723,10 +752,13 @@ void DictionaryDefinitionActivity::expireAiMessage() {
 void DictionaryDefinitionActivity::showAiResult(const std::string& text) {
   std::string answer = text;
   std::string word = headword;
-  // showQuoteButton=false: an AI answer is not a line to add to the notebook.
+  // The answer card carries a single action -- save the source sentence to the
+  // good-sentences notebook -- and renders in the CJK-capable face. The
+  // explanation is already cached under `sentence`, so the quotes page shows it.
   startActivityForResultWith<DictionaryDefinitionActivity>(
       [this](const ActivityResult&) { requestUpdate(); }, std::move(word), std::move(answer),
-      /*htmlDefinition=*/false, book, sentence, /*showQuoteButton=*/false);
+      /*htmlDefinition=*/false, book, sentence, /*showQuoteButton=*/false, std::vector<std::string>{}, /*navIndex=*/0,
+      /*aiResultCard=*/true);
 }
 
 // Tap handler: cache first (offline, free), then Wi-Fi, then queue the network

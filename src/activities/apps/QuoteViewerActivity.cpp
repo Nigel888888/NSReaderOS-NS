@@ -120,7 +120,10 @@ void QuoteViewerActivity::layoutExplanation() {
   const Rect box = explainRect();
   if (box.height <= 0 || explanation.empty()) return;
 
-  const int fontId = SETTINGS.getReaderFontId();
+  // The explanation is an AI answer carrying Chinese text. The reader font can
+  // be a Latin-only SD face with no CJK fallback (tofu boxes), so lay it out in
+  // the CJK-capable built-in face. drawExplanation() uses the same font id.
+  const int fontId = NOTOSANS_18_FONT_ID;
   renderer.ensureSdCardFontReady(fontId, explanation.c_str(), 0x01 /* REGULAR */);
   const int maxWidth = box.width - 2 * CARD_INSET_EXPLAIN;
   const int lineHeight = renderer.getLineHeight(fontId);
@@ -209,7 +212,8 @@ void QuoteViewerActivity::drawExplanation(const Rect& box) const {
   if (box.width <= 0 || box.height <= 0) return;
   renderer.drawRoundedRect(box.x, box.y, box.width, box.height, 1, 6, true);
 
-  const int fontId = SETTINGS.getReaderFontId();
+  // Match layoutExplanation(): CJK-capable face for the AI answer text.
+  const int fontId = NOTOSANS_18_FONT_ID;
   const int lineHeight = renderer.getLineHeight(fontId);
   const int textX = box.x + CARD_INSET_EXPLAIN;
   int textY = box.y + CARD_INSET_EXPLAIN;

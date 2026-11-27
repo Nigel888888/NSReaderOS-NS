@@ -30,7 +30,8 @@ class DictionaryDefinitionActivity final : public Activity {
   explicit DictionaryDefinitionActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, std::string headword,
                                         std::string definition, bool htmlDefinition = false, std::string book = "",
                                         std::string sentence = "", bool showQuoteButton = true,
-                                        std::vector<std::string> navWords = {}, int navIndex = 0);
+                                        std::vector<std::string> navWords = {}, int navIndex = 0,
+                                        bool aiResultCard = false);
   ~DictionaryDefinitionActivity() override;
 
   void onEnter() override;
@@ -59,6 +60,11 @@ class DictionaryDefinitionActivity final : public Activity {
   void wrapText();
   int measureSpan(int fontId, const char* text, size_t len) const;
   void drawBody(int fontId, int x, int startY) const;
+  // AI answers carry Chinese text (DeepSeek appends a translation). The reader
+  // font can be a Latin-only SD font with no CJK fallback, so those cards must
+  // render in the CJK-capable built-in face. Both wrap and draw go through this
+  // helper so measurement and painting always use the same font.
+  int bodyFontId() const;
 
   // Screen box of the "add to vocabulary" button. Collecting a word is a tap
   // on this button, never a button press, so the box has to be hit-testable.
@@ -124,6 +130,11 @@ class DictionaryDefinitionActivity final : public Activity {
   // Empty for a plain reader lookup.
   std::vector<std::string> navWords;
   int navIndex = 0;
+  // True for the card that shows an AI answer. Its body is a CJK-bearing
+  // answer (not an English dictionary definition), so it renders in the
+  // CJK-capable built-in face, and its primary action saves the sentence to
+  // the quotes notebook instead of adding a vocabulary word.
+  const bool aiResultCard;
   // Plain-text copy of the definition, kept for the vocabulary notebook: the
   // styled path below consumes `definition` (the HTML source) and frees it.
   std::string plainDefinition;
