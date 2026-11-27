@@ -29,6 +29,7 @@
 #include "DictionaryDownloadActivity.h"
 #include "FontDownloadActivity.h"
 #ifdef RICKYOS_PRODUCT
+#include "AiConfigActivity.h"
 #include "FontLibraryActivity.h"
 #include "RickyProfileActivity.h"
 #include "activities/util/ImageViewerActivity.h"
@@ -497,6 +498,7 @@ void SettingsActivity::rebuildSettingsLists() {
   // RickyOS firmware update entry hidden at the user's request; SD-card update remains.
   // systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKYOS_FIRMWARE_UPDATE, SettingAction::CheckForUpdates));
   systemSettings.push_back(SettingInfo::Action(StrId::STR_RICKY_SCREEN_REPAIR, SettingAction::RickyScreenRepair));
+  systemSettings.push_back(SettingInfo::Action(StrId::STR_AI_CONFIG_TITLE, SettingAction::AiConfig));
 #else
   systemSettings.push_back(SettingInfo::Action(StrId::STR_CHECK_UPDATES, SettingAction::CheckForUpdates));
 #endif
@@ -1164,6 +1166,9 @@ void SettingsActivity::toggleCurrentSetting() {
         startActivityForResultWith<ClearCacheActivity>(resultHandler);
         break;
 #ifdef RICKYOS_PRODUCT
+      case SettingAction::AiConfig:
+        startActivityForResultWith<AiConfigActivity>(resultHandler);
+        break;
       case SettingAction::RickyGestures:
         startActivityForResultWith<RickyOptionListActivity>(resultHandler, RickyOptionLists::gestures());
         break;

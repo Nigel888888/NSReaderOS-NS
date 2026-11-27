@@ -3,15 +3,21 @@
 #include <FontCacheManager.h>
 #include <GfxRenderer.h>
 #include <I18n.h>
+#include <Logging.h>
+#include <SecureHttpClient.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
 
+#include "AiCredentials.h"
+#include "AiExplainClient.h"
 #include "CrossPointSettings.h"
+#include "Memory.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
+#include "util/TaskWatchdog.h"
 #include "util/DictHtmlPages.h"
 #include "util/HtmlToPlainText.h"
 #include "util/QuotesFile.h"
@@ -43,6 +49,13 @@ constexpr int HEADER_ACTION_HEIGHT = 52;
 
 // How long the result of an add stays on the button.
 constexpr unsigned long VOCABULARY_MESSAGE_MS = 2500;
+
+// AI explain: the top row can hold up to three chips (save, quote, AI). They
+// share the available width so three never overflow the word row.
+constexpr int AI_CHIP_WIDTH = 108;
+constexpr int AI_ACTION_GAP = 10;
+// Backstop for one AI request; comfortably above the library read timeout.
+constexpr unsigned long AI_REQUEST_DEADLINE_MS = 60000;
 
 // Prev/next-word buttons anchored at the bottom of the card while browsing the
 // vocabulary notebook. Sized as full touch targets, not tiny glyphs.
@@ -93,6 +106,7 @@ void DictionaryDefinitionActivity::layoutCurrentWord() {
 }
 
 void DictionaryDefinitionActivity::onExit() {
+  aiSession_.reset();  // release wolfSSL buffers before leaving
   Activity::onExit();
   if (auto* fcm = renderer.getFontCacheManager()) {
     fcm->releaseSdFontCaches();
@@ -128,8 +142,21 @@ DictionaryDefinitionActivity::BodyArea DictionaryDefinitionActivity::bodyArea() 
   // the bottom. Only the bottom pager is reserved from the body height.
   const int topArea = wordRowY() + wordRowHeight();
   const int navReserve = hasWordNavigation() ? (WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
-  const int bodyHeight = renderer.getScreenHeight() - topArea - bottomArea - navReserve - VOCABULARY_BUTTON_GAP;
+  // Reader lookups reserve the bottom row for the "AI explain" button.
+  const int aiReserve = (!hasWordNavigation()) ? (WORD_NAV_HEIGHT + WORD_NAV_GAP) : 0;
+  const int bodyHeight =
+      renderer.getScreenHeight() - topArea - bottomArea - navReserve - aiReserve - VOCABULARY_BUTTON_GAP;
   return {renderer.getScreenWidth() - hintGutterWidth - 2 * SIDE_PADDING, bodyHeight};
+}
+
+// The AI explain button occupies the bottom row for reader lookups, mirroring
+// the notebook's prev/next band. Zero-width in the notebook (no AI there).
+Rect DictionaryDefinitionActivity::aiButtonRect() const {
+  if (hasWordNavigation()) return Rect{0, 0, 0, 0};
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int width = std::min(240, renderer.getScreenWidth() - 2 * SIDE_PADDING);
+  const int x = (renderer.getScreenWidth() - width) / 2;
+  return Rect{x, wordNavY(), width, WORD_NAV_HEIGHT};
 }
 
 // The save / un-favorite chip is centered in the word row, between the
@@ -360,6 +387,18 @@ void DictionaryDefinitionActivity::wrapText() {
 void DictionaryDefinitionActivity::loop() {
   expireVocabularyMessage();
   expireQuoteMessage();
+  expireAiMessage();
+
+  // AI request state machine: one network turn after the busy popup paints.
+  if (aiPhase == AiPhase::Requested) {
+    aiPhase = AiPhase::Requesting;
+    requestUpdate();
+    return;
+  }
+  if (aiPhase == AiPhase::Requesting) {
+    performAiExplain();
+    return;
+  }
 
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     finish();
@@ -383,6 +422,12 @@ void DictionaryDefinitionActivity::loop() {
     if (qbutton.width > 0 && qbutton.height > 0 && tx >= qbutton.x && tx < qbutton.x + qbutton.width &&
         ty >= qbutton.y && ty < qbutton.y + qbutton.height) {
       saveAsQuote();
+      return;
+    }
+    const Rect aibutton = aiButtonRect();
+    if (aibutton.width > 0 && ty >= aibutton.y && ty < aibutton.y + aibutton.height &&
+        tx >= aibutton.x && tx < aibutton.x + aibutton.width) {
+      startAiExplain();
       return;
     }
     // The prev/next-word row (vocabulary browsing only) takes taps before the
@@ -548,6 +593,14 @@ void DictionaryDefinitionActivity::drawBody(const int fontId, const int x, const
 void DictionaryDefinitionActivity::render(RenderLock&&) {
   renderer.clearScreen();
 
+  // While an AI request is in flight, paint a busy popup instead of the card
+  // (network never runs on the render task).
+  if (aiPhase == AiPhase::Requesting) {
+    GUI.drawPopup(renderer, tr(STR_AI_EXPLAINING));
+    renderer.displayBuffer();
+    return;
+  }
+
   const auto& metrics = UITheme::getInstance().getMetrics();
   const auto orientation = renderer.getOrientation();
   const bool isLandscapeCw = orientation == GfxRenderer::Orientation::LandscapeClockwise;
@@ -595,8 +648,10 @@ void DictionaryDefinitionActivity::render(RenderLock&&) {
   scope.endScanAndPrewarm();
   drawBody(fontId, contentX + SIDE_PADDING, bodyStartY);
 
-  // Bottom pager: prev / n of N / next, framed as a CrossNext-style band.
+  // Bottom pager: prev / n of N / next (notebook) or the AI explain button
+  // (reader lookup). Both share the same bottom band.
   drawWordNavigation();
+  drawAiButton();
 
   // The key hints stay unchanged: no key adds a word, the button does.
   const auto labels =
@@ -618,4 +673,86 @@ void DictionaryDefinitionActivity::drawVocabularyButton() const {
     const char* qlabel = quoteMessage ? quoteMessage : tr(STR_QUOTES_SAVE);
     GUI.drawActionButton(renderer, qbutton, qlabel, quoteMessage != nullptr);
   }
+}
+
+// Draws the bottom "AI explain" button for reader lookups. A transient result
+// message (e.g. "no API key") takes over the label so the answer stays where
+// the eye is.
+void DictionaryDefinitionActivity::drawAiButton() const {
+  const Rect rect = aiButtonRect();
+  if (rect.width <= 0) return;
+  const char* label = aiMessage ? aiMessage : tr(STR_AI_EXPLAIN);
+  GUI.drawActionButton(renderer, rect, label, aiMessage != nullptr);
+}
+
+void DictionaryDefinitionActivity::ensureAiSession() {
+  if (!aiSession_) aiSession_ = makeUniqueNoThrow<freeink::SecureHttpClient>();
+}
+
+void DictionaryDefinitionActivity::expireAiMessage() {
+  if (aiMessage && static_cast<long>(millis() - aiMessageUntil) >= 0) {
+    aiMessage = nullptr;
+    requestUpdate();
+  }
+}
+
+// Tap handler: queue the request for the next loop turn so the busy popup can
+// be painted first and the loop task can feed its watchdog (same pattern as
+// the weather app — no network on the render task).
+void DictionaryDefinitionActivity::startAiExplain() {
+  if (aiPhase != AiPhase::Idle) return;
+  if (!AiCredentials::hasKey()) {
+    aiMessage = tr(STR_AI_NO_KEY);
+    aiMessageUntil = millis() + VOCABULARY_MESSAGE_MS;
+    requestUpdate();
+    return;
+  }
+  aiPhase = AiPhase::Requested;
+  requestUpdate();
+}
+
+// Performs one AI request off the render task. Reuses the definition card to
+// display the result: open a fresh card with the answer as its definition and
+// the original word as headword, quote button hidden (the AI text is not a
+// sentence to collect).
+void DictionaryDefinitionActivity::performAiExplain() {
+  resetTaskWatchdogIfSubscribed();
+  ensureAiSession();
+  const unsigned long started = millis();
+  const auto keepAlive = [started]() {
+    resetTaskWatchdogIfSubscribed();
+    return millis() - started >= AI_REQUEST_DEADLINE_MS;
+  };
+  AiExplainClient::Result result =
+      AiExplainClient::explain(headword, sentence, aiSession_.get(), keepAlive);
+  resetTaskWatchdogIfSubscribed();
+  LOG_INF("AIC", "explain status=%s http=%d ms=%lu", AiExplainClient::Result::label(result.status),
+          result.httpStatus, result.elapsedMs);
+
+  aiPhase = AiPhase::Idle;
+  aiSession_.reset();  // free wolfSSL buffers; this card is stacked over a reader
+
+  if (result.status == AiExplainClient::Result::Status::Ok) {
+    std::string answer = std::move(result.text);
+    std::string word = headword;
+    // showQuoteButton=false: an AI answer is not a line to add to the notebook.
+    startActivityForResultWith<DictionaryDefinitionActivity>(
+        [this](const ActivityResult&) { requestUpdate(); }, std::move(word), std::move(answer),
+        /*htmlDefinition=*/false, book, sentence, /*showQuoteButton=*/false);
+    return;
+  }
+
+  switch (result.status) {
+    case AiExplainClient::Result::Status::NoWifi:
+      aiMessage = tr(STR_AI_NO_WIFI);
+      break;
+    case AiExplainClient::Result::Status::HttpError:
+      aiMessage = tr(STR_AI_HTTP_ERROR);
+      break;
+    default:
+      aiMessage = tr(STR_AI_FAILED);
+      break;
+  }
+  aiMessageUntil = millis() + VOCABULARY_MESSAGE_MS;
+  requestUpdate();
 }

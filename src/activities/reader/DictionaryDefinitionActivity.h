@@ -11,6 +11,10 @@
 #include "components/Rect.h"
 #include "util/ButtonNavigator.h"
 
+namespace freeink {
+class SecureHttpClient;
+}
+
 // Paged viewer for one dictionary definition. HTML definitions are laid out
 // through the EPUB chapter parser into styled Pages; anything else (plain
 // text, or HTML too damaged to parse) is word-wrapped once on entry and each
@@ -79,6 +83,15 @@ class DictionaryDefinitionActivity final : public Activity {
   int wordRowHeight() const;
   void drawVocabularyButton() const;
   void drawWordNavigation() const;
+  // Screen box of the "AI explain" button on the bottom row (only for reader
+  // lookups; the vocabulary notebook uses that row for prev/next navigation).
+  Rect aiButtonRect() const;
+  void drawAiButton() const;
+  // Kicks off / drives an AI explanation request. Network I/O runs in loop(),
+  // never on the render task; a Phase state machine paints a busy popup.
+  void startAiExplain();
+  void performAiExplain();
+  void expireAiMessage();
   void addToVocabulary();
   // Adds the word when unsaved, removes it when already saved.
   void toggleVocabulary();
@@ -122,6 +135,14 @@ class DictionaryDefinitionActivity final : public Activity {
   // Result of the last save-as-quote attempt.
   const char* quoteMessage = nullptr;
   unsigned long quoteMessageUntil = 0;
+  // AI explain state machine: Idle -> Requested -> Requesting -> Idle (result
+  // opens a new definition card) or a transient error message on this card.
+  enum class AiPhase : uint8_t { Idle, Requested, Requesting };
+  AiPhase aiPhase = AiPhase::Idle;
+  const char* aiMessage = nullptr;
+  unsigned long aiMessageUntil = 0;
+  std::unique_ptr<freeink::SecureHttpClient> aiSession_;
+  void ensureAiSession();
   // Styled path: reader-identical Pages laid out from the HTML definition.
   // Empty means the plain-text span path below is active.
   std::vector<std::unique_ptr<Page>> pages;
